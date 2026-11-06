@@ -76,6 +76,26 @@ const mcp = await getOcuMcp();      // 进程内共享一个连接
 await mcp.callTool('get_app_state', { app: 'Google Chrome' });
 ```
 
+## 作者做了什么
+
+这个项目不是「包一层别人的工具」，它有 ~9000 行自己写的代码和 4000 行文档：
+
+| 模块 | 行数 | 内容 |
+| --- | --- | --- |
+| `core/` | 5566 | daemon、任务队列、平台抽象、MCP 客户端、CDP 客户端、拟人输入、验收框架、14 个任务 |
+| `overlay/` | 2788 | Electron 多会话小窗主进程、HTTP 服务、渲染层、会话门控、点击穿透 |
+| `scripts/` | 381 | 仓库体检、重启自检、版本同步、效率基准、打包 |
+| `test/` + `tools/` | 286 | 单元测试、Windows UIA 桥 |
+
+其中**完全自主设计的部分**：
+
+1. **可验证执行**：任务的成功判据不靠脚本自证，而是读外部事实（消息列表差集）。这条抓出过一次 8 连假报。
+2. **多会话小窗**：会话标题门控、点击穿透、按画面比例放大、空闲自愈隐藏规则。
+3. **平台抽象**：同一套代码在 macOS（ocu/Accessibility）和 Windows（UIA 兜底）间切换，随包运行时与全局安装自动适配。
+4. **调度与护栏**：应用级文件锁、前台守卫、连续失败自动停。
+
+底层「能操作应用」的能力来自 open-computer-use（MIT），**没有被修改，通过 MCP 协议调用**。详见 [THIRD-PARTY.md](THIRD-PARTY.md) 与 [flow/OCU-INTEGRATION.md](flow/OCU-INTEGRATION.md)。
+
 ## 这个项目的特点在哪
 
 底层「能操作 macOS 应用」的能力来自开源项目 ocu，不是本项目自研。**本项目真正的价值在三件事上**：
