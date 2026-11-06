@@ -62,6 +62,8 @@ const THUMB_MAX_PIXEL_WIDTH = 2560;
 const THUMB_MIN_PIXEL_WIDTH = 300;
 const THUMB_JPEG_QUALITY = 92;
 const CAPTURE_TIMEOUT_MS = 4000;
+// 连续抓帧失败多少次才对外报错：真实窗口刚绑定时偶尔会连续失败 2–3 次
+const CAPTURE_FAIL_TOLERANCE = Math.max(1, Math.round(toNumber(process.env.OVERLAY_CAPTURE_FAIL_TOLERANCE, 4)));
 const FADE_MS = 180;
 // 宿主轮询节奏：有小窗可见时快轮（切会话要马上消失），全都藏着时慢轮省电。
 // 快轮 400ms：用户切走会话到小窗消失最多约 0.5s；之前固定 1.2s 会明显觉得"迟一下"。
@@ -179,6 +181,7 @@ function ensureSession(id, source) {
     captureMs: 0,
     lastThumbSignal: '',
     lastCaptureError: null,
+    captureFailStreak: 0,   // 连续抓帧失败次数：偶发一次不报错，连续失败才飘红
     externalFrameAt: 0,
   };
 
@@ -1194,6 +1197,7 @@ async function captureThumbnail(s) {
       error: null,
     };
     s.lastCaptureError = null;
+    s.captureFailStreak = 0;
     s.captureMs = Date.now() - captureStartedAt;
     recordFrame(s, jpeg.length);
 
@@ -1207,14 +1211,21 @@ async function captureThumbnail(s) {
     signalThumbState(s);
   } catch (error) {
     const message = explainCaptureError(error);
-    s.state.thumbnail.state = 'error';
-    s.state.thumbnail.error = message;
-
-    if (message !== s.lastCaptureError) {
-      s.lastCaptureError = message;
-      pushLog(s, '缩略图捕获失败：' + message, 'system');
+    // 偶发失败（窗口刚切换、系统瞬时不给出图像）很常见：screencapture 会报
+    // "could not create image from window"，但下一次通常就好了。
+    // 连续失败到阈值才切错误态，中间保留上一帧，避免"红字闪一下"。
+    s.captureFailStreak = (s.captureFailStreak || 0) + 1;
+    if (s.captureFailStreak >= CAPTURE_FAIL_TOLERANCE) {
+      s.state.thumbnail.state = 'error';
+      s.state.thumbnail.error = message;
+      if (message !== s.lastCaptureError) {
+        s.lastCaptureError = message;
+        const raw = String((error && error.stderr) || (error && error.message) || '').trim().split('\n')[0].slice(0, 140);
+        console.error('[overlay] 抓帧失败 streak=' + s.captureFailStreak + ' 窗口=' + s.state.windowId + ' 原因=' + message + (raw && raw !== message ? '｜原始：' + raw : ''));
+        pushLog(s, '缩略图捕获失败（连续 ' + s.captureFailStreak + ' 次）：' + message, 'system');
+      }
+      signalThumbState(s);
     }
-    signalThumbState(s);
   } finally {
     pendingTempFiles.delete(file);
     fs.promises.unlink(file).catch(() => {});
@@ -1259,6 +1270,13 @@ function startThumbnailLoop(s) {
     const startedAt = Date.now();
     void captureThumbnail(s).finally(() => {
       if (!s.timers.thumb) return;
+      const streak = s.captureFailStreak || 0;
+      // 刚绑定窗口时系统可能连续几次"给不出图像"（窗口长期被遮挡后要补画），
+      // 这段时间用 120ms 快速重试，比等一个完整周期更快出画面；到阈值后恢复正常节奏。
+      if (streak > 0 && streak < CAPTURE_FAIL_TOLERANCE) {
+        s.timers.thumb = setTimeout(tick, 120);
+        return;
+      }
       const delay = Math.max(0, period - (Date.now() - startedAt));
       s.timers.thumb = setTimeout(tick, delay);
     });
