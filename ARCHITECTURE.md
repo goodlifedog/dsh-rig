@@ -1,127 +1,98 @@
-# 桌面代理架构（desktop-agent）
+# 架构
 
-目标：让 DSH 能在 macOS 后台控制绝大多数软件，全程不抢用户焦点、不动鼠标；
-有操作时小窗出现，空闲自动消失。
+> 最后更新：2026-11-06（v0.5）
 
-## 一、分层
+## 一、设计目标
+
+这个项目要解决的是「自动化跑的时候人还能正常用电脑」。由此推出三条硬约束：
+
+1. **不抢焦点**：窗口用 `showInactive` 显示，点击走无障碍语义动作，不移动系统指针。
+2. **不依赖截图猜坐标**：优先读 Accessibility 语义树，按角色/文本定位；截图只用于给小窗回显。
+3. **可验证**：每个任务必须有独立于「脚本自己说成功」的判据。
+
+## 二、分层
 
 ```
-┌─────────────────────────────────────────────┐
-│ 任务层  core/tasks/*.mjs                     │  声明式脚本：读 → 判断 → 动作 → 校验
-├─────────────────────────────────────────────┤
-│ 编排层  core/agentd.mjs                      │  应用锁、安全护栏、overlay 客户端
-├─────────────────────────────────────────────┤
-│ 能力层  ocu (open-computer-use)              │  AX 读 / click / set_value / type_text
-├─────────────────────────────────────────────┤
-│ 展示层  overlay/ (Electron)                  │  状态、日志、缩略图，空闲隐藏
-└─────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│ 任务层  core/tasks/*.mjs                                 │
+│  具体业务：读界面、点按钮、填表单、投递                    │
+├──────────────────────────────────────────────────────────┤
+│ 控制层  ocu（macOS）  /  UIA 桥（Windows）                 │
+│  统一接口：getApp / getAXState / click / typeText / pressKey│
+├──────────────────────────────────────────────────────────┤
+│ 平台层  core/platform.mjs、overlay/platform.js            │
+│  窗口信息、前台应用、按窗口抓图、服务管理、路径            │
+├──────────────────────────────────────────────────────────┤
+│ 展示层  overlay（Electron，端口 7788）                     │
+│  多会话小窗、实时缩略图、点击穿透、会话标题门控            │
+├──────────────────────────────────────────────────────────┤
+│ 调度层  daemon（端口 7789） + runner + CLI                 │
+│  串行队列、重试、JSONL 日志、端到端验收                    │
+└──────────────────────────────────────────────────────────┘
 ```
 
-## 二、安全护栏（硬规则）
+## 三、关键设计决策
 
-1. **绝不激活被控应用**。每次动作前后 `ocu list-apps` 检查 frontmost；一旦被控应用变成前台，立即中止并上报。
-2. **绝不使用全局指针兜底**（`OPEN_COMPUTER_USE_ALLOW_GLOBAL_POINTER_FALLBACKS` 永远不开）。
-3. **动作分级**：
-   - 只读（snapshot / get_app_state）：随时可做
-   - 可逆写（set_value / 点击筛选、切换标签）：可直接做
-   - 不可逆（发送消息、投递、删除、支付）：**必须任务层显式声明 + 人工确认**，默认拒绝
-4. **应用白名单**：任务必须声明目标应用，未在名单内不做。
-5. **不碰 DeepSeek Harness 自身窗口**（overlay 已拦截绑定）。
+**为什么用无障碍树而不是坐标点击**
 
-## 三、并发模型（多应用同时控制）
+坐标点击要求窗口位置固定、分辨率固定、坐标系固定，三者一变就点错。语义树是「找到名为 X 的按钮并激活」，窗口怎么挪都不影响，也不会误点到相邻控件。
 
-- ocu 每次调用是独立会话，天然可以并行 bind 不同应用。
-- **按应用加锁**：`/tmp/agentd-<bundleId>.lock`，同一应用的多个任务串行，不同应用可并行。
-- 锁必须带超时（默认 120s），避免僵尸锁。
-- 禁止两个任务同时往同一应用输入文本——这是唯一会互相破坏的操作。
+**为什么用独立浏览器实例而不是操作你正在用的浏览器**
 
-## 四、展示层契约
+共用实例意味着共享登录态、共享标签页、共享焦点。任何一次误操作都发生在用户眼前，而且平台能看到同一个会话突然做出非人类行为。独立实例（独立 profile、独立窗口、后台启动）把影响面关在盒子里。
 
-overlay 监听 `127.0.0.1:7788`：
+**为什么要有小窗而不是全无界面**
 
-| 接口 | 用途 |
-|---|---|
-| `POST /status {text}` | 状态行 |
-| `POST /log {text}` | 动作日志 |
-| `POST /window {windowId}` | 缩略图目标 |
-| `POST /visible {visible}` | 手动显隐 |
-| `GET /health` | 状态查询（含 visible / activity） |
-| `GET /windows` | 可绑定窗口列表 |
+全后台跑，出问题时用户完全不知道它在干什么，也没法中途叫停。小窗解决的是「可观测性」：实时画面 + 当前动作 + 空闲自动消失，代价只是屏幕上一小块。
 
-行为：有活动 → 淡入；最后一次活动后 8 秒 → 淡出隐藏（`OVERLAY_IDLE_HIDE_MS` 可调）。
+**为什么必须以外部事实验收**
 
-## 五、覆盖率（2026-11-05 本机实测）
+脚本判断自己成功，用的是自己能看到的东西，很容易自证成功。BOSS 投递踩过：弹窗一直挂着，脚本每轮都读到「已发送」，8 条全是假的。改成读消息列表前后差集后，真假立刻分明。
 
-| 应用 | 节点数 | 可交互 | 结论 |
-|---|---|---|---|
-| Google Chrome | 893+ | 630+ | 好，网页内容完整可读 |
-| Finder | 139 | 47 | 好 |
-| Notes | 46 | 12 | 好 |
-| Calculator | 39 | 24 | 好 |
-| Telegram | 20 | 0 | 差（Electron，AX 暴露极少） |
-| WeChat | - | - | 失败（cgWindowNotFound，需重试/激活一次） |
-| App Store | 17 | 1 | 差 |
+## 四、数据流
 
-结论：**原生 AppKit 应用覆盖良好；Electron 类和部分 Catalyst 应用 AX 稀薄，需要兜底方案**
-（CDP for Chromium 类，或 sky_click 坐标点击）。
+```
+任务 ──POST /status──▶ overlay ──IPC──▶ 渲染进程（状态点 + 文字）
+     ──POST /window──▶ overlay ──screencapture/PrintWindow──▶ 缩略图
+     ──POST /frame ──▶ overlay（外部帧优先，暂停本地抓图）
+overlay ──screencapture 约 7fps──▶ 每个会话独立的窗口
+```
 
-## 六、已知失败模式
+小窗侧规则：有活动显示、空闲 5 秒隐藏、鼠标悬停暂停、DSH 失焦隐藏、DSH 标题不匹配当前会话就隐藏。
 
-1. **锁屏**：macOS 锁屏后所有 AX 读取失败（`NSPOSIXErrorDomain Code=2`）。解决：解锁，或用 ocu locked-use。
-2. **窗口在别的 Space / 被遮挡**：AX 可能读不到内容，缩略图也抓不到。
-3. **前台被抢**：某些应用在 AX 动作时自我激活，护栏会中止任务。
-4. **索引失效**：element index 只在同一 ocu 会话内有效（约 120s），跨调用必须重新取状态。
+## 五、并发与隔离
 
-## 七、进展（2026-11-05）
+- **单应用锁**：`withAppLock(app)` 用文件锁，禁止两个任务同时操作同一个应用。
+- **会话隔离**：overlay 每个 sessionId 一个窗口，状态/缩略图/计时器互不干扰。
+- **任务串行**：daemon 内部单队列，避免同时抢同一个前台。
 
-- [x] 能力层：ocu 安装、权限、后台读/点/写全部实测通过
-- [x] 任务层：BOSS 扫描（后台切标签页 → 读 15 条岗位 → 前台不变）
-- [x] 展示层：手机画中画风格小窗，Space 固定、空闲 8 秒隐藏、拒绝绑定自身窗口
-- [x] 并发：按应用加锁（withAppLock），Finder + Calculator 并行读取 2.9s 完成
-- [x] 文档：ARCHITECTURE.md / flow/RECIPE.md / flow/SCAN.md
+## 六、平台差异
 
-## 八、进展（2026-11-05 晚）
-
-- [x] 写操作：文本框 / contenteditable / select / checkbox 四类控件后台可写，已闭环校验
-- [x] 生产运行器：core/runner.mjs（注册表 / 重试 / JSONL 日志 / overlay 状态推送）
-- [x] 端到端验收：core/acceptance.mjs，当前 6/6 PASS
-- [x] CDP 兜底：core/cdp.mjs（零依赖 CDP 客户端），Electron 应用 13 项验收全过
-- [x] 能力文档：CAPABILITIES.md
-
-## 八点五、专用运行环境（关键设计）
-
-用户的诉求是「像 Codex 一样在后台控制，不动我的前台」。要做到这点，自动化**不能复用用户正在用的窗口**。
-
-| 目标类型 | 自动化环境 | 实现 |
+| 能力 | macOS | Windows |
 | --- | --- | --- |
-| 浏览器网页 | 专用 Chrome 实例 | `core/browser.mjs`：独立 user-data-dir + 屏幕外窗口 + 随机调试端口 + CDP |
-| Electron 应用 | 离屏宿主实例 | `core/electron-task.mjs`：accessory + 透明 + 屏幕外 + CDP |
-| 原生 App | 用户自身的窗口 | ocu AX（只在应用不在前台时操作） |
+| 读界面 / 点击 | ocu（Accessibility） | UIA 桥（UI Automation） |
+| 按窗口抓图 | `screencapture -l` | `PrintWindow`（需 HWND） |
+| 窗口标题 | osascript | `MainWindowTitle` |
+| 服务自启 | launchd | schtasks ONLOGON |
 
-原则：**能用独立实例的，绝不碰用户的实例。** 用户的 Chrome 只读不写、不切标签页。
+细节与未验证项见 [flow/CROSS-PLATFORM.md](flow/CROSS-PLATFORM.md)。
 
-## 八点六、常驻部署（launchd）
+## 七、已知失败模式
 
-两个服务都已注册为 LaunchAgent，登录自启、崩溃自动拉起：
+| 现象 | 原因 | 处理 |
+| --- | --- | --- |
+| 任务报成功但外部无变化 | 用自身可见信号自证 | 改为外部事实验收 |
+| 小窗一直不消失 | 有心跳进程持续推状态 | 禁止常驻心跳，活动才推 |
+| 小窗黑屏 | Windows 把 desktopCapturer 序号当 HWND | 传窗口标题反查 |
+| 点击无效 | 弹窗遮罩还在页面上 | 操作前先清理残留弹窗 |
+| 抓不到图 | 窗口在别的 Space 或已最小化 | 先激活/切换 Space，或改用外部推帧 |
 
-| Label | 进程 | 端口 | plist |
-| --- | --- | --- | --- |
-| com.desktop-agent.daemon | node core/daemon.mjs | 7789 | ~/Library/LaunchAgents/ |
-| com.desktop-agent.overlay | Electron overlay | 7788 | ~/Library/LaunchAgents/ |
-
-管理：
+## 八、验证
 
 ```bash
-launchctl print gui/$(id -u)/com.desktop-agent.daemon | head -20
-launchctl kickstart -k gui/$(id -u)/com.desktop-agent.daemon   # 重启
-launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.desktop-agent.daemon.plist  # 停用
+npm test          # 纯逻辑单测（打分、薪资、平台探测）
+npm run doctor    # 环境自检
+npm run accept    # 端到端验收，输出 Markdown 报告
 ```
 
-坑：launchd 给的进程没有登录 shell 环境，必须写 **node 的绝对路径** 并显式设置 HOME；否则会卡在模块加载阶段。
-
-## 九、下一步
-
-- [ ] CDP 兜底接入任务层（Electron 应用可直接用）
-- [ ] 覆盖率补测：微信、系统设置（bundle id）、App Store
-- [ ] 任务成功率统计与失败自动截图
-- [ ] 用户可配置的任务白名单/黑名单
+验收会区分「真失败」和「环境跳过」：前台不是 DSH、目标页面结构变化这类不算代码错误，但会在报告里写清原因。
