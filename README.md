@@ -82,6 +82,15 @@ node core/runner.mjs run headless-demo    # 启动、导航、拟人点击、推
 - 输入：按码点分段、随机节奏、偶发打错并退格纠正
 - 护栏：对用户应用默认禁止截图式坐标点击（会把窗口抬到前台），改走 element_index 语义点击
 
+真机验证（往 TextEdit 后台打字，不切前台，结束自动还原原文）：
+
+```bash
+npm run humanize:live     # 约 11 秒，证据写到 reports/humanize-live-*.md
+```
+
+最近一次实测：23 个字分 11 段输入、中途打错 6 次并退格纠正、平均 297ms/字；
+鼠标轨迹 31 步 / 426px / 440ms；**前台全程是 DSH 没变**，TextEdit 原文已还原。
+
 ## 和 ocu 的集成方式
 
 不走「每次 spawn 一个 CLI」的老路，而是用 **MCP 长连接**：一次握手后连续调用，复用同一个原生会话。
