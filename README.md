@@ -247,6 +247,8 @@ bash scripts/export.sh    # 生成 dist/desktop-agent-<version>.tar.gz，排除�
 ## 测试与验收
 
 ```bash
+npm run health    # 一条命令看全局（服务/权限/小窗/队列/失败）
+npm run health -- --deep  # 再加上小窗效果回归
 npm run repo:check # 仓库体检：版本一致、无依赖产物、无大文件、无隐私泄漏
 npm test          # 单元测试（打分、薪资解析、平台探测）
 npm run check     # 语法检查

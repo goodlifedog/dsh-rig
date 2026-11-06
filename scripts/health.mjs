@@ -96,6 +96,18 @@ async function main() {
     add('随包 ocu', true, '未打包（用全局安装）');
   }
 
+  // 6. --deep：顺带跑一遍小窗效果回归（会出现/消失/放大，约 20 秒）
+  if (process.argv.includes('--deep')) {
+    try {
+      const out = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'ui-regression.mjs')], { encoding: 'utf8', timeout: 120000 });
+      const passed = (out.match(/✅/g) || []).length;
+      const failed = (out.match(/❌/g) || []).length;
+      add('小窗效果回归', failed === 0, passed + ' 项通过' + (failed ? '，' + failed + ' 项失败' : ''));
+    } catch (e) {
+      add('小窗效果回归', false, '执行失败：' + String(e.message).slice(0, 60));
+    }
+  }
+
   const width = Math.max(...rows.map((r) => r.name.length)) + 2;
   console.log('\n整体状态\n');
   for (const r of rows) console.log((r.ok ? '  ✅ ' : '  ❌ ') + r.name.padEnd(width) + r.detail);
