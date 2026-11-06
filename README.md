@@ -52,6 +52,23 @@ npm run status
 npm run run browser-demo
 ```
 
+## 跨平台
+
+目标是一套代码同时支持 macOS 和 Windows。当前进度：
+
+| 层 | macOS | Windows |
+| --- | --- | --- |
+| 小窗展示 | ✅ screencapture | ✅ PrintWindow（未实机验证） |
+| 前台/窗口信息 | ✅ osascript | ✅ PowerShell + User32（未实机验证） |
+| 控制（点击/读界面） | ✅ ocu | ❌ UI Automation 待实现 |
+| 后台输入 | ✅ sky_key | ❌ 待实现 |
+| 浏览器 | ✅ 离屏 Chrome + CDP | ✅ 逻辑通用 |
+
+平台差异都收在 `overlay/platform.js`（渲染侧）和 `core/platform.mjs`（逻辑侧），业务代码不再直接调 osascript。
+详细缺口和移植路线见 [flow/CROSS-PLATFORM.md](flow/CROSS-PLATFORM.md)。
+
+**诚实说明**：Windows 分支是照 Win32 API 写的，没在真实 Windows 上跑过——当前开发机是 macOS。
+
 ## 目录
 
 ```
@@ -121,6 +138,8 @@ npm run accept
 
 ## Roadmap
 
+- [ ] Windows 控制后端（UI Automation），补齐 click/typeText/pressKey
+- [ ] Windows 服务自启（schtasks 安装脚本）
 - [ ] 任务参数化（筛选标准可配置，先出清单再执行）
 - [ ] 小窗支持更多会话元信息（任务进度、耗时）
 - [ ] 更完整的失败重试策略

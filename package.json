@@ -17,7 +17,7 @@
     "stop": "node core/cli.mjs stop",
     "agent": "node core/cli.mjs status",
     "task": "node core/cli.mjs run",
-    "check": "node --check core/daemon.mjs && node --check core/runner.mjs && node --check core/agentd.mjs",
+    "check": "node --check core/daemon.mjs && node --check core/runner.mjs && node --check core/agentd.mjs && node --check core/platform.mjs && node --check overlay/platform.js",
     "overlay": "cd overlay && npm start"
   }
 }

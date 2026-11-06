@@ -21,6 +21,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
+const platform = require('./platform.js');
 const { createOverlayServer, DEFAULT_SESSION, SESSION_PATTERN } = require('./server.js');
 const { normalizeWindowId, resolveWindowId } = require('./window-id.js');
 
@@ -207,6 +208,7 @@ function stopSessionTimers(s) {
 // DSH 会同时挂着一个 33px 高的标题栏窗口和一个真正的内容窗口，
 // 只取 window 1 会把小窗压进标题栏里，所以这里枚举全部窗口、取面积最大的那个。
 function readDshBounds() {
+  if (!platform.isMac) return platform.readWindowBounds(DSH_PROCESS);
   return new Promise((resolve) => {
     const script =
       'const se = Application("System Events");' +
@@ -250,7 +252,11 @@ function readDshBounds() {
   });
 }
 
-function readFrontmostBundle() {
+async function readFrontmostBundle() {
+  if (!platform.isMac) {
+    const front = await platform.readFrontmostApp();
+    return front && front.bundle ? front.bundle : null;
+  }
   return new Promise((resolve) => {
     execFile('/usr/bin/osascript', ['-e',
       'tell application "System Events" to get bundle identifier of first process whose frontmost is true'],
@@ -823,14 +829,19 @@ async function captureThumbnail(s) {
   pendingTempFiles.add(file);
 
   try {
-    await execFileAsync(
-      SCREENSHOT_CMD,
-      ['-x', '-o', '-l', String(s.state.windowId), '-t', 'png', file],
-      { timeout: CAPTURE_TIMEOUT_MS, maxBuffer: 1024 * 1024 }
-    );
-
-    const image = nativeImage.createFromPath(file);
-    if (image.isEmpty()) throw new Error('screencapture 没有产出有效图片');
+    let image;
+    if (platform.isMac) {
+      await execFileAsync(
+        SCREENSHOT_CMD,
+        ['-x', '-o', '-l', String(s.state.windowId), '-t', 'png', file],
+        { timeout: CAPTURE_TIMEOUT_MS, maxBuffer: 1024 * 1024 }
+      );
+      image = nativeImage.createFromPath(file);
+    } else {
+      const bytes = await platform.captureWindow(s.state.windowId);
+      image = nativeImage.createFromBuffer(bytes);
+    }
+    if (!image || image.isEmpty()) throw new Error('截图没有产出有效图片');
 
     const original = image.getSize();
     // 只做一次 nativeImage.resize：PNG 中间格式无损，最终只编码一次 JPEG
