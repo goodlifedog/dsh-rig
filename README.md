@@ -59,6 +59,23 @@ npm run status
 npm run run browser-demo
 ```
 
+## 和 ocu 的集成方式
+
+不走「每次 spawn 一个 CLI」的老路，而是用 **MCP 长连接**：一次握手后连续调用，复用同一个原生会话。
+
+| 方式 | 每次动作开销 | 元素索引 |
+| --- | --- | --- |
+| `spawn ocu js`（旧） | 200–400ms 起进程 | 每次重置 |
+| **MCP 常驻（现在）** | 40–140ms | 120 秒内可复用 |
+
+实测：握手 41ms，`get_app_state` 43ms，连续两次 `list_apps` 从 139ms 降到 107ms。
+
+```js
+import { getOcuMcp } from './core/ocu-mcp.mjs';
+const mcp = await getOcuMcp();      // 进程内共享一个连接
+await mcp.callTool('get_app_state', { app: 'Google Chrome' });
+```
+
 ## 这个项目的特点在哪
 
 底层「能操作 macOS 应用」的能力来自开源项目 ocu，不是本项目自研。**本项目真正的价值在三件事上**：
@@ -86,7 +103,7 @@ npm run run browser-demo
 
 | 依赖 | 作用 | 许可 |
 | --- | --- | --- |
-| open-computer-use（ocu） | macOS 控制层核心 | MIT |
+| open-computer-use（ocu） | 控制层核心，通过 **MCP 常驻连接**调用 | MIT |
 | Electron | 小窗界面 | MIT |
 | Google Chrome | 被驱动的浏览器 | 专有，用户自有 |
 

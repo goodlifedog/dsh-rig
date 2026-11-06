@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0 (2026-11-06)
+
+- 控制层改为 MCP 常驻连接（`core/ocu-mcp.mjs`）：握手 41ms，单动作 40–140ms，元素索引可复用
+- 新增 `mcp-demo` 任务验证长连接（11 个工具、连续调用无进程开销）
+- 保留 `spawn ocu js` 老路径，便于对照与回退
+
 ## 0.5.0 (2026-11-06)
 
 - 平台层：`overlay/platform.js`、`core/platform.mjs`，把 macOS 专属调用收敛为统一接口

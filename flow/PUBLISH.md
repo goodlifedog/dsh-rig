@@ -43,7 +43,14 @@ git push -u origin main
 
 > 后台电脑控制 + 小窗回显：用 Accessibility 语义树驱动真实 macOS 应用，全程不抢焦点、不动鼠标
 
-标签：macos、windows、automation、accessibility、computer-use、electron、overlay
+标签（GitHub topics，和 ocu 保持一致便于互相发现）：
+
+```
+computer-use  open-computer-use  accessibility  automation
+macos  windows  mcp  electron  overlay  agents
+```
+
+README 里已写明「基于 open-computer-use 构建」，并在 THIRD-PARTY.md 附了它的许可与声明。
 
 ## 五、之后
 

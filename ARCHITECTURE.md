@@ -17,7 +17,7 @@
 │ 任务层  core/tasks/*.mjs                                 │
 │  具体业务：读界面、点按钮、填表单、投递                    │
 ├──────────────────────────────────────────────────────────┤
-│ 控制层  ocu（macOS）  /  UIA 桥（Windows）                 │
+│ 控制层  ocu over MCP（常驻连接）/ UIA 桥（无 ocu 时兜底）   │
 │  统一接口：getApp / getAXState / click / typeText / pressKey│
 ├──────────────────────────────────────────────────────────┤
 │ 平台层  core/platform.mjs、overlay/platform.js            │
