@@ -271,6 +271,8 @@ npm run restart:check  # 重启两个服务再验证健康（抓「跑的是旧�
 
 CI 在 Ubuntu / macOS / Windows 三平台跑 `npm test` 与 `npm run check`。
 
+监控口径、各项指标怎么看、锁屏时哪些数据不可信，见 [flow/MONITORING.md](flow/MONITORING.md)。
+
 端到端验收会跑一遍服务在线、小窗显隐、各任务，输出 Markdown 报告到 `reports/`。
 「环境不具备」（用户正在用目标应用、没开指定页面、锁屏、缺辅助功能权限）会记为
 环境跳过并在报告里注明原因，不算失败；归类规则只有一份，见 `core/run-classify.mjs`。
