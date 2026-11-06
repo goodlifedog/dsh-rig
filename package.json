@@ -1,6 +1,6 @@
 {
   "name": "desktop-agent",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": false,
   "type": "module",
   "description": "后台电脑控制 + 小窗回显：用 Accessibility 语义树驱动真实 macOS 应用，全程不抢焦点",
