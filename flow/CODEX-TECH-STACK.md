@@ -198,3 +198,51 @@ macOS 上读的是 AXUIElement 树，每个节点有角色（按钮/文本栏/�
 ### Windows 反而更省事的地方
 
 Windows 的 UIA 提供 `InvokePattern` / `SelectionItemPattern` / `ValuePattern` 这类标准动作，很多场景比 macOS 更规整；而且 Win32 消息投递对传统 Win32 应用的兼容性不错。只是对 Electron、UWP 这类自绘窗口，效果会差一些。
+## 十四、能力清单：两边各自能覆盖到哪
+
+分两类看：**ocu 已封装的**（拿来就能用）和 **系统能做但没封装的**（要自己补）。
+
+### A. ocu 已封装（跨平台九件套）
+
+| 工具 | 能做什么 | macOS 底层 | Windows 底层 |
+| --- | --- | --- | --- |
+| `list_apps` | 列出正在运行的应用 | NSWorkspace / AX | 进程枚举 |
+| `get_app_state` | 读界面树，可选附截图 | Accessibility + ScreenCaptureKit | UI Automation + 截图 |
+| `click` | 点击（元素或坐标） | AXPress / CGEventPostToPid / SkyLight | UIA / app_post |
+| `type_text` | 输入文本 | SkyLight / 事件注入 | Win32 窗口消息 |
+| `press_key` | 按键、组合键 | SkyLight（走菜单栏） | 窗口消息 |
+| `scroll` | 滚动 | CGEvent | Win32 |
+| `drag` | 拖拽 | CGEvent | Win32 |
+| `set_value` | 直接设控件值 | AXValue | UIA ValuePattern |
+| `perform_secondary_action` | 触发控件的次要动作（右键菜单等） | AX 动作 | UIA |
+
+macOS 额外：`select_text`（选文本）、`query`（按文本/角色定向查元素）。
+
+### B. 系统能做、ocu 没封装（要自己写）
+
+| 能力 | macOS 怎么做 | Windows 怎么做 | 我们项目里的情况 |
+| --- | --- | --- | --- |
+| 启动应用 | `open -a`、NSWorkspace | `Start-Process`、CreateProcess | 已用（离屏 Chrome、Electron 宿主） |
+| 窗口移动/缩放 | AX 设 position/size、CGWindow | `SetWindowPos` | 已用（小窗定位、切窗口） |
+| 读前台应用 | NSWorkspace / System Events | `GetForegroundWindow` | 已用（前台守卫） |
+| 按窗口截图 | `screencapture -l` | `PrintWindow` | 已用（小窗缩略图） |
+| 剪贴板 | `pbpaste` / `pbcopy` | `Get-Clipboard` / `Set-Clipboard` | 未用 |
+| 文件操作 | Node fs | Node fs | 已用 |
+| 多显示器/虚拟显示 | `agent_display`（ocu 封装） | 无等价 | macOS 侧可用 |
+| 服务自启 | launchd | schtasks | 已做（core/service.mjs） |
+
+### C. 两边都做不到或很难的
+
+| 场景 | 原因 |
+| --- | --- |
+| 锁屏状态下操作 | AX/UIA 整体失效（实测 `NSPOSIXErrorDomain Code=2`） |
+| SSH / 服务上下文操作 GUI | Windows 必须登录桌面会话；macOS 同理需要 Aqua 会话 |
+| 自绘窗口（Electron/UWP 内部控件） | UIA/AX 只暴露一层壳，内部元素读不到 |
+| 需要管理员权限的应用 | UIPI 拦截（Windows）；macOS 需要辅助功能授权 |
+| 过验证码/风控 | 系统层注入能被平台识别为自动化 |
+
+### D. 一句话总结
+
+- **macOS**：能力最全，能做到「窗口不抬、指针不动、Space 不切」的真后台，还能把窗口搬到虚拟显示器。代价是依赖私有 SPI，系统升级可能失效。
+- **Windows**：语义控件操作干净利落，但缺后台注入通道，点空白区域会退化；离屏和定向查询没有。
+- **两边共同**：必须登录桌面会话、必须授权、树质量依赖应用是否规范实现无障碍。
