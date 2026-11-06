@@ -29,6 +29,7 @@ const { normalizeWindowId, resolveWindowId } = require('./window-id.js');
 const { computeFrameTarget } = require('./frame-target.js');
 const layout = require('./layout.js');
 const { appleScriptQuote } = require('./quote.js');
+const { nextCaptureDelay } = require('./capture-policy.js');
 const { shouldEvictSession } = require('./session-policy.js');
 
 const APP_NAME = 'desktop-agent-overlay';
@@ -183,6 +184,8 @@ function ensureSession(id, source) {
     lastThumbSignal: '',
     lastCaptureError: null,
     captureFailStreak: 0,   // 连续抓帧失败次数：偶发一次不报错，连续失败才飘红
+    lastFrameHash: null,    // 上一帧内容哈希：连续不变就降频抓帧
+    unchangedFrames: 0,     // 连续多少帧画面没变
     externalFrameAt: 0,
   };
 
@@ -832,6 +835,8 @@ function showOverlay(s, reason) {
     // showInactive：只显示，不激活、不抢焦点
     win.showInactive();
   }
+  // 刚显示时先按满帧率抓一帧，别让降频状态拖慢"打开就有画面"的观感
+  s.unchangedFrames = 0;
   // 新出现的窗口先按穿透处理，等鼠标真的移到按钮/拖拽条上再接管
   s.flags.rendererInteractive = false;
   applyClickThrough(s);
@@ -1145,6 +1150,11 @@ async function captureThumbnail(s) {
     s.lastCaptureError = null;
     s.captureFailStreak = 0;
     s.captureMs = Date.now() - captureStartedAt;
+    // 画面没变化就降频：内容完全相同的帧按 2 倍周期退避，有变化立刻回到满帧率
+    const hash = require('node:crypto').createHash('md5').update(jpeg).digest('hex');
+    if (hash === s.lastFrameHash) s.unchangedFrames = (s.unchangedFrames || 0) + 1;
+    else { s.unchangedFrames = 0; }
+    s.lastFrameHash = hash;
     recordFrame(s, jpeg.length);
 
     send(s, 'overlay:thumb', {
@@ -1223,7 +1233,10 @@ function startThumbnailLoop(s) {
         s.timers.thumb = setTimeout(tick, 120);
         return;
       }
-      const delay = Math.max(0, period - (Date.now() - startedAt));
+      // 画面静止时按 2 倍退避降频（最多 1 秒一帧），有人看的是"变了没有"而不是"多少帧"
+      // 下限 500ms（2fps）：静止时省 CPU，但用户盯着看时画面变化最多半秒就能看到
+      const idleDelay = nextCaptureDelay({ unchangedFrames: s.unchangedFrames || 0, basePeriod: period, maxPeriod: 500 });
+      const delay = Math.max(0, idleDelay - (Date.now() - startedAt));
       s.timers.thumb = setTimeout(tick, delay);
     });
   };
@@ -1273,6 +1286,8 @@ function setWindowId(s, raw, source, title) {
   s.lastThumbSignal = '';
   s.lastCaptureError = null;
 
+  s.unchangedFrames = 0;
+  s.lastFrameHash = null;
   pushLog(s, '缩略图目标窗口 → ' + id + (source ? '（' + source + '）' : ''), 'system');
   markActivity(s, 'window');
   startThumbnailLoop(s);
