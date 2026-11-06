@@ -1,0 +1,122 @@
+'use strict';
+// 只做筛选、不投递：读当前 BOSS 列表页，按可配置标准打分，产出候选清单供人工圈定。
+import { execFile } from 'node:child_process';
+import fsp from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { overlay } from '../agentd.mjs';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.join(__dirname, '..', '..');
+const OCU = path.join(os.homedir(), '.local/bin/ocu');
+
+const CFG = {
+  salaryMin: Number(process.env.SALARY_MIN || 5),
+  salaryMax: Number(process.env.SALARY_MAX || 12),
+  allowIntern: process.env.ALLOW_INTERN !== '0',
+  allowCampus: process.env.ALLOW_CAMPUS !== '0',
+  keywords: (process.env.KEYWORDS || 'Java,Agent,AI,后端,全栈,大模型,工作流').split(','),
+  excludeCompanies: (process.env.EXCLUDE_COMPANIES || '外包,人力,派遣,猎头').split(','),
+};
+
+function parseSalary(text) {
+  const m = /(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)\s*K/i.exec(text) || /(\d+(?:\.\d+)?)\s*K/i.exec(text);
+  if (!m) return null;
+  const a = Number(m[1]);
+  const b = m[2] ? Number(m[2]) : a;
+  return { min: Math.min(a, b), max: Math.max(a, b) };
+}
+
+function score(job) {
+  const reasons = [];
+  let s = 0;
+  const hay = job.title + ' ' + (job.ctx || '');
+  const kw = CFG.keywords.find((k) => hay.includes(k));
+  if (kw) { s += 30; reasons.push('方向匹配：' + kw); }
+  const sal = parseSalary(hay);
+  if (sal) {
+    if (sal.min <= CFG.salaryMax && sal.max >= CFG.salaryMin) { s += 25; reasons.push('薪资在区间 ' + sal.min + '-' + sal.max + 'K'); }
+    else if (sal.min > CFG.salaryMax) { s -= 20; reasons.push('薪资偏高 ' + sal.min + 'K+，可能够不着'); }
+  } else { reasons.push('薪资未标注'); }
+  if (/在校|应届|经验不限|实习|1年以内/.test(hay)) { s += 20; reasons.push('接受应届/在校'); }
+  if (/1-3年/.test(hay)) { s += 8; reasons.push('1-3年，可尝试'); }
+  if (/3-5年|5-10年/.test(hay)) { s -= 30; reasons.push('经验要求偏高'); }
+  if (/硕士/.test(hay)) { s -= 40; reasons.push('学历要求过高'); }
+  const badCo = CFG.excludeCompanies.find((c) => hay.includes(c));
+  if (badCo) { s -= 15; reasons.push('公司类型可疑：' + badCo); }
+  return { score: s, reasons };
+}
+
+const inner = [
+  'var app = await cua.getApp("Google Chrome", { initialState: false });',
+  'var s = await app.getAXState({ includeScreenshot: false, maxTreeNodes: 12000 });',
+  'var t = typeof s === "string" ? s : JSON.stringify(s);',
+  'var lines = t.split("\\n");',
+  'var jobs = [];',
+  'for (var i = 0; i < lines.length; i++) {',
+  '  var m = /(\\d+)\\s+link \\[([^\\]]+)\\]\\(https:\\/\\/www\\.zhipin\\.com\\/job_detail\\/([^?)]+)/.exec(lines[i]);',
+  '  if (!m) continue;',
+  '  var title = m[2].trim();',
+  '  var ctx = [];',
+  '  for (var k = i + 1; k < Math.min(i + 9, lines.length); k++) {',
+  '    if (lines[k].indexOf("link [") >= 0) break;',
+  '    var txt = lines[k].replace(/^\\s*/,"");',
+  '    txt = txt.replace(/^\\d+\\s+/,"");',
+  '    if (/^(container|组|文本|静态文本|图像|link|按钮|标签)/.test(txt)) {',
+  '      txt = txt.replace(/^[^ ]*\\s+/,"");',
+  '    }',
+  '    if (txt && !/^\\(/.test(txt)) ctx.push(txt);',
+  '  }',
+  '  jobs.push({ index: Number(m[1]), title: title, id: m[3], ctx: ctx.join(" | ").slice(0, 160) });',
+  '}',
+  'var seen = {}; jobs = jobs.filter(function (j) { return j.id && !seen[j.id] && (seen[j.id] = 1); });',
+  'nodeRepl.write(JSON.stringify({ url: (/URL: (https:\\/\\/[^\\s,)]+)/.exec(t) || [])[1] || "", jobs: jobs }));',
+].join('\n');
+async function main() {
+  await overlay.status('BOSS：只筛选，不投递');
+  const tmp = path.join(os.tmpdir(), 'boss-candidates-' + Date.now() + '.mjs');
+  await fsp.writeFile(tmp, inner, 'utf8');
+  const raw = await new Promise((resolve) => {
+    execFile(OCU, ['js', '--timeout', '90000', '--file', tmp], { timeout: 120000, maxBuffer: 32 * 1024 * 1024, env: { ...process.env, OPEN_COMPUTER_USE_VISUAL_CURSOR: '0' } }, (_e, stdout) => resolve(stdout || ''));
+  });
+  await fsp.rm(tmp, { force: true });
+  let data = null;
+  for (const line of raw.trim().split('\n').reverse()) {
+    if (!line.trim().startsWith('{')) continue;
+    try { data = JSON.parse(line); break; } catch {}
+  }
+  if (!data || !data.jobs) { console.error('FAIL: 读不到岗位列表'); process.exit(1); }
+
+  const scored = data.jobs.map((j) => Object.assign({}, j, score(j))).sort((a, b) => b.score - a.score);
+  const pass = scored.filter((j) => j.score >= 40);
+  const maybe = scored.filter((j) => j.score >= 20 && j.score < 40);
+
+  const lines = [];
+  lines.push('# BOSS 候选岗位（仅筛选，未投递）');
+  lines.push('');
+  lines.push('页面：' + (data.url || 'unknown'));
+  lines.push('标准：薪资 ' + CFG.salaryMin + '-' + CFG.salaryMax + 'K，关键词 ' + CFG.keywords.join('/') + '，排除 ' + CFG.excludeCompanies.join('/'));
+  lines.push('');
+  lines.push('## 推荐投递（' + pass.length + '）');
+  lines.push('');
+  for (const j of pass) lines.push('- [' + j.score + '] ' + j.title + '  \n  ' + j.reasons.join('；'));
+  lines.push('');
+  lines.push('## 可考虑（' + maybe.length + '）');
+  lines.push('');
+  for (const j of maybe) lines.push('- [' + j.score + '] ' + j.title + '  \n  ' + j.reasons.join('；'));
+  lines.push('');
+  lines.push('## 未通过（' + (scored.length - pass.length - maybe.length) + '）');
+  lines.push('');
+  for (const j of scored.filter((j) => j.score < 20)) lines.push('- [' + j.score + '] ' + j.title + '  \n  ' + j.reasons.join('；'));
+
+  const reports = path.join(ROOT, 'reports');
+  await fsp.mkdir(reports, { recursive: true });
+  const out = path.join(reports, 'candidates-' + new Date().toISOString().replace(/[:.]/g, '-') + '.md');
+  await fsp.writeFile(out, lines.join('\n'));
+  await overlay.status('筛选完成：推荐 ' + pass.length + ' 个');
+  console.log(lines.join('\n'));
+  console.log('\n报告：' + out);
+}
+
+main().catch(async (e) => { console.error('FAIL:', e.message); process.exit(1); });

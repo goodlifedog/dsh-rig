@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta
+    http-equiv="Content-Security-Policy"
+    content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'"
+  />
+  <title>Desktop Agent</title>
+  <style>
+    :root {
+      --bg: #1c1c1e;
+      --bg-elevated: #232326;
+      --stroke: rgba(255, 255, 255, 0.10);
+      --stroke-soft: rgba(255, 255, 255, 0.06);
+      --text: #e8e8ea;
+      --text-dim: #9a9aa0;
+      --idle: #8e8e93;
+      --running: #32d74b;
+      --error: #ff453a;
+      --radius-window: 14px;
+      --radius-frame: 9px;
+    }
+
+    * { box-sizing: border-box; -webkit-user-select: none; user-select: none; }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: transparent;
+      font: 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+      color: var(--text);
+      overflow: hidden;
+    }
+
+    #app { height: 100%; padding: 0; }
+
+    #card {
+      position: relative;
+      height: 100%;
+      background: rgba(28, 28, 30, 0.72);
+      -webkit-backdrop-filter: blur(26px) saturate(1.35);
+      backdrop-filter: blur(26px) saturate(1.35);
+      /* 最外层一圈 1px 细黑边（border 占位，不遮画面）；白色高光描边挪到 inset 阴影，保留玻璃感 */
+      border: 1px solid rgba(0, 0, 0, 0.92);
+      border-radius: var(--radius-window);
+      overflow: hidden;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.10), 0 8px 28px rgba(0, 0, 0, 0.38);
+    }
+
+    /* 只有边缘/顶部 8px 是拖拽条：其余区域点击穿透到下面的 DSH */
+    .drag-strip { position: absolute; z-index: 3; -webkit-app-region: drag; }
+    #drag-top { left: 0; right: 0; top: 0; height: 8px; }
+    #drag-left { left: 0; top: 8px; bottom: 8px; width: 8px; }
+    #drag-right { right: 0; top: 8px; bottom: 8px; width: 8px; }
+    #drag-bottom { left: 0; right: 0; bottom: 0; height: 8px; }
+    #card:hover { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18), 0 8px 28px rgba(0, 0, 0, 0.38); }
+
+    /* 没有顶栏：画面直接铺满 */
+
+    #dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex: 0 0 auto;
+      background: var(--idle);
+    }
+    #dot.running { background: var(--running); }
+    #dot.error { background: var(--error); }
+
+    #status {
+      flex: 1 1 auto;
+      font-size: 11.5px;
+      line-height: 1.2;
+      color: var(--text-dim);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      transition: opacity 160ms ease;
+    }
+    #status.fade { opacity: 0.55; }
+
+    #close {
+      position: absolute;
+      top: 9px;
+      right: 9px;
+      z-index: 6;
+      -webkit-app-region: no-drag;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border: 0;
+      border-radius: 50%;
+      background: rgba(0, 0, 0, 0.45);
+      color: rgba(255, 255, 255, 0.85);
+      font-size: 12px;
+      line-height: 1;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 140ms ease;
+    }
+    #card:hover #close { opacity: 1; }
+
+    /* 放大：切到屏幕居中 4:3 */
+    #expand {
+      position: absolute;
+      top: 9px;
+      right: 37px;
+      z-index: 6;
+      -webkit-app-region: no-drag;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border: 0;
+      border-radius: 50%;
+      background: rgba(0, 0, 0, 0.45);
+      color: rgba(255, 255, 255, 0.85);
+      font-size: 12px;
+      line-height: 1;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 140ms ease;
+    }
+    #card:hover #expand { opacity: 1; }
+    #expand:hover { background: rgba(0, 0, 0, 0.7); }
+    #close:hover { background: rgba(0, 0, 0, 0.7); }
+
+    /* 画面区域 */
+    #stage {
+      position: absolute;
+      inset: 5px;
+      border-radius: calc(var(--radius-window) - 5px);
+      background: #0b0b0c;
+      overflow: hidden;
+    }
+
+    #thumb-backdrop,
+    #thumb {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0;
+      transition: opacity 120ms ease;
+    }
+    #thumb-backdrop { object-fit: cover; filter: blur(14px); opacity: 0; }
+    #thumb { object-fit: contain; }
+    #thumb-backdrop.visible { opacity: 0.5; }
+    #thumb.visible { opacity: 1; }
+
+    #placeholder {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11.5px;
+      color: #6b6b70;
+    }
+    #placeholder.hidden { display: none; }
+
+    /* 虚拟鼠标：干净的白色指针 */
+    #vcur {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 0;
+      height: 0;
+      display: none;
+      pointer-events: none;
+      z-index: 4;
+      will-change: transform;
+      transition: transform 70ms linear;
+    }
+    #vcur.on { display: block; }
+    #vcur-arrow {
+      position: absolute;
+      left: -1px;
+      top: -1px;
+      filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
+    }
+    #vcur-ring { display: none; }
+
+    /* 日志抽屉：只在悬停/点击时出现 */
+    #logs {
+      position: absolute;
+      left: 8px;
+      right: 8px;
+      bottom: 8px;
+      max-height: 62%;
+      padding: 6px 2px 6px 8px;
+      border-radius: var(--radius-frame);
+      background: rgba(20, 20, 22, 0.97);
+      border: 1px solid var(--stroke-soft);
+      overflow: hidden;
+      opacity: 0;
+      transform: translateY(4px);
+      pointer-events: none;
+      transition: opacity 120ms ease, transform 120ms ease;
+    }
+    #logs.open {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+    #loglist {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      overflow-y: auto;
+      max-height: 210px;
+      font-size: 11px;
+      line-height: 1.55;
+      color: #b6b6ba;
+    }
+    #loglist li {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding: 1px 6px 1px 0;
+    }
+    #loglist li .t {
+      color: #6e6e73;
+      margin-right: 6px;
+      font-variant-numeric: tabular-nums;
+    }
+    #logs::-webkit-scrollbar, #loglist::-webkit-scrollbar { width: 6px; }
+    #logs::-webkit-scrollbar-thumb, #loglist::-webkit-scrollbar-thumb {
+      background: rgba(255,255,255,0.14);
+      border-radius: 3px;
+    }
+
+    /* 状态胶囊：悬浮在左下角，平时不出现，悬停才浮出来 */
+    #pill {
+      position: absolute;
+      left: 11px;
+      top: 11px;
+      z-index: 5;
+      -webkit-app-region: no-drag;
+      appearance: none;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.85);
+      font: inherit;
+      font-size: 11px;
+      cursor: default;
+      max-width: calc(100% - 60px);
+    }
+    #pill #dot { opacity: 0.75; transition: opacity 140ms ease; }
+    /* 多会话：非 default 会话在悬停时显示一小段会话名，平时不占视觉 */
+    #pill #sess {
+      display: none;
+      flex: 0 0 auto;
+      max-width: 76px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #6e6e73;
+      font-variant-numeric: tabular-nums;
+    }
+    #card:hover #pill #sess.on { display: inline-block; }
+    #card:hover #pill #dot { opacity: 1; }
+    /* 文字只在悬停时出现，平时只留一个点 */
+    #pill #status {
+      display: none;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+    }
+    #card:hover #pill #status { display: block; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="card">
+      <div id="stage">
+        <img id="thumb-backdrop" alt="" draggable="false" />
+        <img id="thumb" alt="被控窗口实时画面" draggable="false" />
+        <div id="vcur" aria-hidden="true">
+          <svg id="vcur-arrow" viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
+            <path d="M3 1.5 L3 17.2 L7.2 13.1 L9.7 18.4 L12 17.3 L9.5 12.2 L15.1 12.2 Z"
+                  fill="#ffffff" stroke="#000000" stroke-width="1.1" stroke-linejoin="round" stroke-opacity="0.85"/>
+          </svg>
+          <span id="vcur-ring"></span>
+        </div>
+        <div id="placeholder">等待画面</div>
+      </div>
+
+      <div id="drag-top" class="drag-strip" aria-hidden="true"></div>
+      <div id="drag-left" class="drag-strip" aria-hidden="true"></div>
+      <div id="drag-right" class="drag-strip" aria-hidden="true"></div>
+      <div id="drag-bottom" class="drag-strip" aria-hidden="true"></div>
+
+      <button id="expand" type="button" title="放大（按画面比例）" aria-label="放大">⤢</button>
+      <button id="close" type="button" title="关闭（Esc）" aria-label="关闭">✕</button>
+
+      <button id="pill" type="button" title="查看动作日志（悬停显示会话名）" aria-label="状态">
+        <span id="dot" class="idle"></span>
+        <span id="sess" aria-hidden="true"></span>
+        <span id="status">待命</span>
+      </button>
+
+      <div id="logs" aria-hidden="true">
+        <ul id="loglist" role="log"></ul>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="./renderer.js" defer></script>
+</body>
+</html>

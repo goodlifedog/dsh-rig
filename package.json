@@ -1,0 +1,23 @@
+{
+  "name": "desktop-agent",
+  "version": "0.4.0",
+  "private": false,
+  "type": "module",
+  "description": "后台电脑控制 + 小窗回显：用 Accessibility 语义树驱动真实 macOS 应用，全程不抢焦点",
+  "license": "MIT",
+  "author": "goodlifedog",
+  "engines": { "node": ">=20" },
+  "keywords": ["macos", "accessibility", "computer-use", "automation", "electron", "overlay"],
+  "scripts": {
+    "status": "node core/status.mjs",
+    "accept": "node core/acceptance.mjs",
+    "list": "node core/runner.mjs list",
+    "run": "node core/runner.mjs run",
+    "daemon": "node core/cli.mjs start",
+    "stop": "node core/cli.mjs stop",
+    "agent": "node core/cli.mjs status",
+    "task": "node core/cli.mjs run",
+    "check": "node --check core/daemon.mjs && node --check core/runner.mjs && node --check core/agentd.mjs",
+    "overlay": "cd overlay && npm start"
+  }
+}

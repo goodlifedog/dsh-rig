@@ -1,0 +1,16 @@
+# 依赖
+node_modules/
+overlay/node_modules/
+
+# 运行时产物
+logs/
+reports/
+*.log
+
+# 本地配置与临时
+.DS_Store
+*.tmp
+.env
+
+# 截图源文件（保留 docs 里的展示图）
+overlay/docs/*.tmp
