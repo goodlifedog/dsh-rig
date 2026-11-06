@@ -79,7 +79,8 @@ async function pushFrames(page, { count = 3, intervalMs = 300, cursor = null } =
   const frames = [];
   for (let i = 0; i < count; i += 1) {
     const t = Date.now();
-    const shot = await page.send('Page.captureScreenshot', { format: 'jpeg', quality: 72 });
+    // clip.scale=2：给小窗放大态留出清晰度（1280×800 → 2560×1600）
+    const shot = await page.send('Page.captureScreenshot', { format: 'jpeg', quality: 80, clip: { x: 0, y: 0, width: 1280, height: 800, scale: 2 } });
     const bytes = Buffer.from(shot.data, 'base64').length;
     const r = await overlay.frame('data:image/jpeg;base64,' + shot.data, 'headless 后台浏览器', cursor);
     frames.push({ b64KB: Math.round(shot.data.length / 1024), bytes, ms: Date.now() - t, ok: Boolean(r && r.ok) });

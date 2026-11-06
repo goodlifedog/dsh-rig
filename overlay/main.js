@@ -55,9 +55,9 @@ const DEFAULT_HEIGHT = 190;
 const SCREENSHOT_CMD = '/usr/sbin/screencapture';
 // 缩略图按「窗口宽 × 2（Retina）」出图，上限 1600；质量 88
 const THUMB_SCALE = 2;
-const THUMB_MAX_PIXEL_WIDTH = 1600;
+const THUMB_MAX_PIXEL_WIDTH = 2560;
 const THUMB_MIN_PIXEL_WIDTH = 300;
-const THUMB_JPEG_QUALITY = 88;
+const THUMB_JPEG_QUALITY = 92;
 const CAPTURE_TIMEOUT_MS = 4000;
 const FADE_MS = 180;
 
