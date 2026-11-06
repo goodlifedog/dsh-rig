@@ -29,6 +29,20 @@
 
 ![多会话两个小窗](docs/multi-session.png)
 
+外观改版（同一内容、同一窗口尺寸，只改信息层级）：
+
+改前（只有左上角状态点，悬停才有一行小字）：
+
+![改版前](docs/ui-before.png)
+
+改后（底部一条克制的状态胶囊：状态点 + 正在做什么 + 已用时；画面仍是主体）：
+
+![改版后](docs/ui-after.png)
+
+异常态（给一句人话原因 + 可操作按钮，点「重试」立刻重抓）：
+
+![异常态](docs/ui-after-error.png)
+
 同一时刻只显示「当前 DSH 前台会话」的窗口——两个会话各推一次 status 后，切换会话时 only-current：
 
 ![会话 A 当前时，只看到 A 的窗](docs/title-gate-a.png)
@@ -220,6 +234,8 @@ GET /health 关键字段：
     titleHint    该会话的标题提示（没有则 null）
     matched      当前 DSH 前台会话标题是否命中 titleHint（没有 titleHint 恒为 true）
     dshTitle     当前读到的 DSH 主窗口标题
+    hostVisible     宿主窗口当前是否真实可见（CGWindowList OnScreenOnly）
+    hostBoundsStale 宿主窗口 bounds 是否来自缓存/读取失败（true 时不要相信 bounds）
     logs         当前保留的日志条数（上限 200）
     fps          最近 5 帧的平均帧率（本地抓帧和外部推帧都计入）
     frameBytes   最近一帧的真实图片字节数（不是 base64 长度）
@@ -286,6 +302,23 @@ GET /health 关键字段：
     OVERLAY_IDLE_HIDE_MS  5000             空闲多久自动隐藏；0 关闭自动隐藏（强制兜底 = max(15s, 3×该值)）
     OVERLAY_MAX_SESSIONS  12               最多同时存在多少个会话窗口
     OVERLAY_SHOW_DOCK     0                设为 1 保留 Dock 图标（默认隐藏，accessory 模式）
+
+## 状态表达与异常提示（设计规则）
+
+- 状态点 + 一句话放到底部胶囊：只在 running / error / 画面不可用时出现，idle 时整条隐藏，避免文字压过画面；胶囊半透明毛玻璃、10px 小字、行高 1.2，深色下不刺眼。
+- 正在做什么：直接显示 agent 推送的 status 文案（超长省略，title 里保留全文）；running 时右侧显示已用时（1s 粒度，只在运行中走）。
+- 出错要能救：抓帧失败时显示「画面不可用：<人话原因>」+ 一个按钮。原因匹配权限/授权/屏幕录制 → 按钮「打开设置」（打开系统屏幕录制设置）；窗口失效/不可见 → 按钮「重试」（主进程清掉外部帧接管并立即重抓）。错误态不显示运行计时，红点 + 淡红胶囊但不刺眼。
+- 点击穿透不变：状态胶囊本身 pointer-events:none，只有错误操作按钮（以及原有 ⤢/✕、左上日志入口、8px 拖拽条）会接管鼠标；主进程只在错误按钮可见时才把底部区域算作热区。
+- 左上角保留极小的「⋯」日志入口（悬停显示会话名、点击固定日志面板），日志抽屉底边抬高到状态胶囊上方。
+- 放大态（按画面比例）与普通态用同一套字号/间距/胶囊样式，不会只在小时好看。
+- 不改变窗口尺寸（仍 300×190，可缩放/可放大），不改空闲 5 秒自动隐藏，不改不抢焦点。
+
+## 宿主可见性（小窗不会“悬浮在壁纸上”）
+
+- 旧实现把 System Events 读到的宿主 bounds 缓存住；当 DSH 被最小化/隐藏、或 System Events/AX 通道失效时，小窗会按旧坐标继续显示，屏幕上看起来像“贴在壁纸上”。
+- 现在每次轮询都用 CGWindowList（Quartz，OnScreenOnly）直接查「屏幕上真实存在的宿主窗口」：读得到才更新标题/位置；读不到（最小化/隐藏/别的 Space/窗口不存在）→ hostVisible=false，立刻把该宿主下的小窗全部收起。
+- 如果 CGWindowList 通道本身失败（osascript 出错），不会据此断言宿主不可见：只标记 hostBoundsStale=true，并退回 System Events 兜底；连续失败时保留缓存但不把“读不到”当成“没窗口”。
+- /health 增加 `hostVisible`、`hostBoundsStale` 两个可区分字段；`bounds` 即使来自缓存也不会再被当成“宿主可见”的依据。
 
 ## 视觉与动画
 
@@ -367,6 +400,8 @@ headless 浏览器在用户屏幕上没有窗口，画面只能靠 CDP 截图推
 - 拖拽条：鼠标在顶部 8px 条内 clickThrough=false；从上边条拖 80px，窗口 y 坐标 49→129；之后空闲仍隐藏，位置保持。
 - 点击穿透：clickThrough=true 时点击小窗中心（1346,200），点击落到下面的测试窗口（日志记录 CLICK 714,48 H1），小窗自身无反应；把鼠标移到右上角 ⤢ 上 clickThrough 变 false，点击可触发放大（expanded=true）。
 - 放大截图：docs/clarity-expanded.png；小窗清晰度截图：docs/clarity-small.png；多会话截图：docs/multi-session.png。
+- 外观改版数据（外部帧 example.com 1280×800，窗口仍 300×190）：改前 fps=10、frameBytes=59031、clickThrough=true；改后 fps=9.2、frameBytes=59031、clickThrough=true；运行中状态胶囊显示「正在读取页面内容（headless CDP） 2s」，悬停/日志交互不变；空闲 7 秒后 visible=false（未 pinned），pinned 时按规则保持；放大态 960×600 截图状态胶囊位置/字号一致（docs/ui-after.png、docs/ui-after-error.png、docs/ui-before.png）。
+- 宿主可见性：把宿主进程名临时改成不存在的应用后重启，/health hostVisible=false、hostBoundsStale=true、visible=false，CGWindowList 里没有任何 Desktop Agent 窗口；恢复后 hostVisible=true、hostBoundsStale=false、小窗重新出现。DSH 真身隐藏（System Events set visible=false）在锁屏状态下 CGWindowList 仍会列出窗口，属于系统锁屏行为，解锁后按 OnScreenOnly 判定。
 - 外部帧 / headless：连续推 20 帧 example.com（1280×800 JPEG），20/20 返回 200，耗时约 2.2 秒；/health fps=11.9、frameBytes=59031（真实字节）、frames=25、frameWidth=1280、frameHeight=800、clickThrough=true、thumbnail.state=live；第一帧就带 cursor 时立即出现光标；无 width/height 的 3024×1964 PNG 也能从 IHDR 自动认出尺寸；非法 width 返回 400。截图 docs/headless-cdp-frame.png、docs/headless-cdp-click.png。
 
 ## 自检

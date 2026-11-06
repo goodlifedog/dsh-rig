@@ -15,7 +15,7 @@
  * POST /close 只关掉该会话的窗口，不影响其它会话。
  */
 
-const { app, BrowserWindow, desktopCapturer, ipcMain, nativeImage, screen } = require('electron');
+const { app, BrowserWindow, desktopCapturer, ipcMain, nativeImage, screen, shell } = require('electron');
 const { execFile } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -153,6 +153,7 @@ function ensureSession(id, source) {
       clickThrough: true,
       cursorHotspot: false,
       rendererInteractive: false,
+      hasAction: false,
     },
     timers: { thumb: null, idle: null, fade: null },
     // 会话标题提示：只在 DSH 当前前台会话标题命中它时才显示（null=旧行为，总是可显示）
@@ -265,6 +266,53 @@ function readDshBounds() {
   });
 }
 
+// 用 CGWindowList（Quartz）直接看「屏幕上真实存在的宿主窗口」：
+// 不依赖 System Events/AX，宿主最小化/隐藏/不在当前 Space 时窗口会从 OnScreenOnly 列表里消失，
+// 从而避免「System Events 读不到但缓存了旧 bounds，小窗继续显示」的问题。
+// 返回 { ok, window }：ok=false 表示这条通道本身失败（不要据此判断宿主不可见）。
+function readHostWindowCg() {
+  if (!platform.isMac) {
+    return Promise.resolve({ ok: false, window: null });
+  }
+  return new Promise((resolve) => {
+    const script =
+      'ObjC.import("CoreGraphics");' +
+      'const target=' + JSON.stringify(HOST_PROCESS) + ';' +
+      'const opts=$.kCGWindowListOptionOnScreenOnly | $.kCGWindowListExcludeDesktopElements;' +
+      'const arr=ObjC.castRefToObject($.CGWindowListCopyWindowInfo(opts, 0));' +
+      'const out=[];' +
+      'for (let i=0;i<arr.count;i++){' +
+      '  try {' +
+      '    const d=arr.objectAtIndex(i);' +
+      '    const owner=ObjC.unwrap(d.objectForKey("kCGWindowOwnerName")) || "";' +
+      '    if (owner !== target) continue;' +
+      '    const layer=Number(ObjC.unwrap(d.objectForKey("kCGWindowLayer")));' +
+      '    if (layer !== 0) continue;' +
+      '    const b=ObjC.deepUnwrap(d.objectForKey("kCGWindowBounds"));' +
+      '    const name=ObjC.unwrap(d.objectForKey("kCGWindowName")) || "";' +
+      '    out.push({x:Number(b.X),y:Number(b.Y),w:Number(b.Width),h:Number(b.Height),name:String(name)});' +
+      '  } catch(e){}' +
+      '}' +
+      'JSON.stringify(out);';
+    execFile('/usr/bin/osascript', ['-l', 'JavaScript', '-e', script], { timeout: 2000 }, (err, stdout) => {
+      if (err) return resolve({ ok: false, window: null });
+      try {
+        const list = JSON.parse(String(stdout));
+        if (!Array.isArray(list)) return resolve({ ok: false, window: null });
+        let best = null;
+        for (const item of list) {
+          if (!item || item.w < 200 || item.h < 150) continue;
+          const area = item.w * item.h;
+          if (!best || area > best.area) best = { x: item.x, y: item.y, w: item.w, h: item.h, title: item.name || '', area: area };
+        }
+        resolve({ ok: true, window: best ? { x: best.x, y: best.y, w: best.w, h: best.h, title: best.title } : null });
+      } catch (error) {
+        resolve({ ok: false, window: null });
+      }
+    });
+  });
+}
+
 async function readFrontmostBundle() {
   if (!platform.isMac) {
     const front = await platform.readFrontmostApp();
@@ -277,9 +325,13 @@ async function readFrontmostBundle() {
   });
 }
 
-// DSH 窗口位置/标题由 attach 循环每秒缓存一次，拖动时直接用缓存，避免每条 move 事件都起一个 osascript
+// 宿主窗口位置/标题由 attach 循环每秒刷新；拖动时直接用缓存。
 let dshBounds = null;
 let dshTitle = '';
+// 宿主（DSH 窗口）是否真实可见：CGWindowList 里没有窗口时立刻隐藏全部小窗。
+let hostVisible = true;
+let hostBoundsStale = false;
+let hostCheckedAt = 0;
 
 // 多会话平铺：优先排满右上角一行，再往下一行；都限制在 DSH 窗口内部
 function tilePosition(s, b) {
@@ -380,7 +432,7 @@ async function attachToDsh(s, front, bounds) {
   // 宿主可以是任意应用：由 HOST_BUNDLES 配置
   const self = 'com.github.Electron';
   const frontOk = !front || HOST_BUNDLES.includes(front) || front === self;
-  const shouldHide = !frontOk || !s.matched;
+  const shouldHide = !hostVisible || !frontOk || !s.matched;
   if (shouldHide) {
     if (win.isVisible()) {
       s.flags.suppressBySession = true;
@@ -443,17 +495,39 @@ async function attachTick() {
   const front = await readFrontmostBundle();
   let bounds = null;
   if (ATTACH_TO_DSH) {
-    bounds = await readDshBounds();
-    if (bounds) {
-      dshBounds = bounds;
-      if (bounds.title) dshTitle = bounds.title;
+    const cg = await readHostWindowCg();
+    if (cg.ok) {
+      hostCheckedAt = Date.now();
+      if (cg.window) {
+        // 屏幕上真的能读到宿主窗口：位置/标题都刷新，stale=false
+        bounds = cg.window;
+        dshBounds = bounds;
+        if (bounds.title) dshTitle = bounds.title;
+        hostVisible = true;
+        hostBoundsStale = false;
+      } else {
+        // 屏幕上没有宿主窗口（最小化/隐藏/其它 Space）：必须隐藏，不能再用缓存 bounds 硬撑
+        hostVisible = false;
+        hostBoundsStale = true;
+      }
     } else {
+      // CGWindowList 通道失败：不清空缓存、不据此断言宿主不可见；标 stale，交给兜底
+      hostBoundsStale = true;
+      if (Date.now() - hostCheckedAt > 5000) {
+        hostCheckedAt = Date.now();
+        const fallback = await readDshBounds();
+        if (fallback) {
+          dshBounds = fallback;
+          if (fallback.title) dshTitle = fallback.title;
+          hostVisible = true;
+          hostBoundsStale = false;
+        }
+      }
       bounds = dshBounds;
     }
   }
-  // 兜底：拿不到宿主窗口（System Events 无权限、宿主不在运行）就贴到屏幕右上角，
-  // 保证小窗在任何宿主环境下都可用。
-  if (!bounds) {
+  // 兜底：不贴宿主（独立使用）时贴到屏幕右上角，保证不依赖宿主也可用。
+  if (!ATTACH_TO_DSH && !bounds) {
     const area = screen.getPrimaryDisplay().workArea;
     bounds = { x: area.x, y: area.y, w: area.width, h: area.height };
   }
@@ -509,7 +583,7 @@ function startCursorWatch() {
         if (inside) clearIdleTimer(s);
         else scheduleIdleHide(s);
       }
-      const hotspot = inside && cursorInHotspot(win, point);
+      const hotspot = inside && cursorInHotspot(s, win, point);
       if (hotspot !== s.flags.cursorHotspot) {
         s.flags.cursorHotspot = hotspot;
         applyClickThrough(s);
@@ -582,8 +656,8 @@ function applyClickThrough(s) {
   }
 }
 
-// 与渲染进程的热区保持一致：边缘/顶部 8px + 右上角两个按钮 + 左上角状态胶囊
-function cursorInHotspot(win, point) {
+// 与渲染进程的热区保持一致：边缘/顶部 8px + 右上角两个按钮 + 左上角日志入口 + 错误操作按钮
+function cursorInHotspot(s, win, point) {
   let b;
   try {
     b = win.getBounds();
@@ -597,7 +671,9 @@ function cursorInHotspot(win, point) {
   if (x < 0 || y < 0 || x >= w || y >= h) return false;
   if (x <= 8 || y <= 8 || x >= w - 8 || y >= h - 8) return true;      // 拖拽条
   if (x >= w - 68 && x <= w - 4 && y >= 4 && y <= 36) return true;     // ⤢ / ✕
-  if (x >= 4 && x <= 170 && y >= 4 && y <= 36) return true;            // 状态胶囊
+  if (x >= 4 && x <= 60 && y >= 4 && y <= 32) return true;             // 左上角日志入口
+  // 底部错误操作按钮（打开设置/重试）：只有按钮真的显示时才接管鼠标
+  if (s && s.flags && s.flags.hasAction && y >= h - 42 && y <= h - 8 && x >= 8 && x <= w - 8) return true;
   return false;
 }
 
@@ -749,14 +825,31 @@ function execFileAsync(file, args, options) {
   });
 }
 
+// 错误操作：打开系统「屏幕录制」设置，或立刻重试抓帧
+function openScreenRecordingSettings() {
+  const url = 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture';
+  shell.openExternal(url).catch(() => {});
+}
+
+function retryThumbnailCapture(s) {
+  if (!s || !s.win || s.win.isDestroyed()) return;
+  s.externalFrameAt = 0; // 允许本地抓帧，别被外部帧的 3 秒接管窗口挡住
+  s.lastCaptureError = null;
+  pushLog(s, '手动重试抓取画面', 'system');
+  void captureThumbnail(s);
+}
+
 function explainCaptureError(error) {
   if (!error) return '未知错误';
   if (error.killed || error.signal === 'SIGTERM') return 'screencapture 超时';
   if (error.code === 'ENOENT') return '找不到 ' + SCREENSHOT_CMD;
 
   const stderr = String(error.stderr || '').trim();
-  if (/could not create image|not authorized|permission|denied/i.test(stderr)) {
-    return '取不到画面（窗口 ID 失效，或没有屏幕录制权限）';
+  if (/not authorized|permission|denied|screen recording/i.test(stderr)) {
+    return '没有屏幕录制权限，点「打开设置」授权';
+  }
+  if (/could not create image|invalid window|window .*not found|no such window/i.test(stderr)) {
+    return '目标窗口已失效或不可见，点「重试」再抓一次';
   }
   if (stderr) {
     const firstLine = stderr.split('\n').filter(Boolean)[0];
@@ -1232,6 +1325,8 @@ function sessionHealth(s) {
     titleHint: s.titleHint || null,
     matched: Boolean(s.matched),
     dshTitle: dshTitle || null,
+    hostVisible: Boolean(hostVisible),
+    hostBoundsStale: Boolean(hostBoundsStale),
     logs: s.state.logs.length,
     fps: frameFps(s),
     frameBytes: s.frameBytes,
@@ -1267,6 +1362,8 @@ function missingSessionHealth(id) {
     titleHint: null,
     matched: false,
     dshTitle: dshTitle || null,
+    hostVisible: Boolean(hostVisible),
+    hostBoundsStale: Boolean(hostBoundsStale),
     logs: 0,
     fps: 0,
     frameBytes: 0,
@@ -1397,7 +1494,7 @@ function toggleExpand(s) {
   } else {
     if (s.flags.smallBounds) win.setBounds(s.flags.smallBounds);
     s.flags.expanded = false;
-    setTimeout(() => { attachToDsh(s, HOST_BUNDLES[0] || null, dshBounds).catch(() => {}); }, 100);
+    setTimeout(() => { attachToDsh(s, 'com.deepseek.dsh', dshBounds).catch(() => {}); }, 100);
     scheduleIdleHide(s);
   }
   return { expanded: s.flags.expanded };
@@ -1434,6 +1531,20 @@ function registerIpc() {
     if (!s) return;
     s.flags.rendererInteractive = Boolean(value);
     applyClickThrough(s);
+  });
+
+  // 渲染进程状态条上的错误操作按钮是否可见：只有可见时才把底部区域设为可点击热区
+  ipcMain.on('overlay:action', (event, value) => {
+    const s = sessionFromEvent(event);
+    if (!s) return;
+    s.flags.hasAction = Boolean(value);
+  });
+
+  ipcMain.on('overlay:fix', (event, kind) => {
+    const s = sessionFromEvent(event);
+    if (!s) return;
+    if (kind === 'settings') openScreenRecordingSettings();
+    else retryThumbnailCapture(s);
   });
 
   ipcMain.on('overlay:close', (event) => {

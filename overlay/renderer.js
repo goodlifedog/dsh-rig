@@ -13,8 +13,11 @@
     app: document.getElementById('app'),
     close: document.getElementById('close'),
     pill: document.getElementById('pill'),
-    dot: document.getElementById('dot'),
-    status: document.getElementById('status'),
+    bar: document.getElementById('statusbar'),
+    barDot: document.getElementById('bar-dot'),
+    barText: document.getElementById('bar-text'),
+    elapsed: document.getElementById('elapsed'),
+    fix: document.getElementById('fix'),
     sess: document.getElementById('sess'),
     logs: document.getElementById('logs'),
     loglist: document.getElementById('loglist'),
@@ -44,6 +47,10 @@
     frameSeq: 0,
     interactive: null,
     lastCursor: null,
+    activitySince: null,
+    elapsedTimer: null,
+    thumbError: null,
+    actionKind: null,
   };
 
   function pad2(value) {
@@ -64,29 +71,110 @@
     elements.sess.classList.toggle('on', Boolean(text));
   }
 
-  // ---------- 状态行 ----------
+  // ---------- 底部状态胶囊：画面是主体，状态是配角 ----------
+
+  function formatElapsed(ms) {
+    const seconds = Math.max(0, Math.floor(ms / 1000));
+    if (seconds < 60) return seconds + 's';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return minutes + 'm' + pad2(seconds % 60) + 's';
+    return Math.floor(minutes / 60) + 'h' + pad2(minutes % 60) + 'm';
+  }
+
+  function refreshElapsed() {
+    if (!elements.elapsed) return;
+    // 错误态/空闲不显示运行计时，避免和错误原因抢注意力
+    if (view.activity !== 'running' || !view.activitySince || view.thumbError) {
+      elements.elapsed.textContent = '';
+      return;
+    }
+    elements.elapsed.textContent = formatElapsed(Date.now() - view.activitySince);
+  }
+
+  function startElapsedTimer() {
+    stopElapsedTimer();
+    view.elapsedTimer = setInterval(refreshElapsed, 1000);
+  }
+
+  function stopElapsedTimer() {
+    if (view.elapsedTimer) {
+      clearInterval(view.elapsedTimer);
+      view.elapsedTimer = null;
+    }
+  }
+
+  // 错误原因 -> 一句人话 + 一个可操作动作
+  function actionForError(reason) {
+    if (/权限|授权|屏幕录制|permission|not authorized|screen recording/i.test(reason || '')) {
+      return { kind: 'settings', label: '打开设置' };
+    }
+    return { kind: 'retry', label: '重试' };
+  }
+
+  function setActionVisible(visible) {
+    if (elements.fix) elements.fix.classList.toggle('show', Boolean(visible));
+    if (api.setAction) api.setAction(Boolean(visible));
+  }
+
+  function updateBar() {
+    if (!elements.bar) return;
+    const reason = view.thumbError;
+    const isError = Boolean(reason) || view.activity === 'error';
+    const shouldShow = Boolean(reason) || view.activity === 'running' || view.activity === 'error';
+    elements.bar.classList.toggle('error', isError);
+    elements.bar.classList.toggle('on', shouldShow);
+    if (!shouldShow) {
+      refreshElapsed();
+      return;
+    }
+
+    let text;
+    if (reason) text = '画面不可用：' + reason;
+    else if (view.activity === 'error') text = view.statusText || '出错了';
+    else text = view.statusText || '待命';
+    elements.barText.textContent = text;
+    elements.barText.title = text;
+
+    if (elements.barDot) {
+      elements.barDot.classList.remove('idle', 'running', 'error');
+      elements.barDot.classList.add(isError ? 'error' : view.activity);
+    }
+
+    if (reason) {
+      const action = actionForError(reason);
+      view.actionKind = action.kind;
+      elements.fix.textContent = action.label;
+      elements.fix.title = action.kind === 'settings' ? '打开系统屏幕录制设置' : '重新抓取画面';
+      setActionVisible(true);
+    } else {
+      view.actionKind = null;
+      setActionVisible(false);
+    }
+
+    refreshElapsed();
+  }
 
   function renderActivity(activity) {
     const next = activity === 'running' || activity === 'error' ? activity : 'idle';
+    if (next !== view.activity) {
+      if (next === 'running') {
+        view.activitySince = Date.now();
+        startElapsedTimer();
+      } else {
+        view.activitySince = null;
+        stopElapsedTimer();
+      }
+    }
     view.activity = next;
-    elements.dot.classList.remove('idle', 'running', 'error');
-    elements.dot.classList.add(next);
+    updateBar();
   }
 
   function renderStatus(payload) {
     const data = typeof payload === 'string' ? { text: payload, activity: 'running' } : (payload || {});
     const nextText = typeof data.text === 'string' && data.text.trim() ? data.text.trim() : '待命';
-
-    if (nextText !== view.statusText) {
-      view.statusText = nextText;
-      elements.status.textContent = nextText;
-      elements.status.title = nextText;
-      elements.status.classList.remove('fade');
-      void elements.status.offsetWidth;
-      elements.status.classList.add('fade');
-    }
-
+    view.statusText = nextText;
     if (data.activity) renderActivity(data.activity);
+    else updateBar();
   }
 
   // ---------- 日志抽屉 ----------
@@ -192,12 +280,16 @@
   function renderThumbState(payload) {
     const data = payload || {};
     view.thumbState = typeof data.state === 'string' ? data.state : 'waiting';
+    // 抓帧失败/权限缺失时，状态条要给出人话原因 + 可操作按钮
+    view.thumbError = view.thumbState === 'error' ? (data.error || '未知错误') : null;
     if (view.hasFrame) {
       elements.placeholder.classList.add('hidden');
+      updateBar();
       return;
     }
     elements.placeholder.textContent = placeholderText();
     elements.placeholder.classList.remove('hidden');
+    updateBar();
   }
 
   function applyFrame(url) {
@@ -297,7 +389,7 @@
   // 点击穿透：只有按钮、状态胶囊、8px 拖拽条热区需要接收鼠标，其余区域让点击落到 DSH
   function isInteractivePoint(x, y) {
     const zones = [
-      elements.close, elements.expand, elements.pill,
+      elements.close, elements.expand, elements.pill, elements.fix,
       elements.dragTop, elements.dragLeft, elements.dragRight, elements.dragBottom,
     ];
     for (const element of zones) {
@@ -327,6 +419,12 @@
     api.onThumbState((payload) => renderThumbState(payload));
 
     elements.close.addEventListener('click', () => api.close());
+    if (elements.fix && api.fix) {
+      elements.fix.addEventListener('click', (event) => {
+        event.stopPropagation();
+        if (view.actionKind) api.fix(view.actionKind);
+      });
+    }
     if (api.setHover) {
       document.addEventListener('mouseenter', () => api.setHover(true));
       document.addEventListener('mouseleave', () => api.setHover(false));
@@ -377,7 +475,8 @@
 
   async function boot() {
     if (!api) {
-      elements.status.textContent = 'preload 未加载';
+      if (elements.barText) elements.barText.textContent = 'preload 未加载';
+      if (elements.bar) elements.bar.classList.add('on', 'error');
       renderActivity('error');
       return;
     }
@@ -387,7 +486,8 @@
     try {
       handleInitialState(await api.getState());
     } catch (error) {
-      elements.status.textContent = '读取初始状态失败';
+      if (elements.barText) elements.barText.textContent = '读取初始状态失败';
+      if (elements.bar) elements.bar.classList.add('on', 'error');
       renderActivity('error');
     }
   }
