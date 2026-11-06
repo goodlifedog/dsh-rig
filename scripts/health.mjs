@@ -33,7 +33,19 @@ async function main() {
   if (ov) {
     add('小窗宿主可见', ov.hostVisible === true, 'hostVisible=' + ov.hostVisible + ' stale=' + ov.hostBoundsStale);
     add('点击穿透', ov.clickThrough === true, 'clickThrough=' + ov.clickThrough);
-    add('画面', (ov.thumbnail && ov.thumbnail.state) === 'live', 'state=' + ((ov.thumbnail && ov.thumbnail.state) || '-') + ' fps=' + ov.fps + ' 宽=' + ov.frameWidth);
+    // 画面：只有「真出错」和「该有画面却停住」才算问题；空闲没绑窗口是正常态
+    const thumbState = (ov.thumbnail && ov.thumbnail.state) || '-';
+    const thumbError = (ov.thumbnail && ov.thumbnail.error) || '';
+    if (thumbState === 'live') {
+      const stalled = !(ov.fps > 0) && (ov.frameBytes || 0) === 0;
+      add('画面', !stalled, 'state=live fps=' + ov.fps + ' 宽=' + ov.frameWidth + (stalled ? '（没有新帧）' : ''));
+    } else if (thumbState === 'error') {
+      add('画面', false, thumbError || '抓帧失败');
+    } else if (thumbState === 'no-window') {
+      add('画面', true, '未绑定被控窗口（空闲时正常）');
+    } else {
+      add('画面', true, 'state=' + thumbState + (thumbError ? ' ｜' + thumbError : ''));
+    }
     add('锁屏状态', true, ov.screenLocked ? '已锁屏（Chrome 启动会慢很多）' : '未锁屏');
   }
 
