@@ -59,6 +59,19 @@ npm run status
 npm run run browser-demo
 ```
 
+## 依赖与归属
+
+**底层控制能力来自开源项目 [open-computer-use](https://github.com/iFurySt/open-computer-use)（`ocu`，MIT）**：读 Accessibility 树、语义点击、后台键入都是它提供的。
+本项目写的是调度、小窗、任务与验证这一层，没有 vendor 任何第三方源码。
+
+| 依赖 | 作用 | 许可 |
+| --- | --- | --- |
+| open-computer-use（ocu） | macOS 控制层核心 | MIT |
+| Electron | 小窗界面 | MIT |
+| Google Chrome | 被驱动的浏览器 | 专有，用户自有 |
+
+完整说明见 [THIRD-PARTY.md](THIRD-PARTY.md)。
+
 ## 跨平台
 
 目标是一套代码同时支持 macOS 和 Windows。当前进度：
