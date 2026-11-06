@@ -47,6 +47,7 @@
     "soak": "node scripts/soak.mjs",
     "fps:check": "node scripts/fps-check.mjs",
     "monitor": "node scripts/monitor.mjs",
+    "trends": "node scripts/trends.mjs",
     "verify": "npm run check && npm test && npm run repo:check",
     "humanize:live": "node scripts/humanize-live.mjs",
     "ui:check": "node scripts/ui-check.mjs",

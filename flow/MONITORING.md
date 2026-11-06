@@ -37,7 +37,14 @@ npm run monitor                  # 约 40 秒：健康 + 小窗回归 + 会话�
 MONITOR_FAST=1 npm run monitor    # 跳过回归，约 30 秒
 ```
 
-输出一张结论表，同时在 `reports/monitor-<时间>.md` 留档，方便过几天对比。
+输出一张结论表，同时在 `reports/monitor-<时间>.md` 留档。
+
+过几天想知道有没有漂移，直接看趋势：
+
+```bash
+npm run trends          # 最近 10 次：帧率、单帧体积、任务成功数、内存变化、切走/切回耗时
+TREND_LIMIT=30 npm run trends
+```
 
 ## 四、专项指标
 
