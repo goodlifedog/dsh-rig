@@ -790,6 +790,8 @@ function cursorInHotspot(s, win, point) {
   if (x < 0 || y < 0 || x >= w || y >= h) return false;
   if (x <= 8 || y <= 8 || x >= w - 8 || y >= h - 8) return true;      // 拖拽条
   if (x >= w - 68 && x <= w - 4 && y >= 4 && y <= 36) return true;     // ⤢ / ✕
+  // ■ 停止按钮（right:65 → 占 x ∈ [w-87, w-65]），只在任务运行时存在
+  if (s && s.state.activity === 'running' && x >= w - 90 && x < w - 64 && y >= 4 && y <= 36) return true;
   if (x >= 4 && x <= 60 && y >= 4 && y <= 32) return true;             // 左上角日志入口
   // 底部错误操作按钮（打开设置/重试）：只有按钮真的显示时才接管鼠标
   if (s && s.flags && s.flags.hasAction && y >= h - 42 && y <= h - 8 && x >= 8 && x <= w - 8) return true;

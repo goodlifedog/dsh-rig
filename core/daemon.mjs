@@ -193,17 +193,19 @@ function runTask(name, attempt = 0) {
       try { out.end(); } catch {}
       const durationMs = Date.now() - startedAt;
       const ok = code === 0;
-      const entry = { name, attempt, ok, code, startedAt: new Date(startedAt).toISOString(), durationMs, logFile };
+      // 用户主动停止不是失败：单独标记，健康统计和自动重试都不该把它算进去
+      const cancelled = state.cancelled === true;
+      const entry = { name, attempt, ok, code, cancelled, startedAt: new Date(startedAt).toISOString(), durationMs, logFile };
       state.current = null;
       state.history.unshift(entry);
       state.history = state.history.slice(0, 200);
       // 顺序有讲究：日志会被当成「动作」把状态点成运行中，所以先写日志，
       // 再解绑窗口（停掉抓帧循环、清掉陈旧错误），最后落「完成/失败」状态。
-      await overlay.log((ok ? '完成 ' : '失败 ') + name + ' 用时 ' + (durationMs / 1000).toFixed(1) + 's').catch(() => {});
+      const verb = cancelled ? '已停止 ' : (ok ? '完成 ' : '失败 ');
+      await overlay.log(verb + name + ' 用时 ' + (durationMs / 1000).toFixed(1) + 's').catch(() => {});
       await overlay.window(null).catch(() => {});
 
       // 临时性失败（Chrome 启动慢、端口没起来）自动重跑；环境类问题重试也没用
-      const cancelled = state.cancelled === true;
       const decision = cancelled
         ? { retry: false, reason: '用户主动停止', delayMs: 0 }
         : decideRetry({ ok, text: tailOf(logFile), attempt, maxAttempts: MAX_RETRIES, code });

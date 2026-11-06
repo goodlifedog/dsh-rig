@@ -95,14 +95,17 @@ async function main() {
       add('当前任务', true, '等待重试：' + pending.name + '（第 ' + (pending.attempt + 1) + ' 次，约 ' + secs + 's 后）');
     } else add('当前任务', true, '空闲');
     const hist = daemon.history || [];
-    const fails = hist.filter((h) => h && h.ok === false);
+    const cancelledRuns = hist.filter((h) => h && h.cancelled === true);
+    // 用户按「停止」结束的任务不算失败
+    const fails = hist.filter((h) => h && h.ok === false && !h.cancelled);
     const fmtDur = (ms) => {
       const s = Math.max(0, Math.round((ms || 0) / 1000));
       return s >= 90 ? Math.round(s / 60) + 'm' + (s % 60 ? Math.round(s % 60) + 's' : '') : s + 's';
     };
     let failDetail;
+    const stopNote = cancelledRuns.length ? '，主动停止 ' + cancelledRuns.length + ' 次' : '';
     if (!hist.length) failDetail = '暂无记录';
-    else if (!fails.length) failDetail = '最近 ' + hist.length + ' 次全部成功（上次：' + hist[0].name + ' ' + fmtDur(hist[0].durationMs) + '）';
+    else if (!fails.length) failDetail = '最近 ' + hist.length + ' 次全部成功（上次：' + hist[0].name + ' ' + fmtDur(hist[0].durationMs) + '）' + stopNote;
     else {
       const lf = fails[0];
       failDetail = fails.length + ' / ' + hist.length + ' 次失败（最近失败：' + lf.name + '，退出码 ' + lf.code + '，' + (lf.startedAt || '').slice(5, 16).replace('T', ' ') + ' UTC）';
