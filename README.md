@@ -69,6 +69,16 @@ npm run run browser-demo
 
 换句话说：ocu 提供「手」，本项目提供「眼睛、调度和验收」。
 
+**分层定位**：
+
+```
+系统层能力   Accessibility / UIA / CGEvent / SkyLight   ← 由 ocu 的原生运行时 + 操作系统提供
+接口层       ocu 的 CLI 与 JS API                        ← 我们调用
+软件本体     daemon / 任务 / 小窗 / 验证                   ← 本项目，应用层软件
+```
+
+和 Codex 的 computer use 是同一种形态：**对外是一个软件，内部依赖系统层能力**。区别是它自研了那层原生运行时，我们直接复用了开源实现。
+
 ## 依赖与归属
 
 **底层控制能力来自开源项目 [open-computer-use](https://github.com/iFurySt/open-computer-use)（`ocu`，MIT）**：读 Accessibility 树、语义点击、后台键入都是它提供的。
