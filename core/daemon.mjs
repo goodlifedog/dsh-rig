@@ -68,7 +68,14 @@ function runTask(name) {
 
     const timer = setTimeout(() => { try { child.kill('SIGTERM'); } catch {} }, 10 * 60 * 1000);
 
+    // 长时间任务期间每 4 秒喂一次状态，否则小窗 5 秒空闲就会自己消失，用户看不到进度
+    const beat = setInterval(() => {
+      const secs = Math.round((Date.now() - startedAt) / 1000);
+      overlay.status('后台任务：' + name + ' · ' + secs + 's').catch(() => {});
+    }, 4000);
+
     child.on('close', (code) => {
+      clearInterval(beat);
       clearTimeout(timer);
       const durationMs = Date.now() - startedAt;
       const ok = code === 0;
