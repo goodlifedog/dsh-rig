@@ -846,10 +846,10 @@ function explainCaptureError(error) {
 
   const stderr = String(error.stderr || '').trim();
   if (/not authorized|permission|denied|screen recording/i.test(stderr)) {
-    return '没有屏幕录制权限，点「打开设置」授权';
+    return '缺少屏幕录制权限';
   }
   if (/could not create image|invalid window|window .*not found|no such window/i.test(stderr)) {
-    return '目标窗口已失效或不可见，点「重试」再抓一次';
+    return '目标窗口已失效';
   }
   if (stderr) {
     const firstLine = stderr.split('\n').filter(Boolean)[0];

@@ -100,6 +100,19 @@
       background: rgba(36, 14, 14, 0.72);
       border-color: rgba(255, 69, 58, 0.28);
       color: #ffb4ae;
+      /* 错误文案要能读完：允许两行、放宽宽度、按钮靠上对齐 */
+      max-width: calc(100% - 16px);
+      align-items: flex-start;
+      padding-top: 5px;
+      padding-bottom: 5px;
+      border-radius: 14px;
+    }
+    #statusbar.error .bar-text {
+      white-space: normal;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
     #statusbar .bar-text {
       flex: 1 1 auto;

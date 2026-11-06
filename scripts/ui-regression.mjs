@@ -51,9 +51,12 @@ async function main() {
   const b = h4.bounds || {};
   const ratio = b.width && b.height ? b.width / b.height : 0;
   const frameRatio = h4.frameWidth && h4.frameHeight ? h4.frameWidth / h4.frameHeight : 0;
-  const diff = frameRatio ? Math.abs(ratio - frameRatio) : 1;
-  record('放大后比例跟随画面', h4.expanded === true && diff < 0.05,
-    'window=' + ratio.toFixed(3) + ' frame=' + frameRatio.toFixed(3));
+  // 有画面时按画面比例；没有画面时按约定回退 4:3
+  const expected = frameRatio || 4 / 3;
+  const diff = Math.abs(ratio - expected);
+  const ratioOk = h4.expanded === true && diff < 0.05;
+  record('放大后比例跟随画面', ratioOk,
+    'window=' + ratio.toFixed(3) + ' 期望=' + expected.toFixed(3) + (frameRatio ? '（按画面）' : '（无画面回退 4:3）'));
   await post('/expand');
   await sleep(800);
 
