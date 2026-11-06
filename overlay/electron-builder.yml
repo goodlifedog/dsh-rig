@@ -32,3 +32,11 @@ mac:
   identity: "-"  # ad-hoc 签名，本地可用
 dmg:
   title: Desktop Agent
+win:
+  target:
+    - nsis
+  artifactName: ${productName}-${version}-setup.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true

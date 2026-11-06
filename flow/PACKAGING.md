@@ -57,7 +57,38 @@ ELECTRON_RUN_AS_NODE=1 "Desktop Agent" .../third_party/open-computer-use/bin/ocu
 | Windows | 未打包；`dist/windows` 里有 ocu 运行时，但 Electron 打包配置还没写 |
 | 图标 | 用默认 Electron 图标，`overlay/build/icon.icns` 放一个即可替换 |
 
-## 六、正式发布前要补
+## 六、跨 Mac 分发：现在的真实门槛
+
+未签名 + 未公证的 App，别的 Mac 上第一次打开会被 Gatekeeper 拦。用户能做但很别扭的绕法：
+
+```bash
+xattr -cr "/Applications/Desktop Agent.app"     # 清隔离属性，之后能正常打开
+```
+
+或者右键 → 打开 → 仍要打开；或去「系统设置 → 隐私与安全性 → 仍要打开」。
+
+**要做到「双击即装、装了就用」**，需要：
+
+| 项 | 成本 |
+| --- | --- |
+| Apple Developer Program（Developer ID） | 99 美元/年 |
+| codesign 签名 + notarytool 公证 + staple | 约半天接线 |
+| 每次发布重复公证 | 每次 5–15 分钟 |
+
+另外，**无论是否签名，首次运行都要手动授权**：辅助功能、屏幕录制。这两项由 macOS 强制，无法绕过。能优化的是引导：检测到缺失就打开对应设置面板，授权后自动重检（`core/permissions.mjs` 已实现这两件事）。
+
+## 七、Windows 需要做什么
+
+打包配置已写好（`win: nsis`），但**完全没有实机验证**。要跑通需要：
+
+1. 一台 Windows 10/11，`npm install` 后 `npx electron-builder --win --config electron-builder.yml`
+2. 验证随包 ocu 的 Windows 运行时（`third_party/open-computer-use/dist/windows`）能被找到
+3. 逐项验证：小窗抓图（PrintWindow + HWND）、UIA 点击、PostMessage 输入、schtasks 自启
+4. 处理 UAC 与「必须登录桌面会话」的限制
+
+预计 2–3 天，其中一半时间在调 Win32 细节。没机器做不了。
+
+## 八、正式发布前要补
 
 1. Apple Developer ID 证书 + notarization（否则用户第一次打开会被拦）
 2. 图标与启动画面
