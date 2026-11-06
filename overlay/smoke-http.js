@@ -88,8 +88,8 @@ async function checkHttpServer() {
         return { visible: visible, pinned: visible };
       },
       onExpand: (session) => ({ expanded: true, session: session }),
-      onFrame: (session, dataUrl) => {
-        received.frames.push({ session: session, bytes: dataUrl.length });
+      onFrame: (session, dataUrl, note, cursor, width, height) => {
+        received.frames.push({ session: session, bytes: dataUrl.length, note: note, cursor: cursor, width: width, height: height });
       },
       close: (session) => {
         received.closed.push(session);
@@ -232,11 +232,21 @@ async function checkHttpServer() {
 
     // /frame（2MB 以内的大 dataURL 也要能过）
     const bigFrame = 'data:image/png;base64,' + 'A'.repeat(200000);
-    result = await post('/frame', { session: 'alpha', dataUrl: bigFrame, cursor: { x: 1, y: 2 } });
+    result = await post('/frame', { session: 'alpha', dataUrl: bigFrame, cursor: { x: 1, y: 2 }, width: 1280, height: 800 });
     assert.equal(result.status, 200);
     assert.equal(result.body.session, 'alpha');
+    assert.equal(result.body.width, 1280);
+    assert.equal(result.body.height, 800);
     assert.equal(received.frames.length, 1);
     assert.equal(received.frames[0].session, 'alpha');
+    assert.equal(received.frames[0].width, 1280);
+    assert.equal(received.frames[0].height, 800);
+    assert.deepEqual(received.frames[0].cursor, { x: 1, y: 2 });
+
+    result = await post('/frame', { session: 'alpha', dataUrl: bigFrame, width: 0, height: 10 });
+    assert.equal(result.status, 400);
+    result = await post('/frame', { session: 'alpha', dataUrl: bigFrame, width: 'x' });
+    assert.equal(result.status, 400);
 
     result = await post('/frame', { session: 'alpha', dataUrl: 'not-an-image' });
     assert.equal(result.status, 400);

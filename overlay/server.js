@@ -22,7 +22,8 @@
 const http = require('node:http');
 
 // 外部推帧是 base64 dataURL，单帧通常 50–200KB，给足空间
-const MAX_BODY_BYTES = 2 * 1024 * 1024;
+// headless/CDP 截图可能是较大的 PNG/JPEG，给到 8MB
+const MAX_BODY_BYTES = 8 * 1024 * 1024;
 const MAX_TEXT_CHARS = 1000;
 const MAX_STATUS_CHARS = 300;
 const DEFAULT_SESSION = 'default';
@@ -83,6 +84,16 @@ async function readJsonBody(req) {
     throw httpError(400, '请求体必须是 JSON 对象');
   }
   return parsed;
+}
+
+// /frame 可选的画面像素尺寸（有它就不用主进程解析图片头）
+function readDimension(value, field) {
+  if (value === undefined || value === null) return undefined;
+  const number = Number(value);
+  if (!Number.isInteger(number) || number <= 0 || number > 10000) {
+    throw httpError(400, field + ' 必须是 1–10000 的整数');
+  }
+  return number;
 }
 
 function requireText(value, field, maxChars) {
@@ -255,8 +266,16 @@ function createOverlayServer(options) {
       if (typeof body.dataUrl !== 'string' || body.dataUrl.indexOf('data:image/') !== 0) {
         return json(res, 400, { ok: false, error: 'dataUrl 必须是 data:image/... 开头的字符串' });
       }
-      await handlers.onFrame(session, body.dataUrl, body.note, body.cursor);
-      return json(res, 200, { ok: true, session: session, bytes: body.dataUrl.length });
+      const width = readDimension(body.width, 'width');
+      const height = readDimension(body.height, 'height');
+      await handlers.onFrame(session, body.dataUrl, body.note, body.cursor, width, height);
+      return json(res, 200, {
+        ok: true,
+        session: session,
+        bytes: body.dataUrl.length,
+        width: width || null,
+        height: height || null,
+      });
     }
 
     if (pathname === '/close' && method === 'POST') {

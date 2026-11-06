@@ -43,6 +43,7 @@
     followLogs: true,
     frameSeq: 0,
     interactive: null,
+    lastCursor: null,
   };
 
   function pad2(value) {
@@ -208,22 +209,29 @@
     elements.placeholder.classList.add('hidden');
   }
 
-  // 把页面坐标映射到 object-fit: contain 后的实际显示区域
-  function positionCursor(cursor) {
+  // 把画面像素坐标映射到 object-fit: contain 后的实际显示区域。
+  // frameWidth/frameHeight 优先用帧里带的尺寸：第一帧还没 decode 完也能立刻画出光标。
+  function positionCursor(cursor, frameWidth, frameHeight) {
     if (!cursor || !elements.vcur) return;
     const img = elements.thumb;
-    if (!img || !img.naturalWidth) return;
+    if (!img) return;
+    const naturalWidth = Number(frameWidth) || img.naturalWidth;
+    const naturalHeight = Number(frameHeight) || img.naturalHeight;
+    if (!naturalWidth || !naturalHeight) return;
     const boxW = img.clientWidth, boxH = img.clientHeight;
-    const scale = Math.min(boxW / img.naturalWidth, boxH / img.naturalHeight);
-    const dispW = img.naturalWidth * scale, dispH = img.naturalHeight * scale;
+    if (!boxW || !boxH) return;
+    const scale = Math.min(boxW / naturalWidth, boxH / naturalHeight);
+    const dispW = naturalWidth * scale, dispH = naturalHeight * scale;
     const offX = (boxW - dispW) / 2, offY = (boxH - dispH) / 2;
     const x = offX + cursor.x * scale;
     const y = offY + cursor.y * scale;
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+
+    view.lastCursor = { cursor: cursor, width: naturalWidth, height: naturalHeight };
     elements.vcur.classList.add('on');
     elements.vcur.style.transform = 'translate(' + x.toFixed(1) + 'px,' + y.toFixed(1) + 'px)';
 
-    // 点击瞬间波纹
+    // 点击瞬间波纹（CSS #vcur.clicking #vcur-ring）
     if (cursor.click) {
       elements.vcur.classList.remove('clicking');
       void elements.vcur.offsetWidth;
@@ -231,10 +239,24 @@
     }
   }
 
+  function hideCursor() {
+    view.lastCursor = null;
+    if (!elements.vcur) return;
+    elements.vcur.classList.remove('on', 'clicking');
+  }
+
+  // 窗口尺寸变化（含 ⤢ 放大）后重新按当前画面尺寸摆放光标
+  function repositionCursor() {
+    if (view.lastCursor) {
+      positionCursor(view.lastCursor.cursor, view.lastCursor.width, view.lastCursor.height);
+    }
+  }
+
   function renderThumb(frame) {
     if (!frame || typeof frame.dataUrl !== 'string') return;
-    if (frame.cursor) positionCursor(frame.cursor);
     const url = frame.dataUrl;
+    const frameWidth = Number(frame.width) || 0;
+    const frameHeight = Number(frame.height) || 0;
     const seq = ++view.frameSeq;
 
     // 先在内存里解码完成再替换，避免每帧刷新时闪白
@@ -242,6 +264,9 @@
     const swap = () => {
       if (seq !== view.frameSeq) return;
       applyFrame(url);
+      // 外部帧总带 cursor 字段：有坐标就画，显式 null 就隐藏；本地抓帧不带该字段，保持不动
+      if (frame.cursor) positionCursor(frame.cursor, frameWidth, frameHeight);
+      else if (frame.cursor === null) hideCursor();
     };
     preload.onload = swap;
     preload.onerror = swap;
@@ -261,6 +286,11 @@
 
     if (snapshot.thumbnail && typeof snapshot.thumbnail.dataUrl === 'string') {
       applyFrame(snapshot.thumbnail.dataUrl);
+      if (snapshot.thumbnail.cursor) {
+        positionCursor(snapshot.thumbnail.cursor, snapshot.thumbnail.width, snapshot.thumbnail.height);
+      } else if (snapshot.thumbnail.cursor === null) {
+        hideCursor();
+      }
     }
   }
 
@@ -341,6 +371,8 @@
     document.addEventListener('pointermove', (event) => {
       syncInteractive(event.clientX, event.clientY);
     });
+
+    window.addEventListener('resize', () => { repositionCursor(); });
   }
 
   async function boot() {

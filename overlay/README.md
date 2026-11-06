@@ -200,7 +200,7 @@ npm start 也可以，但如果因为 ELECTRON_RUN_AS_NODE 起不来，就用上
     POST  /window             {"session","windowId"}                        切换该会话的缩略图目标；绑定自身窗口返回 403
     POST  /visible            {"session","visible":true|false}              手动显示/隐藏该会话；true 时固定显示
     POST  /expand             {"session"}                                   该会话切换放大（比例按最近一帧画面自适应）
-    POST  /frame              {"session","dataUrl","note","cursor"}         外部推帧，接管该会话缩略图
+    POST  /frame              {"session","dataUrl","note","cursor","width","height"}  外部推帧（含虚拟光标），接管该会话缩略图
     POST  /close              {"session"}                                   关掉该会话窗口（其它会话不受影响）
 
 GET /health 关键字段：
@@ -221,8 +221,9 @@ GET /health 关键字段：
     matched      当前 DSH 前台会话标题是否命中 titleHint（没有 titleHint 恒为 true）
     dshTitle     当前读到的 DSH 主窗口标题
     logs         当前保留的日志条数（上限 200）
-    fps          最近 5 帧的平均帧率
-    frameBytes   最近一帧 JPEG 字节数
+    fps          最近 5 帧的平均帧率（本地抓帧和外部推帧都计入）
+    frameBytes   最近一帧的真实图片字节数（不是 base64 长度）
+    frames       该会话累计收到的帧数（本地抓帧 + 外部推帧）
     captureMs    最近一帧「抓图 + 缩放 + 编码」耗时
     frameWidth   最近一帧像素宽（放大时按它算宽高比）
     frameHeight  最近一帧像素高
@@ -312,10 +313,30 @@ GET /health 关键字段：
 - 帧率：默认 7fps（约 143ms 一帧，OVERLAY_FPS 可调 1–12），/health 的 fps 是最近 5 帧的平均值。
 - 抓图：`screencapture -x -o -l <windowID> -t png <临时文件>`（PNG 无损中间格式，避免 JPEG 二次编码），然后用 nativeImage 解码、只 resize 一次、再编码一次 JPEG。
 - 调度：自调度而不是固定 setInterval——上一帧结束再按「目标周期 - 本帧耗时」安排下一帧，避免抓帧超过周期时被跳过一轮导致实际帧率只有一半。同一时刻只允许一帧在抓（per-session 锁）。
-- 外部推帧（/frame）：接管该会话缩略图 3 秒；推帧会解码一次拿到宽高，保证放大时比例正确。
+- 外部推帧（/frame）：见下一节「外部帧 / headless 画面」。
 - 窗口隐藏时暂停抓帧，显示时立刻补一帧；临时目录 mkdtemp，每帧用完即删，退出整目录删除。
 - 失败（窗口关闭 / ID 失效 / 无屏幕录制权限 / 超时）保留最后一帧；同一错误只记一条日志，避免刷屏。
-- /health 暴露 fps、frameBytes、captureMs、frameWidth、frameHeight 便于验收。
+- /health 暴露 fps、frameBytes、frames、captureMs、frameWidth、frameHeight 便于验收。
+
+## 外部帧 / headless 画面（CDP 截图）
+
+headless 浏览器在用户屏幕上没有窗口，画面只能靠 CDP 截图推给 /frame。约定：
+
+    POST /frame
+    {
+      "session": "headless",
+      "dataUrl": "data:image/jpeg;base64,...",
+      "note": "headless CDP 截图",
+      "width": 1280, "height": 800,
+      "cursor": { "x": 640, "y": 400, "click": false }
+    }
+
+- dataUrl 支持 JPEG/PNG；width/height 可选（画面像素尺寸）。不传时按「上一帧尺寸 → 图片头解析 → 未知」处理；JPEG 读 SOF、PNG 读 IHDR，不整图解码；传了尺寸就完全跳过解析，连续推流时主进程开销最低。
+- cursor 是画面像素坐标（与截图同尺寸），渲染进程映射到 object-fit: contain 后的位置画白色虚拟光标；click:true 触发一次扩散波纹。传 cursor:null 或不传会隐藏光标；本地抓帧不带 cursor 字段，保持光标不动。
+- 连续推帧：每帧都会刷新 externalFrameAt/缩略图/活动时间，窗口持续显示，fps 按最近 5 帧计算；只有最后一次外部帧 3 秒后本地 screencapture 才恢复，期间不会抢画面。
+- body 上限 8MB（大 PNG 也能推）；图片质量由推流方决定（建议 JPEG quality 80 左右，1280 宽约 60KB/帧）。
+- 不重编码外部帧：原图直出给渲染进程（CSS 缩放显示），避免二次编码糊化。
+- 实测：headless Chrome + example.com 连续推 20 帧（1280×800 JPEG q80，含移动光标和第 10 帧点击），约 2.2 秒推完，/health：fps≈11.9、frameBytes=59031、frames=25、frameWidth=1280、frameHeight=800、clickThrough=true，窗口全程可见且未抢焦点；截图 docs/headless-cdp-frame.png、docs/headless-cdp-click.png。
 
 ## 验收记录（macOS 26.5.1 + Electron 41.7.1）
 
@@ -346,6 +367,7 @@ GET /health 关键字段：
 - 拖拽条：鼠标在顶部 8px 条内 clickThrough=false；从上边条拖 80px，窗口 y 坐标 49→129；之后空闲仍隐藏，位置保持。
 - 点击穿透：clickThrough=true 时点击小窗中心（1346,200），点击落到下面的测试窗口（日志记录 CLICK 714,48 H1），小窗自身无反应；把鼠标移到右上角 ⤢ 上 clickThrough 变 false，点击可触发放大（expanded=true）。
 - 放大截图：docs/clarity-expanded.png；小窗清晰度截图：docs/clarity-small.png；多会话截图：docs/multi-session.png。
+- 外部帧 / headless：连续推 20 帧 example.com（1280×800 JPEG），20/20 返回 200，耗时约 2.2 秒；/health fps=11.9、frameBytes=59031（真实字节）、frames=25、frameWidth=1280、frameHeight=800、clickThrough=true、thumbnail.state=live；第一帧就带 cursor 时立即出现光标；无 width/height 的 3024×1964 PNG 也能从 IHDR 自动认出尺寸；非法 width 返回 400。截图 docs/headless-cdp-frame.png、docs/headless-cdp-click.png。
 
 ## 自检
 

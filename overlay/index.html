@@ -179,7 +179,23 @@
       top: -1px;
       filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
     }
-    #vcur-ring { display: none; }
+    /* 点击波纹：/frame 的 cursor.click=true 时触发一次 */
+    #vcur-ring {
+      position: absolute;
+      left: -10px;
+      top: -10px;
+      width: 20px;
+      height: 20px;
+      border: 2px solid rgba(90, 170, 255, 0.95);
+      border-radius: 50%;
+      opacity: 0;
+      pointer-events: none;
+    }
+    #vcur.clicking #vcur-ring { animation: vcur-click 420ms ease-out 1; }
+    @keyframes vcur-click {
+      0% { transform: scale(0.35); opacity: 0.95; }
+      100% { transform: scale(2.4); opacity: 0; }
+    }
 
     /* 日志抽屉：只在悬停/点击时出现 */
     #logs {

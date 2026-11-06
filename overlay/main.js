@@ -163,6 +163,7 @@ function ensureSession(id, source) {
     thumbSeq: 0,
     frameTimes: [],
     frameBytes: 0,
+    frameCount: 0,
     captureMs: 0,
     lastThumbSignal: '',
     lastCaptureError: null,
@@ -777,6 +778,7 @@ function recordFrame(s, bytes) {
   s.frameTimes.push(Date.now());
   if (s.frameTimes.length > 5) s.frameTimes.splice(0, s.frameTimes.length - 5);
   s.frameBytes = Math.max(0, Math.round(bytes || 0));
+  s.frameCount = (s.frameCount || 0) + 1;
 }
 
 // 目标像素宽度：浮窗现在的宽度 × 2（Retina），上限 1600；放大到 4:3 时会跟着变大
@@ -793,36 +795,104 @@ function thumbnailTargetWidth(s) {
   return clamp(Math.round(width * THUMB_SCALE), THUMB_MIN_PIXEL_WIDTH, THUMB_MAX_PIXEL_WIDTH);
 }
 
-// 外部推送的画面（例如 CDP 截图）：接管该会话的缩略图，暂停 screencapture
-function pushExternalFrame(s, dataUrl, note, cursor) {
-  s.externalFrameAt = Date.now();
-  const prev = s.state.thumbnail || {};
-  // 外部推帧也要知道画面宽高：放大态按最近一帧比例算窗口，不知道尺寸就会退回 4:3 出现黑边
-  let frameWidth = Number(prev.width) || 0;
-  let frameHeight = Number(prev.height) || 0;
+// dataURL 里的真实图片字节数（base64 长度 ≠ 字节数，别把 base64 长度当 frameBytes）
+function base64DataBytes(dataUrl) {
+  const text = String(dataUrl || '');
+  const comma = text.indexOf(',');
+  if (comma < 0) return 0;
+  const b64 = text.length - comma - 1;
+  let padding = 0;
+  if (text.endsWith('==')) padding = 2;
+  else if (text.endsWith('=')) padding = 1;
+  return Math.max(0, Math.floor((b64 * 3) / 4) - padding);
+}
+
+// 只读图片头拿宽高（JPEG SOF / PNG IHDR），不整图解码。
+// 连续推帧时尺寸已知就完全不解析，避免每帧 nativeImage 解码拖慢主进程。
+function imageSizeFromDataUrl(dataUrl) {
   try {
-    const image = nativeImage.createFromDataURL(dataUrl);
-    if (!image.isEmpty()) {
-      const size = image.getSize();
-      if (size.width > 0 && size.height > 0) {
-        frameWidth = size.width;
-        frameHeight = size.height;
+    const text = String(dataUrl || '');
+    const comma = text.indexOf(',');
+    if (comma < 0) return null;
+    const meta = text.slice(0, comma);
+    const buf = Buffer.from(text.slice(comma + 1), 'base64');
+    if (!buf.length) return null;
+    if (/^data:image\/png/i.test(meta)) {
+      if (buf.length >= 24 && buf.readUInt32BE(12) === 0x49484452) { // 'IHDR'
+        const width = buf.readUInt32BE(16);
+        const height = buf.readUInt32BE(20);
+        if (width > 0 && height > 0) return { width: width, height: height };
       }
+    } else {
+      const size = jpegSize(buf);
+      if (size && size.width > 0 && size.height > 0) return size;
     }
   } catch (error) {
-    // 解码失败就沿用上一帧的尺寸，不影响推帧
+    // 解析失败按「尺寸未知」处理
   }
+  return null;
+}
+
+// cursor 是画面像素坐标 { x, y, click }，渲染进程据此画虚拟光标
+function sanitizeCursor(cursor) {
+  if (!cursor || typeof cursor !== 'object') return null;
+  const x = Number(cursor.x);
+  const y = Number(cursor.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return {
+    x: Math.round(x * 100) / 100,
+    y: Math.round(y * 100) / 100,
+    click: Boolean(cursor.click),
+  };
+}
+
+// 外部推送的画面（例如 headless CDP 截图）：接管该会话的缩略图，暂停 screencapture。
+// 连续推帧时每次都会刷新时间戳/状态，不会被当成「一次性画面」；
+// 本地 screencapture 在最后一次外部帧后 3 秒才恢复，期间不会和外部位图抢画面。
+function pushExternalFrame(s, dataUrl, note, cursor, width, height) {
+  s.externalFrameAt = Date.now();
+  const prev = s.state.thumbnail || {};
+
+  // 尺寸优先级：调用方显式给 > 上一帧 > 解析图片头 > 未知
+  let frameWidth = Number(width) || 0;
+  let frameHeight = Number(height) || 0;
+  if ((!frameWidth || !frameHeight) && Number(prev.width) > 0 && Number(prev.height) > 0) {
+    frameWidth = Number(prev.width);
+    frameHeight = Number(prev.height);
+  }
+  if (!frameWidth || !frameHeight) {
+    const parsed = imageSizeFromDataUrl(dataUrl);
+    if (parsed) {
+      frameWidth = parsed.width;
+      frameHeight = parsed.height;
+    } else {
+      frameWidth = Number(prev.width) || 0;
+      frameHeight = Number(prev.height) || 0;
+    }
+  }
+
+  const safeCursor = sanitizeCursor(cursor);
+  const bytes = base64DataBytes(dataUrl);
+
   s.state.thumbnail = {
     state: 'live',
     dataUrl: dataUrl,
     width: frameWidth,
     height: frameHeight,
+    cursor: safeCursor,
     updatedAt: s.externalFrameAt,
     error: null,
     note: note || 'agent',
   };
-  recordFrame(s, String(dataUrl || '').length);
-  send(s, 'overlay:thumb', { state: 'live', dataUrl: dataUrl, updatedAt: s.externalFrameAt, cursor: cursor || null });
+  recordFrame(s, bytes);
+  send(s, 'overlay:thumb', {
+    state: 'live',
+    dataUrl: dataUrl,
+    width: frameWidth,
+    height: frameHeight,
+    updatedAt: s.externalFrameAt,
+    cursor: safeCursor,
+  });
   markActivity(s, 'frame');
 }
 
@@ -945,8 +1015,14 @@ function startThumbnailLoop(s) {
   stopThumbnailLoop(s);
 
   if (!s.state.windowId) {
-    s.state.thumbnail.state = 'no-window';
-    signalThumbState(s, true);
+    // 没有本地目标窗口，但正在收外部帧（headless/CDP）：保留 live 状态，别被 no-window 覆盖
+    const externalActive = s.externalFrameAt && Date.now() - s.externalFrameAt < 3000;
+    if (!externalActive) {
+      s.state.thumbnail.state = 'no-window';
+      signalThumbState(s, true);
+    } else {
+      signalThumbState(s, true);
+    }
     return;
   }
 
@@ -1159,6 +1235,7 @@ function sessionHealth(s) {
     logs: s.state.logs.length,
     fps: frameFps(s),
     frameBytes: s.frameBytes,
+    frames: s.frameCount || 0,
     captureMs: s.captureMs,
     frameWidth: Number(s.state.thumbnail.width) || 0,
     frameHeight: Number(s.state.thumbnail.height) || 0,
@@ -1193,6 +1270,7 @@ function missingSessionHealth(id) {
     logs: 0,
     fps: 0,
     frameBytes: 0,
+    frames: 0,
     captureMs: 0,
     frameWidth: 0,
     frameHeight: 0,
@@ -1255,7 +1333,7 @@ async function startServer() {
         return result;
       },
       onVisible: (session, visible) => setVisibleManual(ensureSession(session, 'HTTP /visible'), visible),
-      onFrame: (session, dataUrl, note, cursor) => pushExternalFrame(ensureSession(session, 'HTTP /frame'), dataUrl, note, cursor),
+      onFrame: (session, dataUrl, note, cursor, width, height) => pushExternalFrame(ensureSession(session, 'HTTP /frame'), dataUrl, note, cursor, width, height),
       onExpand: (session) => toggleExpand(ensureSession(session, 'HTTP /expand')),
       close: (session) => closeSession(session),
       sessions: () => Array.from(sessions.values()).map(sessionHealth),
