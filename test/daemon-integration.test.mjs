@@ -44,6 +44,7 @@ test('daemon：队列串行、环境失败不重试、临时失败重试一次',
       AGENTD_PORT: String(PORT),
       AGENTD_TASKS_DIR: dir,
       AGENTD_MAX_RETRIES: '1',
+      AGENTD_MAX_QUEUE: '3',
       OVERLAY_URL: 'http://127.0.0.1:1',   // 小窗不存在，调用直接失败但不影响任务
     },
     stdio: 'ignore',
@@ -69,6 +70,16 @@ test('daemon：队列串行、环境失败不重试、临时失败重试一次',
     });
     assert.equal(res.status, 400, '应拒绝可疑任务名：' + evil);
   }
+
+  // 队列上限：上限 3 时一次塞 4 个应当被 429 拒绝（且不会真的入队）
+  const overflow = await fetch(BASE + '/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tasks: ['ok-task', 'ok-task', 'ok-task', 'ok-task'] }),
+  });
+  assert.equal(overflow.status, 429, '超过队列上限应返回 429');
+  const afterOverflow = await (await fetch(BASE + '/status')).json();
+  assert.equal(afterOverflow.queue.length, 0, '被拒绝的请求不应入队');
 
   const started = Date.now();
   await fetch(BASE + '/run', {

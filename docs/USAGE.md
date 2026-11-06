@@ -525,6 +525,7 @@ plist 在 `~/Library/LaunchAgents/`：`com.desktop-agent.daemon.plist`、`com.de
 | `OVERLAY_URL` | `http://127.0.0.1:7788` | agent 推送目标 |
 | `AGENTD_PORT` | `7789` | daemon 端口 |
 | `AGENTD_MAX_RETRIES` | `1` | 临时性失败（Chrome 启动慢/端口没起来）自动重跑次数；环境类失败不重试 |
+| `AGENTD_MAX_QUEUE` | `50` | 任务队列上限，超过返回 429，防止本地程序狂刷把队列撑爆 |
 | `OCU_BIN` | 自动查找 | 指定 ocu 可执行文件 |
 | `CHROME_BIN` / `CHROME_APP` | 系统 Chrome | 指定浏览器二进制 / 应用名 |
 | `AGENT_CHROME_PROFILE` | `~/.desktop-agent/chrome-profile` | 离屏实例 profile |

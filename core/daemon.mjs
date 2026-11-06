@@ -24,6 +24,8 @@ const TASKS_DIR = process.env.AGENTD_TASKS_DIR || path.join(__dirname, 'tasks');
 const LOGS = path.join(ROOT, 'logs', 'daemon');
 // 临时性失败自动重跑几次（Chrome 启动慢、端口没起来这类），环境类失败不重试
 const MAX_RETRIES = Math.max(0, Number(process.env.AGENTD_MAX_RETRIES || 1));
+// 队列上限：本地程序狂刷 /run 时不能让队列无限增长（超了直接 429）
+const MAX_QUEUE = Math.max(1, Number(process.env.AGENTD_MAX_QUEUE || 50));
 
 const state = {
   pid: process.pid,
@@ -273,6 +275,10 @@ const server = http.createServer(async (req, res) => {
     const unknown = names.filter((n) => typeof n !== 'string' || !available.includes(n));
     if (unknown.length) {
       return json(res, 400, { ok: false, error: '未知任务：' + unknown.join(', '), available: available });
+    }
+    const pendingCount = state.queue.length + (state.current ? 1 : 0);
+    if (pendingCount + names.length > MAX_QUEUE) {
+      return json(res, 429, { ok: false, error: '队列已满（上限 ' + MAX_QUEUE + '），请等前面的任务跑完', queued: pendingCount });
     }
     for (const n of names) state.queue.push(n);
     overlay.log('排队任务：' + names.join(', ')).catch(() => {});
