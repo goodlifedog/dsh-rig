@@ -34,6 +34,7 @@
     "test": "node --test test/",
     "demo:platform": "node core/runner.mjs run platform-demo",
     "setup": "npm install && npm install --prefix overlay",
-    "repo:check": "node scripts/repo-check.mjs"
+    "repo:check": "node scripts/repo-check.mjs",
+    "restart:check": "node scripts/restart-check.mjs"
   }
 }

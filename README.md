@@ -148,6 +148,7 @@ npm run repo:check # 仓库体检：版本一致、无依赖产物、无大文�
 npm test          # 单元测试（打分、薪资解析、平台探测）
 npm run check     # 语法检查
 npm run accept    # 端到端验收（需要本机服务在跑）
+npm run restart:check  # 重启两个服务再验证健康（抓「跑的是旧代码」这类问题）
 ```
 
 CI 在 Ubuntu / macOS / Windows 三平台跑 `npm test` 与 `npm run check`。

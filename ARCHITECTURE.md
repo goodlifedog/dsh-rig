@@ -93,6 +93,9 @@ overlay ──screencapture 约 7fps──▶ 每个会话独立的窗口
 npm test          # 纯逻辑单测（打分、薪资、平台探测）
 npm run doctor    # 环境自检
 npm run accept    # 端到端验收，输出 Markdown 报告
+npm run restart:check  # 重启两个服务并验证健康
 ```
+
+改过 `package.json`、启动脚本这类配置后，**必须跑一次 `restart:check`**：进程还活着不代表跑的是新代码，改成 ESM 标记那次就是这么漏掉的。
 
 验收会区分「真失败」和「环境跳过」：前台不是 DSH、目标页面结构变化这类不算代码错误，但会在报告里写清原因。
