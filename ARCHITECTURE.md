@@ -55,10 +55,13 @@
 任务 ──POST /status──▶ overlay ──IPC──▶ 渲染进程（状态点 + 文字）
      ──POST /window──▶ overlay ──screencapture/PrintWindow──▶ 缩略图
      ──POST /frame ──▶ overlay（外部帧优先，暂停本地抓图）
-overlay ──screencapture 约 7fps──▶ 每个会话独立的窗口
+     ──GET  /frame-target──▶ 取"小窗现在需要多大像素"，按需出图（收起 600px / 放大 1920px）
+overlay ──screencapture 约 13fps──▶ 每个会话独立的窗口
+守护进程在任务结束时会自动解绑窗口，抓帧循环随之停止，不会空转
 ```
 
-小窗侧规则：有活动显示、空闲 5 秒隐藏、鼠标悬停暂停、DSH 失焦隐藏、DSH 标题不匹配当前会话就隐藏。
+小窗侧规则：有活动显示、空闲 5 秒隐藏、鼠标悬停暂停、宿主失焦隐藏、DSH 标题不匹配当前会话就隐藏。
+宿主轮询是三档自适应（可见 0.4s / 被会话门控藏起 0.7s / 其余 1.5s），切走约 0.5s 收起、切回约 0.7s 重新出现。
 
 ## 五、并发与隔离
 
@@ -92,9 +95,13 @@ overlay ──screencapture 约 7fps──▶ 每个会话独立的窗口
 ## 八、验证
 
 ```bash
-npm test          # 纯逻辑单测（打分、薪资、平台探测）
-npm run doctor    # 环境自检
-npm run accept    # 端到端验收，输出 Markdown 报告
+npm test            # 纯逻辑单测（打分、薪资、平台探测、标题门控、失败归类、HTTP 接口）
+npm run doctor      # 环境自检
+npm run monitor     # 一键巡检：健康 + 小窗回归 + 会话隔离 + 帧率，写 reports/monitor-*.md
+npm run accept      # 端到端验收，输出 Markdown 报告
+npm run scope:check # 会话隔离：只在该会话出现、切走/切回耗时
+npm run fps:check   # 帧率压测：实际帧率、单帧体积、推帧耗时
+npm run soak        # 稳定性巡检：连跑多轮看耗时与内存
 npm run restart:check  # 重启两个服务并验证健康
 ```
 

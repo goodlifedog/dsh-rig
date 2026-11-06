@@ -546,12 +546,12 @@ plist 在 `~/Library/LaunchAgents/`：`com.desktop-agent.daemon.plist`、`com.de
 - **锁屏时 AX/UIA 全失效**，Chrome 启动慢一个数量级。
 - **Safari 网页内容**在 AX 里读不到；微信/Telegram 只有窗口壳。
 - **小窗不跟随 Space**：切到别的桌面就看不到它（有意为之，避免跟着你到处飘）。
-- **小窗画面会比真实操作滞后**：抓帧约 7fps，编码/缩放有几十毫秒。
+- **小窗画面会比真实操作滞后**：抓帧约 13fps（受 screencapture 单帧 100–125ms 限制），编码/缩放再加几十毫秒。
 - **对用户应用截图会把窗口提到前台**，所以用户应用一律不截图。
 - **小窗 HTTP 无鉴权**，只监听回环地址。
 - **form-fill 与 overlay 同时跑可能失败**（`cgWindowNotFound`，环境冲突，不是逻辑错误）。
 - **daemon（launchd）环境缺 node 路径**：浏览器类任务建议用 `npm run run` 跑（见 4.3 第 6 条）。
-- 缩略图按「小窗宽度 × 2（Retina）」出图，最长边上限 2560px；放大后目标分辨率会跟着变大（960pt 窗口对应 1920px），抓帧也更慢。
+- 缩略图按「小窗宽度 × 2（Retina）」出图，最长边上限 2560px；外部推帧可以先用 `GET /frame-target` 问小窗要多大，收起时推 600px、放大时推 1920px，别一律推最大。
 
 ---
 

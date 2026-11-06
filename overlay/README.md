@@ -343,7 +343,7 @@ GET /health 关键字段：
 
 - 分辨率：按「小窗宽度 × 2（Retina）」出图，上限 1600 像素；放大到 4:3 大窗时窗口变宽，目标分辨率自动跟着变大（实测量到 frameWidth=1600）。
 - 质量：最终 JPEG 质量 88（原 72）。
-- 帧率：默认 7fps（约 143ms 一帧，OVERLAY_FPS 可调 1–12），/health 的 fps 是最近 5 帧的平均值。
+- 帧率：默认 15fps 上限（OVERLAY_FPS 可调 1–30），实际受 screencapture 单帧耗时限制约 8–13fps；/health 的 fps 是最近 5 帧的平均值。
 - 抓图：`screencapture -x -o -l <windowID> -t png <临时文件>`（PNG 无损中间格式，避免 JPEG 二次编码），然后用 nativeImage 解码、只 resize 一次、再编码一次 JPEG。
 - 调度：自调度而不是固定 setInterval——上一帧结束再按「目标周期 - 本帧耗时」安排下一帧，避免抓帧超过周期时被跳过一轮导致实际帧率只有一半。同一时刻只允许一帧在抓（per-session 锁）。
 - 外部推帧（/frame）：见下一节「外部帧 / headless 画面」。
@@ -423,7 +423,7 @@ headless 浏览器在用户屏幕上没有窗口，画面只能靠 CDP 截图推
 - 桌面背景模糊依赖 CSS backdrop-filter：胶囊和日志抽屉会模糊其后的缩略图，效果贴近 iOS 浮窗。
 - 透明窗口在系统开启「降低透明度」时观感会更实。
 - 缩略图只抓「绑定的那个窗口」；窗口 ID 变化需重新 POST /window。
-- 抓帧耗时受系统负载影响：重负载时 screencapture 可能升到 200ms+，fps 会暂时掉到 4~5；空闲后恢复 7fps。
+- 抓帧耗时受系统负载影响：重负载时 screencapture 可能升到 200ms+，fps 会暂时掉到 4~5；空闲后恢复到 8–13fps（实测 12.7fps / 49ms 一帧）。
 - GET /windows 依赖 desktopCapturer 和屏幕录制权限，权限缺失时返回 500；本机部分窗口（非当前 Space / 被遮挡）可能不在列表里，可直接用 CGWindowID 绑。
 - 默认贴主屏右上角，不跟随显示器变化；小窗只在自身 Space 显示。
 - 连续的缩略图抓帧不计入活动，因此有画面时也会按空闲规则隐藏（刻意设计）。
