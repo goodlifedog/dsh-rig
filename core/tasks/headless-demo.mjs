@@ -77,13 +77,17 @@ function cmdlineOf(pid) {
 /** 把 CDP 截图推给小窗；返回每一帧的体积，方便看推帧是否稳定 */
 async function pushFrames(page, { count = 3, intervalMs = 300, cursor = null } = {}) {
   const frames = [];
+  // 按小窗实际需要的像素出图：收起时 600px 够用，放大时才要 1920px。
+  // 固定推 2560px 会多解 10 倍内存、多传几倍字节，帧率反而被拖慢。
+  const target = await overlay.frameTarget().catch(() => null);
+  const targetWidth = target && target.ok && target.width ? target.width : 1920;
+  const scale = Math.min(3, Math.max(0.3, targetWidth / 1280));
   for (let i = 0; i < count; i += 1) {
     const t = Date.now();
-    // clip.scale=2：给小窗放大态留出清晰度（1280×800 → 2560×1600）
-    const shot = await page.send('Page.captureScreenshot', { format: 'jpeg', quality: 80, clip: { x: 0, y: 0, width: 1280, height: 800, scale: 2 } });
+    const shot = await page.send('Page.captureScreenshot', { format: 'jpeg', quality: 80, clip: { x: 0, y: 0, width: 1280, height: 800, scale } });
     const bytes = Buffer.from(shot.data, 'base64').length;
     const r = await overlay.frame('data:image/jpeg;base64,' + shot.data, 'headless 后台浏览器', cursor);
-    frames.push({ b64KB: Math.round(shot.data.length / 1024), bytes, ms: Date.now() - t, ok: Boolean(r && r.ok) });
+    frames.push({ b64KB: Math.round(shot.data.length / 1024), bytes, ms: Date.now() - t, scale: Math.round(scale * 100) / 100, ok: Boolean(r && r.ok) });
     if (i < count - 1) await sleep(intervalMs);
   }
   return frames;

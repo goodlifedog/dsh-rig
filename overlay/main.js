@@ -1419,9 +1419,31 @@ function boundsOf(s) {
   }
 }
 
+// 当前窗口需要多大的帧：收起 300pt→600px，放大 960pt→1920px，上限 2560
+function frameTargetOf(s) {
+  let width = config.width;
+  let height = config.height;
+  const win = s.win;
+  if (win && !win.isDestroyed()) {
+    try {
+      const size = win.getContentSize();
+      if (size && size[0] > 0 && size[1] > 0) { width = size[0]; height = size[1]; }
+    } catch (error) {
+      // 窗口销毁瞬间读不到，用默认值
+    }
+  }
+  const targetWidth = clamp(Math.round(width * THUMB_SCALE), THUMB_MIN_PIXEL_WIDTH, THUMB_MAX_PIXEL_WIDTH);
+  return {
+    width: targetWidth,
+    height: Math.max(1, Math.round(targetWidth * (height / width))),
+    expanded: Boolean(s.flags.expanded),
+  };
+}
+
 function sessionHealth(s) {
   return {
     session: s.id,
+    label: s.titleHint ? normalizeDshTitle(s.titleHint, HOST_TITLE_SUFFIX) : '',
     exists: true,
     pid: process.pid,
     error: serverError || null,
@@ -1497,6 +1519,8 @@ function missingSessionHealth(id) {
 function rendererSnapshot(s) {
   return {
     session: s.id,
+    // 给人看的标签：优先用会话标题，其次才退回内部 session id（非默认会话悬停时显示）
+    label: s.titleHint ? normalizeDshTitle(s.titleHint, HOST_TITLE_SUFFIX) : '',
     status: s.state.status,
     activity: s.state.activity,
     visible: s.state.visible,
@@ -1550,6 +1574,11 @@ async function startServer() {
       onFrame: (session, dataUrl, note, cursor, width, height) => pushExternalFrame(ensureSession(session, 'HTTP /frame'), dataUrl, note, cursor, width, height),
       onExpand: (session) => toggleExpand(ensureSession(session, 'HTTP /expand')),
       close: (session) => closeSession(session),
+      frameTarget: (session) => {
+        const s = sessions.get(session);
+        if (!s) return { width: config.width * THUMB_SCALE, height: config.height * THUMB_SCALE, expanded: false };
+        return frameTargetOf(s);
+      },
       sessions: () => Array.from(sessions.values()).map(sessionHealth),
       health: (session) => {
         const s = sessions.get(session);

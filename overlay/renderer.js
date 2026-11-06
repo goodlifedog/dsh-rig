@@ -64,9 +64,11 @@
 
   // ---------- 会话标识（仅非 default 会话在悬停时显示） ----------
 
-  function renderSession(id) {
+  function renderSession(id, label) {
     if (!elements.sess) return;
-    const text = typeof id === 'string' && id && id !== 'default' ? id : '';
+    // 优先显示会话标题（用户认得的那个），没有才退回内部 session id
+    const raw = (typeof label === 'string' && label.trim()) || (typeof id === 'string' ? id : '');
+    const text = raw && raw !== 'default' ? (raw.length > 28 ? raw.slice(0, 27) + '…' : raw) : '';
     elements.sess.textContent = text;
     elements.sess.classList.toggle('on', Boolean(text));
   }
@@ -370,7 +372,7 @@
   function handleInitialState(snapshot) {
     if (!snapshot) return;
 
-    renderSession(snapshot.session);
+    renderSession(snapshot.session, snapshot.label);
     renderStatus({ text: snapshot.status, activity: snapshot.activity });
     renderActivity(snapshot.activity);
     renderLogs(snapshot.logs);

@@ -173,6 +173,17 @@ function createOverlayServer(options) {
       return json(res, 200, Object.assign({ ok: true }, health));
     }
 
+    // 推帧方按这个尺寸出图：小窗收起时只要 ~600px，放大时才要 1920px，
+    // 避免一直推 2560px 的图（解码内存和局域传输都白费）
+    if (pathname === '/frame-target' && method === 'GET') {
+      if (typeof handlers.frameTarget !== 'function') {
+        return json(res, 501, { ok: false, error: '推帧尺寸接口未启用' });
+      }
+      const session = sessionFrom(url, null);
+      const target = await handlers.frameTarget(session);
+      return json(res, 200, Object.assign({ ok: true }, target));
+    }
+
     if (pathname === '/sessions' && method === 'GET') {
       if (typeof handlers.sessions !== 'function') {
         return json(res, 501, { ok: false, error: '会话列表接口未启用' });

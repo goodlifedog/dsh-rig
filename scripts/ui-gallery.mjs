@@ -63,7 +63,10 @@ async function main() {
     await pg.send('Page.enable');
     await pg.send('Page.navigate', { url: 'https://example.com' });
     await sleep(1200);
-    const shotRes = await pg.send('Page.captureScreenshot', { format: 'jpeg', quality: 80, clip: { x: 0, y: 0, width: 1280, height: 800, scale: 2 } });
+    // 按小窗需要的像素出图（收起 600px），别固定 2560px
+    const target = await (await fetch(BASE + '/frame-target?session=default', { signal: AbortSignal.timeout(3000) })).json();
+    const scale = target && target.width ? Math.min(3, Math.max(0.3, target.width / 1280)) : 1;
+    const shotRes = await pg.send('Page.captureScreenshot', { format: 'jpeg', quality: 80, clip: { x: 0, y: 0, width: 1280, height: 800, scale } });
     await post('/frame', { dataUrl: 'data:image/jpeg;base64,' + shotRes.data, note: 'gallery 底图', cursor: { x: 700, y: 420, click: false } });
     await b.close();
   } catch (e) { console.log('  底图失败:', e.message); }

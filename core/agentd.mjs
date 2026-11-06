@@ -41,6 +41,13 @@ export const overlay = {
   visible: (visible) => post('/visible', { visible }),
   frame: (dataUrl, note, cursor) => post('/frame', { dataUrl, note, cursor }),
   expand: () => post('/expand', {}),
+  // 小窗当前需要多大的帧（收起 600px / 放大 1920px）：推帧方按它出图，别固定推 2560px
+  async frameTarget() {
+    try {
+      const res = await fetch(OVERLAY + '/frame-target?session=' + encodeURIComponent(AGENT_SESSION), { signal: AbortSignal.timeout(1500) });
+      return await res.json();
+    } catch { return { ok: false, offline: true }; }
+  },
   close: () => post('/close', {}),
   async health() {
     try {
