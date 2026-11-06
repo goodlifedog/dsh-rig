@@ -5,7 +5,6 @@
   "description": "置顶小窗：多会话、实时缩略图、点击穿透、会话标题门控",
   "license": "MIT",
   "main": "main.js",
-  "type": "module",
   "scripts": {
     "start": "node start.mjs",
     "check": "node --check main.js && node --check preload.js && node --check renderer.js && node --check server.js && node --check window-id.js && node --check platform.js && node --check start.mjs && node --check smoke-http.js",

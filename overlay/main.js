@@ -22,6 +22,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const platform = require('./platform.js');
+const { normalizeDshTitle, matchesTitle } = require('./session-gate.js');
 const { createOverlayServer, DEFAULT_SESSION, SESSION_PATTERN } = require('./server.js');
 const { normalizeWindowId, resolveWindowId } = require('./window-id.js');
 
@@ -310,10 +311,7 @@ function clampIntoDsh(s) {
   }
 }
 
-// DSH 窗口标题形如「规划布局探讨 — DeepSeek Harness」，匹配前先去掉后缀
-function normalizeDshTitle(raw) {
-  return String(raw || '').trim().replace(/\s*[—–-]\s*DeepSeek Harness\s*$/i, '').trim();
-}
+// normalizeDshTitle / matchesTitle 见 session-gate.js（纯函数，带单测）
 
 // 第一次推 /status 或 /log 且没显式给 titleHint 时，用当前 DSH 标题自动绑定该会话。
 // 读不到标题就先不绑，下次活动再试（避免把窗口误藏）。
@@ -356,9 +354,7 @@ function setTitleHint(s, raw) {
 }
 
 function titleMatches(s) {
-  if (!s.titleHint) return true; // 旧行为：没有 titleHint 的会话不受标题门控
-  if (!dshTitle) return true;    // 读不到 DSH 标题：保持旧行为，避免把所有窗口误藏
-  return normalizeDshTitle(dshTitle).indexOf(s.titleHint) !== -1;
+  return matchesTitle(s.titleHint, dshTitle);
 }
 
 async function attachToDsh(s, front, bounds) {
