@@ -24,6 +24,12 @@ const changelog = await fsp.readFile(path.join(ROOT, 'CHANGELOG.md'), 'utf8');
 const topVersion = (changelog.match(/^## (\d+\.\d+\.\d+)/m) || [])[1];
 add('package.json 版本与 CHANGELOG 一致', pkg.version === topVersion, pkg.version + ' vs ' + topVersion);
 
+// 2b. overlay 版本要和主包一致（否则打包产物版本号会是错的）
+try {
+  const ovPkg = JSON.parse(await fsp.readFile(path.join(ROOT, 'overlay', 'package.json'), 'utf8'));
+  add('overlay 版本与主包一致', ovPkg.version === pkg.version, ovPkg.version + ' vs ' + pkg.version);
+} catch { add('overlay 版本与主包一致', false, '读不到 overlay/package.json'); }
+
 // 3. 没有把依赖/产物提交进去
 let tracked = [];
 try {

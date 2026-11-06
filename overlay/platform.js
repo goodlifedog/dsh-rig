@@ -154,7 +154,8 @@ function isScreenLocked() {
   if (!isMac) return false;
   try {
     const out = require('node:child_process').execFileSync('/usr/sbin/ioreg', ['-n', 'Root', '-d1'], { encoding: 'utf8', timeout: 3000 });
-    return out.includes('CGSSessionScreenIsLocked');
+    const m = /CGSSessionScreenIsLocked"?\s*=\s*(Yes|No|true|false|1|0)/i.exec(out);
+    return m ? /^(yes|true|1)$/i.test(m[1]) : false;
   } catch { return false; }
 }
 

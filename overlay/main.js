@@ -1145,7 +1145,21 @@ function startThumbnailLoop(s) {
 
 function setWindowId(s, raw, source, title) {
   const id = normalizeWindowId(raw);
-  if (!id) return null;
+  if (!id) {
+    // 传 null / 非法值 = 解绑：必须把旧的错误态一起清掉，否则会一直显示上次的「目标窗口已失效」
+    if (s.state.windowId !== null) {
+      s.state.windowId = null;
+      s.state.windowTitle = '';
+      s.state.thumbnail.state = 'no-window';
+      s.state.thumbnail.error = null;
+      s.lastCaptureError = null;
+      s.lastThumbSignal = '';
+      stopThumbnailLoop(s);
+      signalThumbState(s, true);
+      if (raw === null || raw === undefined || raw === '') pushLog(s, '已解绑缩略图目标窗口', 'system');
+    }
+    return null;
+  }
 
   if (selfWindowIds.has(id)) {
     pushLog(s, '拒绝绑定 DeepSeek Harness 自身窗口（' + id + '），请指定被控应用窗口', 'system');

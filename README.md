@@ -101,11 +101,11 @@ await mcp.callTool('get_app_state', { app: 'Google Chrome' });
 
 ## 作者做了什么
 
-这个项目不是「包一层别人的工具」，它有 ~9000 行自己写的代码和 4000 行文档：
+这个项目不是「包一层别人的工具」，它有 ~11000 行自己写的代码和 4000 行文档：
 
 | 模块 | 行数 | 内容 |
 | --- | --- | --- |
-| `core/` | 5566 | daemon、任务队列、平台抽象、MCP 客户端、CDP 客户端、拟人输入、验收框架、14 个任务 |
+| `core/` | 6000+ | daemon、任务队列、平台抽象、MCP 客户端、CDP 客户端、拟人输入、验收框架、17 个任务 |
 | `overlay/` | 2788 | Electron 多会话小窗主进程、HTTP 服务、渲染层、会话门控、点击穿透 |
 | `scripts/` | 381 | 仓库体检、重启自检、版本同步、效率基准、打包 |
 | `test/` + `tools/` | 286 | 单元测试、Windows UIA 桥 |
@@ -180,7 +180,6 @@ core/
   browser.mjs       # 离屏 Chrome 管理（后台启动、恢复前台）
   cdp.mjs           # 零依赖 CDP 客户端
   human.mjs         # 拟人鼠标轨迹与输入
-  frames.mjs        # 实时帧推送
   tasks/            # 具体任务
 overlay/            # Electron 小窗（多会话、缩略图、穿透）
 flow/               # 每个流程的方法论与踩坑记录

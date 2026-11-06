@@ -18,7 +18,7 @@
 | 下拉选择（select） | ✅ | 点开菜单 → 点 AX 菜单项；set_value 无效 |
 | 复选框切换 | ✅ | AXPress 直接切换 |
 | 多应用并行 | ✅ | 按应用加锁，Finder+Calculator 并行 2.9s |
-| 小窗展示/空闲隐藏 | ✅ | 活动淡入、8 秒空闲淡出、不跟随 Space |
+| 小窗展示/空闲隐藏 | ✅ | 有活动即出现、5 秒空闲隐藏、不跟随 Space |
 | 专用浏览器（不碰用户窗口） | ✅ | 独立 profile + 离屏窗口 + CDP，用户前台完全不受影响 |
 | Electron 应用控制 | ✅ | electron-task.mjs 封装，离屏宿主，10/10 验收 |
 | 多应用并行 | ✅ | 按应用加锁 |
@@ -46,4 +46,4 @@
 cd desktop-agent && node core/acceptance.mjs
 ```
 
-当前结果：**6/6 PASS**（overlay 在线、手动隐藏、活动显示、boss-scan、multi-app、form-fill）。
+当前结果：**8/8 PASS + 1 项环境跳过**（overlay 在线、显隐、boss-scan、multi-app、form-fill 跳过、platform-demo、browser-demo、electron-demo）。

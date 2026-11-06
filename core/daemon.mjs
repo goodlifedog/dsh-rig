@@ -74,9 +74,25 @@ function runTask(name) {
       overlay.status('后台任务：' + name + ' · ' + secs + 's').catch(() => {});
     }, 4000);
 
+    // spawn 失败（找不到可执行文件、权限不足）不会触发 close，必须单独接住并清理
+    const failEarly = (err) => {
+      clearInterval(beat);
+      clearTimeout(timer);
+      try { out.end(); } catch {}
+      const entry = { name, ok: false, code: null, error: String(err && err.message || err), startedAt: new Date(startedAt).toISOString(), durationMs: Date.now() - startedAt, logFile };
+      state.current = null;
+      state.history.unshift(entry);
+      state.history = state.history.slice(0, 30);
+      overlay.status('失败：' + name).catch(() => {});
+      overlay.log('启动失败 ' + name + '：' + entry.error).catch(() => {});
+      return entry;
+    };
+    child.on('error', (err) => { try { resolve(failEarly(err)); } catch {} });
+
     child.on('close', (code) => {
       clearInterval(beat);
       clearTimeout(timer);
+      try { out.end(); } catch {}
       const durationMs = Date.now() - startedAt;
       const ok = code === 0;
       const entry = { name, ok, code, startedAt: new Date(startedAt).toISOString(), durationMs, logFile };

@@ -226,15 +226,18 @@ async function spawnChrome(opts, userDataDir, args) {
     return child;
   };
 
+  // 锁屏时 Chrome 起得慢（实测 ~18s），找 pid 的等待时间要相应放宽，否则拿到 0
+  const pidTimeout = isScreenLocked() ? 30000 : 8000;
+
   if (process.platform === 'darwin' && opts.background !== false) {
     // 用 open -g 后台启动：不让 Chrome 抢到前台
     start('open', ['-g', '-n', '-a', 'Google Chrome', '--args', ...args]);
-    return { pid: await findChromePid(userDataDir) };
+    return { pid: await findChromePid(userDataDir, { timeoutMs: pidTimeout }) };
   }
   if (process.platform === 'win32') {
     // Windows 没有等价的后台启动：直接起进程，窗口可能短暂获得前台
     const child = start(CHROME_BIN, args, { windowsHide: true });
-    return { pid: (await findChromePid(userDataDir)) || child.pid };
+    return { pid: (await findChromePid(userDataDir, { timeoutMs: pidTimeout })) || child.pid };
   }
   const child = start(CHROME_BIN, args);
   return { pid: child.pid };
@@ -330,12 +333,17 @@ export async function launch(opts = {}) {
         },
         /** 关掉浏览器：SIGTERM → 等 4s → SIGKILL，并清掉端口/锁文件，保证下次启动干净 */
         async close() {
-          try { process.kill(-child.pid, 'SIGTERM'); } catch {}
-          try { process.kill(child.pid, 'SIGTERM'); } catch {}
+          // pid 可能是 0（findChromePid 超时）：process.kill(-0) 会命中当前进程组，等于自杀，必须挡住
+          const pid = Number(child && child.pid) || 0;
+          if (pid > 0) {
+            try { process.kill(-pid, 'SIGTERM'); } catch {}
+            try { process.kill(pid, 'SIGTERM'); } catch {}
+          }
           const deadline = Date.now() + 4000;
-          while (Date.now() < deadline && (await isProcessAlive(child.pid))) await sleep(150);
-          if (await isProcessAlive(child.pid)) {
-            try { process.kill(child.pid, 'SIGKILL'); } catch {}
+          const closePid = Number(child && child.pid) || 0;
+          while (closePid > 0 && Date.now() < deadline && (await isProcessAlive(closePid))) await sleep(150);
+          if (closePid > 0 && await isProcessAlive(closePid)) {
+            try { process.kill(closePid, 'SIGKILL'); } catch {}
             await sleep(200);
           }
           // 同名 profile 的其它残留（本次启动拉起的 Helper 之外的进程）一并收掉

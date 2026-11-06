@@ -523,7 +523,7 @@ plist 在 `~/Library/LaunchAgents/`：`com.desktop-agent.daemon.plist`、`com.de
 | `HEADLESS_PROFILE` | `~/.desktop-agent/headless-profile` | headless demo 的 profile |
 | `OVERLAY_PORT` / `OVERLAY_HOST` | `7788` / `127.0.0.1` | 小窗 HTTP 端口/监听地址（改 0.0.0.0 会暴露局域网，不建议） |
 | `OVERLAY_WINDOW_ID` | — | 启动时绑定的被控窗口 ID |
-| `OVERLAY_FPS` | `7`（1–12） | 缩略图帧率 |
+| `OVERLAY_FPS` | `15`（1–30） | 缩略图帧率 |
 | `OVERLAY_WIDTH` / `OVERLAY_HEIGHT` | `300` / `190` | 小窗尺寸 |
 | `OVERLAY_MARGIN` | `16` | 距屏幕右上角边距 |
 | `OVERLAY_IDLE_HIDE_MS` | `5000` | 空闲隐藏；0 关闭（兜底 max(15s, 3×)） |
@@ -543,7 +543,7 @@ plist 在 `~/Library/LaunchAgents/`：`com.desktop-agent.daemon.plist`、`com.de
 - **小窗 HTTP 无鉴权**，只监听回环地址。
 - **form-fill 与 overlay 同时跑可能失败**（`cgWindowNotFound`，环境冲突，不是逻辑错误）。
 - **daemon（launchd）环境缺 node 路径**：浏览器类任务建议用 `npm run run` 跑（见 4.3 第 6 条）。
-- 缩略图按「小窗宽度 × 2（Retina）」出图，最长边上限 1600px；放大后目标分辨率会跟着变大，抓帧也更慢。
+- 缩略图按「小窗宽度 × 2（Retina）」出图，最长边上限 2560px；放大后目标分辨率会跟着变大（960pt 窗口对应 1920px），抓帧也更慢。
 
 ---
 

@@ -62,7 +62,10 @@ export function isScreenLocked() {
   if (!isMac) return false;
   try {
     const out = execFileSync('/usr/sbin/ioreg', ['-n', 'Root', '-d1'], { encoding: 'utf8', timeout: 3000 });
-    return /CGSSessionScreenIsLocked"?\s*=\s*(Yes|true|1)/i.test(out) || out.includes('CGSSessionScreenIsLocked');
+    // ioreg 输出形如 "CGSSessionScreenIsLocked" = Yes / No，必须看值，不能只看键在不在
+    const m = /CGSSessionScreenIsLocked"?\s*=\s*(Yes|No|true|false|1|0)/i.exec(out);
+    if (!m) return false;
+    return /^(yes|true|1)$/i.test(m[1]);
   } catch {
     return false;
   }

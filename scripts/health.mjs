@@ -24,7 +24,8 @@ function sh(cmd, args, timeout = 5000) {
 
 async function main() {
   // 1. 服务
-  const daemon = await getJson('http://127.0.0.1:7789/');
+  // 用 /status：它才带 history；GET / 只有 current/queued/tasks
+  const daemon = await getJson('http://127.0.0.1:7789/status');
   add('后台 daemon 7789', Boolean(daemon && daemon.ok), daemon ? 'pid=' + daemon.pid + ' 队列=' + daemon.queued : '未启动');
 
   const ov = await getJson('http://127.0.0.1:7788/health');
@@ -36,14 +37,14 @@ async function main() {
     add('锁屏状态', true, ov.screenLocked ? '已锁屏（Chrome 启动会慢很多）' : '未锁屏');
   }
 
-  // 2. 权限
-  let perm = null;
+  // 2. 权限（复用 core/permissions.mjs，避免这里再写一份解析）
   try {
-    const raw = sh(path.join(process.env.HOME, '.local/bin/ocu'), ['doctor', '--json'], 15000);
-    perm = raw ? JSON.parse(raw.split('\n').filter((l) => l.trim().startsWith('{')).pop()) : null;
-  } catch {}
-  if (perm) add('系统权限', perm.allGranted !== false, '辅助功能=' + perm.accessibilityTrusted + ' 屏幕录制=' + perm.screenCaptureGranted);
-  else add('系统权限', false, '读不到 ocu doctor 结果');
+    const { checkPermissions } = await import('../core/permissions.mjs');
+    const perm = await checkPermissions();
+    add('系统权限', perm.ok, perm.missing && perm.missing.length ? '缺：' + perm.missing.join(',') : '辅助功能 + 屏幕录制均已授权');
+  } catch (e) {
+    add('系统权限', false, '检查失败：' + String(e.message).slice(0, 60));
+  }
 
   // 3. 队列与最近任务
   if (daemon) {
