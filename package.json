@@ -40,6 +40,7 @@
     "repo:check": "node scripts/repo-check.mjs",
     "restart:check": "node scripts/restart-check.mjs",
     "bench:ocu": "node scripts/bench-ocu.mjs 4",
-    "check:ocu": "node scripts/check-ocu.mjs"
+    "check:ocu": "node scripts/check-ocu.mjs",
+    "start": "node scripts/start-all.mjs"
   }
 }
