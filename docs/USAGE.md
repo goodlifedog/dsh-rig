@@ -449,7 +449,7 @@ node core/tasks/<任务>.mjs          # 单跑一个任务文件（不经 runner
 | GET | `/sessions` | 所有会话摘要 |
 | GET | `/windows` | 可截图窗口列表（`self:true` 是我们自己的窗口） |
 | POST | `/log` | `{"text"}` 追加动作日志 |
-| POST | `/status` | `{"text","state"}` 更新胶囊；state: `idle/running/error` |
+| POST | `/status` | `{"text","state"}` 更新胶囊；state: `idle/running/error`；`{"clear":true}` 复位成「待命」 |
 | POST | `/window` | `{"windowId"}` 切换缩略图目标（绑自身窗口返回 403） |
 | POST | `/visible` | `{"visible":true}` 或 `false`：手动显隐；true 会固定显示（暂停自动隐藏） |
 | POST | `/expand` | `{}` 放大/还原 |
@@ -527,6 +527,8 @@ plist 在 `~/Library/LaunchAgents/`：`com.desktop-agent.daemon.plist`、`com.de
 | `OVERLAY_WIDTH` / `OVERLAY_HEIGHT` | `300` / `190` | 小窗尺寸 |
 | `OVERLAY_MARGIN` | `16` | 距屏幕右上角边距 |
 | `OVERLAY_IDLE_HIDE_MS` | `5000` | 空闲隐藏；0 关闭（兜底 max(15s, 3×)） |
+| `OVERLAY_ATTACH_FAST_MS` | `400` | 有小窗露着时轮询宿主的间隔（切会话靠它及时隐藏） |
+| `OVERLAY_ATTACH_SLOW_MS` | `1500` | 小窗全藏着时的轮询间隔（省电） |
 | `OVERLAY_MAX_SESSIONS` | `12` | 最多会话窗口数 |
 | `OVERLAY_SHOW_DOCK` | `0` | 设 1 保留 Dock 图标 |
 

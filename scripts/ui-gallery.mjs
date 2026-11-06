@@ -102,10 +102,17 @@ async function main() {
   await sleep(1800);
   await captureState('error');
 
-  // 收尾：清错误、恢复默认
+  // 收尾：清错误、清掉演示用状态文字、恢复默认
   await post('/window', { windowId: null });
+  await post('/status', { clear: true });
   await post('/visible', { visible: false });
   console.log('完成');
 }
 
-main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
+main().catch(async (e) => {
+  console.error('FAIL:', e.message);
+  // 即使中途失败也要把演示状态清掉，别让残影挂着
+  await post('/status', { clear: true }).catch(() => {});
+  await post('/window', { windowId: null }).catch(() => {});
+  process.exit(1);
+});

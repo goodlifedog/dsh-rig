@@ -60,6 +60,10 @@ const THUMB_MIN_PIXEL_WIDTH = 300;
 const THUMB_JPEG_QUALITY = 92;
 const CAPTURE_TIMEOUT_MS = 4000;
 const FADE_MS = 180;
+// 宿主轮询节奏：有小窗可见时快轮（切会话要马上消失），全都藏着时慢轮省电。
+// 快轮 400ms：用户切走会话到小窗消失最多约 0.5s；之前固定 1.2s 会明显觉得"迟一下"。
+const ATTACH_FAST_MS = clamp(Math.round(toNumber(process.env.OVERLAY_ATTACH_FAST_MS, 400)), 120, 2000);
+const ATTACH_SLOW_MS = clamp(Math.round(toNumber(process.env.OVERLAY_ATTACH_SLOW_MS, 1500)), 300, 5000);
 
 function toNumber(raw, fallback) {
   const value = Number(raw);
@@ -313,6 +317,55 @@ function readHostWindowCg() {
   });
 }
 
+// 一次 JXA 调用同时取「前台应用 bundle + 宿主窗口列表」：
+// 原来 frontmost 和 CGWindowList 各起一个 osascript，一轮要 200ms 以上，轮询快了就烧 CPU。
+function readHostSnapshot() {
+  if (!platform.isMac) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const script =
+      'ObjC.import("AppKit");' +
+      'ObjC.import("CoreGraphics");' +
+      'let front="";' +
+      'try { front=String(ObjC.unwrap($.NSWorkspace.sharedWorkspace.frontmostApplication.bundleIdentifier)||""); } catch(e) {}' +
+      'const target=' + JSON.stringify(HOST_PROCESS) + ';' +
+      'const opts=$.kCGWindowListOptionOnScreenOnly | $.kCGWindowListExcludeDesktopElements;' +
+      'const arr=ObjC.castRefToObject($.CGWindowListCopyWindowInfo(opts, 0));' +
+      'const out=[];' +
+      'for (let i=0;i<arr.count;i++){' +
+      '  try {' +
+      '    const d=arr.objectAtIndex(i);' +
+      '    const owner=ObjC.unwrap(d.objectForKey("kCGWindowOwnerName")) || "";' +
+      '    if (owner !== target) continue;' +
+      '    const layer=Number(ObjC.unwrap(d.objectForKey("kCGWindowLayer")));' +
+      '    if (layer !== 0) continue;' +
+      '    const b=ObjC.deepUnwrap(d.objectForKey("kCGWindowBounds"));' +
+      '    const name=ObjC.unwrap(d.objectForKey("kCGWindowName")) || "";' +
+      '    out.push({x:Number(b.X),y:Number(b.Y),w:Number(b.Width),h:Number(b.Height),name:String(name)});' +
+      '  } catch(e){}' +
+      '}' +
+      'JSON.stringify({front:front,windows:out});';
+    execFile('/usr/bin/osascript', ['-l', 'JavaScript', '-e', script], { timeout: 2000 }, (err, stdout) => {
+      if (err) return resolve(null);
+      try {
+        const data = JSON.parse(String(stdout));
+        if (!data || !Array.isArray(data.windows)) return resolve(null);
+        let best = null;
+        for (const item of data.windows) {
+          if (!item || item.w < 200 || item.h < 150) continue;
+          const area = item.w * item.h;
+          if (!best || area > best.area) best = { x: item.x, y: item.y, w: item.w, h: item.h, title: item.name || '', area: area };
+        }
+        resolve({
+          front: data.front || null,
+          cg: { ok: true, window: best ? { x: best.x, y: best.y, w: best.w, h: best.h, title: best.title } : null },
+        });
+      } catch (error) {
+        resolve(null);
+      }
+    });
+  });
+}
+
 async function readFrontmostBundle() {
   if (!platform.isMac) {
     const front = await platform.readFrontmostApp();
@@ -490,57 +543,98 @@ function stopHideGuard() {
 }
 
 let attachTimer = null;
+let lastAttachAt = 0;
+let lastAttachIntervalMs = ATTACH_SLOW_MS;
+
+let attachBusy = false;
 
 async function attachTick() {
-  const front = await readFrontmostBundle();
-  let bounds = null;
-  if (ATTACH_TO_DSH) {
-    const cg = await readHostWindowCg();
-    if (cg.ok) {
-      hostCheckedAt = Date.now();
-      if (cg.window) {
-        // 屏幕上真的能读到宿主窗口：位置/标题都刷新，stale=false
-        bounds = cg.window;
-        dshBounds = bounds;
-        if (bounds.title) dshTitle = bounds.title;
-        hostVisible = true;
-        hostBoundsStale = false;
-      } else {
-        // 屏幕上没有宿主窗口（最小化/隐藏/其它 Space）：必须隐藏，不能再用缓存 bounds 硬撑
-        hostVisible = false;
-        hostBoundsStale = true;
-      }
-    } else {
-      // CGWindowList 通道失败：不清空缓存、不据此断言宿主不可见；标 stale，交给兜底
-      hostBoundsStale = true;
-      if (Date.now() - hostCheckedAt > 5000) {
+  // 上一轮还没返回就跳过这一轮：快轮询时不会堆起一串 osascript 进程
+  if (attachBusy) return;
+  attachBusy = true;
+  try {
+    const snap = ATTACH_TO_DSH ? await readHostSnapshot() : null;
+    const front = snap ? snap.front : await readFrontmostBundle();
+    let bounds = null;
+    if (ATTACH_TO_DSH) {
+      const cg = snap ? snap.cg : await readHostWindowCg();
+      if (cg.ok) {
         hostCheckedAt = Date.now();
-        const fallback = await readDshBounds();
-        if (fallback) {
-          dshBounds = fallback;
-          if (fallback.title) dshTitle = fallback.title;
+        if (cg.window) {
+          // 屏幕上真的能读到宿主窗口：位置/标题都刷新，stale=false
+          bounds = cg.window;
+          dshBounds = bounds;
+          if (bounds.title) dshTitle = bounds.title;
           hostVisible = true;
           hostBoundsStale = false;
+        } else {
+          // 屏幕上没有宿主窗口（最小化/隐藏/其它 Space）：必须隐藏，不能再用缓存 bounds 硬撑
+          hostVisible = false;
+          hostBoundsStale = true;
         }
+      } else {
+        // CGWindowList 通道失败：不清空缓存、不据此断言宿主不可见；标 stale，交给兜底
+        hostBoundsStale = true;
+        if (Date.now() - hostCheckedAt > 5000) {
+          hostCheckedAt = Date.now();
+          const fallback = await readDshBounds();
+          if (fallback) {
+            dshBounds = fallback;
+            if (fallback.title) dshTitle = fallback.title;
+            hostVisible = true;
+            hostBoundsStale = false;
+          }
+        }
+        bounds = dshBounds;
       }
-      bounds = dshBounds;
     }
-  }
-  // 兜底：不贴宿主（独立使用）时贴到屏幕右上角，保证不依赖宿主也可用。
-  if (!ATTACH_TO_DSH && !bounds) {
-    const area = screen.getPrimaryDisplay().workArea;
-    bounds = { x: area.x, y: area.y, w: area.width, h: area.height };
-  }
-  if (!sessions.size) return;
-  for (const s of sessions.values()) {
-    attachToDsh(s, front, bounds).catch(() => {});
+    // 兜底：不贴宿主（独立使用）时贴到屏幕右上角，保证不依赖宿主也可用。
+    if (!ATTACH_TO_DSH && !bounds) {
+      const area = screen.getPrimaryDisplay().workArea;
+      bounds = { x: area.x, y: area.y, w: area.width, h: area.height };
+    }
+    if (!sessions.size) return;
+    for (const s of sessions.values()) {
+      attachToDsh(s, front, bounds).catch(() => {});
+    }
+  } finally {
+    attachBusy = false;
+    lastAttachAt = Date.now();
   }
 }
 
+// 快慢自适应：有小窗露着头就快轮（切会话要立刻消失），全藏着就慢轮省电
+function attachDelayMs() {
+  for (const s of sessions.values()) {
+    if (s.state.visible || s.flags.expanded) return ATTACH_FAST_MS;
+    if (s.win && !s.win.isDestroyed() && s.win.isVisible()) return ATTACH_FAST_MS;
+  }
+  return ATTACH_SLOW_MS;
+}
+
+let attachActive = false;
+
 function startAttachLoop() {
-  if (!ATTACH_TO_DSH || attachTimer) return;
-  attachTimer = setInterval(() => { attachTick().catch(() => {}); }, 1200);
-  attachTick().catch(() => {});
+  if (!ATTACH_TO_DSH || attachActive) return;
+  attachActive = true;
+  const tick = () => {
+    if (!attachActive) return;
+    attachTick().catch(() => {}).finally(() => {
+      if (!attachActive) return;
+      const delay = attachDelayMs();
+      lastAttachIntervalMs = delay;
+      attachTimer = setTimeout(tick, delay);
+    });
+  };
+  attachTimer = setTimeout(tick, 0);
+}
+
+function stopAttachLoop() {
+  attachActive = false;
+  if (attachTimer) {
+    clearTimeout(attachTimer);
+    attachTimer = null;
+  }
 }
 
 // 悬停检测：主进程轮询鼠标位置。
@@ -1342,6 +1436,7 @@ function sessionHealth(s) {
     dshTitle: dshTitle || null,
     hostVisible: Boolean(hostVisible),
     hostBoundsStale: Boolean(hostBoundsStale),
+    hostPoll: { lastAt: lastAttachAt || null, intervalMs: lastAttachIntervalMs, busy: attachBusy },
     logs: s.state.logs.length,
     fps: frameFps(s),
     frameBytes: s.frameBytes,
@@ -1578,10 +1673,7 @@ function cleanup() {
   stopHideGuard();
   stopCursorWatch();
 
-  if (attachTimer) {
-    clearInterval(attachTimer);
-    attachTimer = null;
-  }
+  stopAttachLoop();
 
   if (overlayServer) {
     overlayServer.close().catch(() => {});

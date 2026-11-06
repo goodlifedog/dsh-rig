@@ -11,6 +11,24 @@ async function api(pathname, init) {
   return { status: r.status, json: await r.json().catch(() => null) };
 }
 async function health() { return (await api('/health')).json; }
+
+// 收尾还原现场：状态文字清回「待命」并收起，避免测试残留被当成真任务
+async function restore() {
+  await post('/status', { clear: true }).catch(() => {});
+  await post('/visible', { visible: false }).catch(() => {});
+}
+// 有上限地等条件成立：避免"刚重启、还没抓到第一帧"被误判成功能坏了
+async function waitFor(check, timeoutMs, stepMs) {
+  const deadline = Date.now() + timeoutMs;
+  let last;
+  while (Date.now() < deadline) {
+    last = await check();
+    if (last && last.ok) return last;
+    await sleep(stepMs || 200);
+  }
+  return last || { ok: false };
+}
+
 async function post(pathname, body) {
   return api(pathname, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
 }
@@ -26,9 +44,11 @@ async function main() {
   await post('/visible', { visible: false });
   await sleep(300);
   await post('/status', { text: '回归测试：活动触发' });
-  await sleep(1200);
-  const h1 = await health();
-  record('有活动就出现', h1.visible === true, 'visible=' + h1.visible);
+  const shown = await waitFor(async () => {
+    const h = await health();
+    return { ok: h.visible === true, visible: h.visible, stale: h.hostBoundsStale };
+  }, 4000, 150);
+  record('有活动就出现', shown.ok, 'visible=' + shown.visible + ' 宿主贴边新鲜=' + (shown.stale === false));
 
   // 空闲 → 消失
   await sleep(7000);
@@ -62,12 +82,17 @@ async function main() {
 
   // 错误路径：绑定一个不存在的窗口 ID，应给人话而不是崩
   const bad = await post('/window', { windowId: 999999999 });
-  await sleep(1500);
+  const errored = await waitFor(async () => {
+    const h = await health();
+    const text = (h.thumbnail && h.thumbnail.error) || '';
+    return { ok: Boolean(text), error: text, ok2: h.ok };
+  }, 6000, 200);
   const h5 = await health();
-  const err = (h5.thumbnail && h5.thumbnail.error) || '';
+  const err = errored.error || '';
   record('失效窗口给出人话提示', Boolean(err) && /失效|不可见|不可用|重试/.test(err), err.slice(0, 60));
   record('错误时不弹窗不阻塞', Boolean(h5.ok), 'ok=' + h5.ok);
   await post('/window', { windowId: null });
+  await restore();
 
   const width = Math.max(...results.map((r) => r.name.length)) + 2;
   console.log('\n小窗效果回归\n');
@@ -77,4 +102,8 @@ async function main() {
   process.exit(bad2.length ? 1 : 0);
 }
 
-main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
+main().catch(async (e) => {
+  console.error('FAIL:', e.message);
+  await restore().catch(() => {});
+  process.exit(1);
+});

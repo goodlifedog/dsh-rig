@@ -207,7 +207,9 @@ function createOverlayServer(options) {
       }
       const body = await readJsonBody(req);
       const session = sessionFrom(url, body);
-      const text = requireText(body.text, 'text', MAX_STATUS_CHARS);
+      // clear:true 是显式复位入口（测试脚本收尾用）：把状态清回「待命」。
+      // 普通写入仍然拒绝空字符串，免得误把状态栏清空当成正常渲染。
+      const text = body.clear === true ? '' : requireText(body.text, 'text', MAX_STATUS_CHARS);
       const requestedState = typeof body.state === 'string' ? body.state : undefined;
       const titleHint = readTitleHint(body);
       const status = await handlers.onStatus(session, text, requestedState, titleHint);

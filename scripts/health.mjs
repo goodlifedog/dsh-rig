@@ -51,8 +51,19 @@ async function main() {
     const cur = daemon.current ? daemon.current.name : null;
     add('当前任务', true, cur ? cur + '（运行中）' : '空闲');
     const hist = daemon.history || [];
-    const fails = hist.filter((h) => h && h.ok === false).length;
-    add('最近任务失败数', fails === 0, fails + ' / ' + hist.length);
+    const fails = hist.filter((h) => h && h.ok === false);
+    const fmtDur = (ms) => {
+      const s = Math.max(0, Math.round((ms || 0) / 1000));
+      return s >= 90 ? Math.round(s / 60) + 'm' + (s % 60 ? Math.round(s % 60) + 's' : '') : s + 's';
+    };
+    let failDetail;
+    if (!hist.length) failDetail = '暂无记录';
+    else if (!fails.length) failDetail = '最近 ' + hist.length + ' 次全部成功（上次：' + hist[0].name + ' ' + fmtDur(hist[0].durationMs) + '）';
+    else {
+      const lf = fails[0];
+      failDetail = fails.length + ' / ' + hist.length + ' 次失败（最近失败：' + lf.name + '，退出码 ' + lf.code + '，' + (lf.startedAt || '').slice(5, 16).replace('T', ' ') + ' UTC）';
+    }
+    add('最近任务失败数', fails.length === 0, failDetail);
   }
 
   // 4. 近 24 小时运行日志里的失败
