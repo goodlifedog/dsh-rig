@@ -8,8 +8,8 @@
 | --- | --- | --- | --- |
 | 展示（小窗） | Electron + screencapture | Electron + PrintWindow | ✅ 已抽象，Windows 侧未实机验证 |
 | 前台/窗口信息 | osascript | PowerShell + User32 | ✅ 已抽象，Windows 侧未实机验证 |
-| 控制（点击/读界面） | ocu（Accessibility） | UI Automation（未实现） | ❌ 待实现 |
-| 后台输入 | sky_key | SendMessage(WM_CHAR) / SendInput | ❌ 待实现 |
+| 控制（点击/读界面） | ocu（Accessibility） | UI Automation（已写，未验证） | 🟡 代码就绪 |
+| 后台输入 | sky_key | PostMessage(WM_CHAR) | 🟡 代码就绪 |
 | 浏览器 | 离屏 Chrome + CDP | 同样可用（Chrome 跨平台） | ✅ 逻辑通用 |
 | 常驻服务 | launchd | 任务计划程序 schtasks | ⏳ 需补安装脚本 |
 
@@ -34,13 +34,23 @@ import { controlBackend, requireOcu, dataDir, runPowerShell } from './platform.m
 
 ### 1. 控制后端（最关键）
 
-ocu 只支持 macOS。Windows 需要等价物：读 UI 树 + 语义点击。推荐路径：
+ocu 只支持 macOS。Windows 侧已经写了 `tools/uia-bridge.ps1` + `core/backends/uia.mjs`，提供 snapshot / click / type / key 四个动作，接口形状对齐 ocu：
+
+```js
+import * as uia from './core/backends/uia.mjs';
+const app = await uia.getApp('notepad');
+await app.getAXState();
+await app.click(3);
+```
+
+底层实现：
 
 ```powershell
 Add-Type -AssemblyName UIAutomationClient
 $root = [System.Windows.Automation.AutomationElement]::RootElement
 # 遍历 FindAll(TreeScope.Descendants, Condition.TrueCondition) 拿控件树
-# 点击：InvokePattern / TogglePattern / SelectionItemPattern
+# 点击：InvokePattern -> SelectionItemPattern -> 聚焦+回车 三级兜底
+# 输入：PostMessage(WM_CHAR) 逐字符，不抢焦点
 ```
 
 需要封装成和 ocu 同形的接口：`getApp / getAXState / click / typeText / pressKey`，这样任务层不用改。
