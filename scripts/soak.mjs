@@ -7,7 +7,9 @@ import { execFileSync } from 'node:child_process';
 const DAEMON = process.env.AGENTD_URL || 'http://127.0.0.1:7789';
 const OVERLAY = process.env.OVERLAY_URL || 'http://127.0.0.1:7788';
 const ROUNDS = Math.max(1, Number(process.env.SOAK_ROUNDS) || 6);
-const TASKS = (process.env.SOAK_TASKS || 'electron-demo').split(',').map((s) => s.trim()).filter(Boolean);
+// 默认交替跑两个 demo：一个偏控制（electron-demo）、一个会推帧（headless-demo），
+// 这样帧率/画面这一路也能被采样到，而不是只看耗时
+const TASKS = (process.env.SOAK_TASKS || 'electron-demo,headless-demo').split(',').map((s) => s.trim()).filter(Boolean);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const getJson = async (url, timeout = 3000) => {
