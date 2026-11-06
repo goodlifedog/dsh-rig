@@ -1,0 +1,63 @@
+{
+  "name": "open-computer-use",
+  "version": "1.1.3",
+  "description": "Cross-platform Computer Use MCP server launcher. After install, configure open-computer-use mcp.",
+  "license": "MIT",
+  "homepage": "https://github.com/iFurySt/open-computer-use",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iFurySt/open-computer-use.git"
+  },
+  "bugs": {
+    "url": "https://github.com/iFurySt/open-computer-use/issues"
+  },
+  "keywords": [
+    "computer-use",
+    "codex",
+    "mcp",
+    "macos",
+    "linux",
+    "windows",
+    "automation"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "preferGlobal": true,
+  "publishConfig": {
+    "access": "public"
+  },
+  "bin": {
+    "open-computer-use": "bin/open-computer-use",
+    "ocu": "bin/ocu",
+    "open-computer-use-mcp": "bin/open-computer-use-mcp",
+    "open-codex-computer-use-mcp": "bin/open-codex-computer-use-mcp"
+  },
+  "scripts": {
+    "postinstall": "node ./scripts/postinstall.mjs"
+  },
+  "files": [
+    ".agents/plugins/marketplace.json",
+    "bin/",
+    "dist/Open Computer Use.app/",
+    "dist/linux/",
+    "dist/windows/",
+    "plugins/open-computer-use/.codex-plugin/",
+    "plugins/open-computer-use/.mcp.json",
+    "plugins/open-computer-use/assets/",
+    "plugins/open-computer-use/scripts/",
+    "scripts/install-claude-mcp.sh",
+    "scripts/install-gemini-mcp.sh",
+    "scripts/install-config-helper.mjs",
+    "scripts/install-codex-mcp.sh",
+    "scripts/install-opencode-mcp.sh",
+    "scripts/install-dsh-mcp.sh",
+    "scripts/install-codex-plugin.sh",
+    "scripts/node-repl/",
+    "scripts/postinstall.mjs",
+    "skills/open-computer-use/",
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md"
+  ]
+}

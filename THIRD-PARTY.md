@@ -47,9 +47,21 @@
 
 - 本项目：MIT（见 `LICENSE`）
 - `ocu`、Electron：MIT，允许商用与再分发，但**再分发时需保留其版权声明**
-- 本项目不分发它们的二进制，只声明为运行时依赖，因此不需要在仓库内附带其 LICENSE；如果你要把 `ocu` 一起打包分发，必须附上它的 LICENSE 文本
+- **本项目允许随包附带 ocu**，用 `scripts/bundle-ocu.mjs` 自动带上它的 LICENSE 与第三方声明
 
-## 五、一句话结论
+## 五、随包附带 ocu 的正确做法
+
+```bash
+node scripts/bundle-ocu.mjs                 # 只带 LICENSE、第三方声明、元数据（推荐）
+node scripts/bundle-ocu.mjs --with-binary   # 连运行时一起拷，体积大
+```
+
+输出在 `dist/vendor/open-computer-use/`，含它的 LICENSE、THIRD_PARTY_NOTICES.md，以及本项目生成的 NOTICE.md。
+`scripts/export.sh` 会自动调用，所以导出的发布包里已经带了许可与声明。
+
+无论是否附带二进制，都**不要修改 ocu 的源码后当成自己的**；本项目只是调用它的 CLI。
+
+## 六、一句话结论
 
 **架构、调度、小窗、任务、验证体系是自己写的；底层「能操作 macOS 应用」这个能力来自开源项目 ocu。**
 如果你希望这一层也完全自研，需要自己实现 Accessibility 客户端（读 AX 树、AXPress、后台键入），工作量不小，但技术上可行。

@@ -10,6 +10,9 @@ NAME="desktop-agent-$VERSION"
 mkdir -p "$OUT"
 rm -f "$OUT/$NAME.tar.gz"
 
+# 附带 ocu 的许可与第三方声明（合规）
+node "$ROOT/scripts/bundle-ocu.mjs" >/dev/null 2>&1 || echo "提示：未能附带 ocu 许可（未安装 ocu？）"
+
 cd "$ROOT"
 tar -czf "$OUT/$NAME.tar.gz" \
   --exclude='./node_modules' \
