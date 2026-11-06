@@ -60,6 +60,18 @@ await app.getAXState({ windowPlacement: 'restore' });         // 还回去
 3. 结束、异常、会话关闭时都要 `restore`，避免窗口留在看不见的地方
 4. 环境变量 `OPEN_COMPUTER_USE_VIRTUAL_DISPLAY_ENABLED=true` 必须由用户显式开启
 
+## 四点五、一条实测出来的硬规矩：不要对用户的 App 截图
+
+2026-11-06 实测：对后台运行的 Chrome 调用 `get_app_state(include_screenshot=true)` 之后，**Chrome 被置到了前台**（前台从 DeepSeek Harness 变成 Google Chrome）。
+全程没有任何 activate/切换窗口/点击调用，只有截图。
+
+结论与规矩：
+
+- **截图只允许用于我们自己的 headless / 离屏实例**（它们本来就没有可见窗口，置前也无感）
+- 操作用户正在用的应用时，一律 `include_screenshot=false`，只读 AX 树 + 语义点击
+- 需要坐标时用 `query` 返回的 bounds（不需要截图）
+- 兜底护栏：截图/点击前后比对前台应用，变了立即中止
+
 ## 五、风险与注意
 
 - 虚拟显示器会短暂改变系统显示排列，restore 后恢复；**必须在同一会话内配对调用**
