@@ -16,3 +16,10 @@ reports/
 overlay/docs/*.tmp
 # 导出产物
 dist/
+# 随包 ocu 运行时（37MB，打包前用 scripts/bundle-ocu.mjs --with-binary 生成）
+third_party/open-computer-use/bin/
+third_party/open-computer-use/dist/
+third_party/open-computer-use/scripts/
+
+# 打包产物
+dist-app/

@@ -22,6 +22,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const platform = require('./platform.js');
+const supervisor = require('./supervisor.js');
 const { normalizeDshTitle, matchesTitle } = require('./session-gate.js');
 const { createOverlayServer, DEFAULT_SESSION, SESSION_PATTERN } = require('./server.js');
 const { normalizeWindowId, resolveWindowId } = require('./window-id.js');
@@ -1386,13 +1387,24 @@ if (!hasSingleInstanceLock) {
     // 不 activate 已有窗口：overlay 永远不抢焦点。
   });
 
-  app.whenReady().then(boot).catch((error) => {
-    console.error('[overlay] 启动失败', error);
-    app.quit();
-  });
+  app.whenReady()
+    .then(async () => {
+      // 先把后台 daemon 带起来：打包后用户只需打开这一个 App
+      const sup = await supervisor.startDaemon();
+      if (sup.ok) console.log('[overlay] daemon 就绪', sup.reused ? '(复用已有)' : 'pid=' + sup.pid);
+      else console.error('[overlay] daemon 启动失败：' + sup.error);
+      return boot();
+    })
+    .catch((error) => {
+      console.error('[overlay] 启动失败', error);
+      app.quit();
+    });
 }
 
-app.on('before-quit', cleanup);
+app.on('before-quit', () => {
+  try { supervisor.stopDaemon(); } catch {}
+  cleanup();
+});
 
 // 多会话模式：关掉所有窗口不退出进程，HTTP 服务继续运行；
 // 下一条带 session 的请求会重新召唤对应的小窗，不影响其它会话。

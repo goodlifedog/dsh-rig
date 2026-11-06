@@ -5,6 +5,7 @@
  * 相比每次 spawn `ocu js`，长连接能复用原生会话：元素索引 120 秒内有效、动作更快、无需拼 JS 字符串。
  */
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
 import { resolveOcu } from './platform.mjs';
 
 const PROTOCOL_VERSION = '2025-03-26';
@@ -23,10 +24,21 @@ export class OcuMcp {
 
   async start() {
     if (this.child) return this;
-    this.child = spawn(this.bin, ['mcp'], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, OPEN_COMPUTER_USE_VISUAL_CURSOR: '0' },
-    });
+    // 随包附带的 ocu 是带 shebang 的 node 脚本，打包后没有全局 node，
+    // 用 Electron 自带的 node 运行时来执行它。
+    let isNodeScript = false;
+    try {
+      const fd = fs.openSync(this.bin, 'r');
+      const head = Buffer.alloc(2);
+      fs.readSync(fd, head, 0, 2, 0);
+      fs.closeSync(fd);
+      isNodeScript = head.toString('utf8') === '#!';
+    } catch {}
+    const cmd = isNodeScript ? process.execPath : this.bin;
+    const args = isNodeScript ? [this.bin, 'mcp'] : ['mcp'];
+    const env = { ...process.env, OPEN_COMPUTER_USE_VISUAL_CURSOR: '0' };
+    if (isNodeScript) env.ELECTRON_RUN_AS_NODE = '1';
+    this.child = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'], env });
     this.child.stdout.setEncoding('utf8');
     this.child.stdout.on('data', (chunk) => this._onData(chunk));
     this.child.stderr.setEncoding('utf8');

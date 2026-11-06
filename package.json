@@ -38,6 +38,8 @@
     "demo:platform": "node core/runner.mjs run platform-demo",
     "setup": "npm install && npm install --prefix overlay",
     "repo:check": "node scripts/repo-check.mjs",
-    "restart:check": "node scripts/restart-check.mjs"
+    "restart:check": "node scripts/restart-check.mjs",
+    "bench:ocu": "node scripts/bench-ocu.mjs 4",
+    "check:ocu": "node scripts/check-ocu.mjs"
   }
 }

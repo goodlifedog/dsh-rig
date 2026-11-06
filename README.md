@@ -183,6 +183,16 @@ flow/               # 每个流程的方法论与踩坑记录
 
 这个项目早期正是因为拿弹窗当成功信号，连续 8 次误报。修好后的判定链是：详情 id 精确比对 → 按钮文案判断是否已联系 → 消息列表差集验收。
 
+## 打包成单机 App
+
+```bash
+node scripts/bundle-ocu.mjs --with-binary    # 把 ocu 运行时放进 third_party
+cd overlay && npx electron-builder --mac dir --config electron-builder.yml
+```
+
+产出 `Desktop Agent.app`（约 300MB，含 Electron + ocu），**装完即可用，不需要另外装 Node 或 ocu**——已验证把全局 ocu 删掉后 App 仍完整可用。
+细节见 [flow/PACKAGING.md](flow/PACKAGING.md)。
+
 ## 打包上传
 
 ```bash

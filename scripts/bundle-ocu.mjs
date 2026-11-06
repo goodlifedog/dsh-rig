@@ -41,7 +41,7 @@ async function main() {
 
   if (withBinary) {
     console.log('拷贝运行时（可能较慢）…');
-    for (const dir of ['bin', 'dist']) {
+    for (const dir of ['bin', 'dist', 'scripts']) {
       const from = path.join(src, dir);
       if (await exists(from)) await fsp.cp(from, path.join(DEST, dir), { recursive: true, force: true });
     }

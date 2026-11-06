@@ -7,7 +7,16 @@
 import os from 'node:os';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+
+/** 随包附带的 ocu（打包成单 App 时用） */
+export function bundledOcu() {
+  const cand = path.join(HERE, '..', 'third_party', 'open-computer-use', 'bin', 'ocu');
+  return existsSync(cand) ? cand : null;
+}
 
 export const isMac = process.platform === 'darwin';
 export const isWindows = process.platform === 'win32';
@@ -25,6 +34,8 @@ export function controlBackend() {
 /** ocu 可执行文件路径（macOS 与 Windows 都有 npm 全局安装） */
 export function resolveOcu() {
   if (process.env.OCU_BIN) return process.env.OCU_BIN;
+  const bundled = bundledOcu();
+  if (bundled) return bundled;
   if (isMac) return path.join(os.homedir(), '.local/bin/ocu');
   if (isWindows) {
     const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');

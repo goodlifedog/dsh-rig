@@ -1,0 +1,34 @@
+appId: com.goodlifedog.dsh-desktop-agent
+productName: Desktop Agent
+copyright: Copyright © 2026 goodlifedog
+directories:
+  output: ../dist-app
+files:
+  - main.js
+  - preload.js
+  - renderer.js
+  - index.html
+  - server.js
+  - window-id.js
+  - session-gate.js
+  - platform.js
+  - supervisor.js
+  - package.json
+  - "!node_modules/**"
+extraResources:
+  - from: ../core
+    to: core
+    filter:
+      - "**/*"
+  - from: ../third_party
+    to: third_party
+  - from: ../flow
+    to: flow
+mac:
+  target:
+    - dir
+    - dmg
+  category: public.app-category.productivity
+  identity: "-"  # ad-hoc 签名，本地可用
+dmg:
+  title: Desktop Agent
