@@ -63,6 +63,8 @@ const FADE_MS = 180;
 // 宿主轮询节奏：有小窗可见时快轮（切会话要马上消失），全都藏着时慢轮省电。
 // 快轮 400ms：用户切走会话到小窗消失最多约 0.5s；之前固定 1.2s 会明显觉得"迟一下"。
 const ATTACH_FAST_MS = clamp(Math.round(toNumber(process.env.OVERLAY_ATTACH_FAST_MS, 400)), 120, 2000);
+// 被会话门控藏起来、但宿主还在前台：多半马上会切回来，用中间档轮询（切回时 0.7s 内重新出现）
+const ATTACH_MID_MS = clamp(Math.round(toNumber(process.env.OVERLAY_ATTACH_MID_MS, 700)), 200, 3000);
 const ATTACH_SLOW_MS = clamp(Math.round(toNumber(process.env.OVERLAY_ATTACH_SLOW_MS, 1500)), 300, 5000);
 
 function toNumber(raw, fallback) {
@@ -605,11 +607,14 @@ async function attachTick() {
 
 // 快慢自适应：有小窗露着头就快轮（切会话要立刻消失），全藏着就慢轮省电
 function attachDelayMs() {
+  let mid = false;
   for (const s of sessions.values()) {
     if (s.state.visible || s.flags.expanded) return ATTACH_FAST_MS;
     if (s.win && !s.win.isDestroyed() && s.win.isVisible()) return ATTACH_FAST_MS;
+    // 被会话门控藏起来（切到了别的会话）但宿主仍在前台：准备随时重新出现
+    if (s.flags.suppressBySession && hostVisible) mid = true;
   }
-  return ATTACH_SLOW_MS;
+  return mid ? ATTACH_MID_MS : ATTACH_SLOW_MS;
 }
 
 let attachActive = false;

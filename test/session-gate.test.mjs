@@ -27,3 +27,13 @@ test('标题命中才显示', () => {
   assert.equal(matchesTitle('规划布局探讨', dsh), true);
   assert.equal(matchesTitle('另一个会话', dsh), false);
 });
+
+test('hint 传完整窗口标题也能匹配', () => {
+  // 回归：调用方常把整条窗口标题原样当 titleHint 传进来，
+  // 只归一宿主一侧会让匹配永远失败、小窗再也不出现
+  const dsh = '规划布局探讨 — DeepSeek Harness';
+  assert.equal(matchesTitle('规划布局探讨 — DeepSeek Harness', dsh), true);
+  assert.equal(matchesTitle('规划布局探讨 - DeepSeek Harness', dsh), true);
+  assert.equal(matchesTitle('  规划布局探讨  ', dsh), true);
+  assert.equal(matchesTitle('另一个会话 — DeepSeek Harness', dsh), false);
+});
