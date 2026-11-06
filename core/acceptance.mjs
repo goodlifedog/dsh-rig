@@ -84,6 +84,7 @@ async function main() {
   const scanOk = await runTask('boss-scan');
   const multiOk = await runTask('multi-app');
   const writeOk = await runTask('form-fill');
+  const platformOk = await runTask('platform-demo');
   const browserOk = await runTask('browser-demo');
   const electronOk = await runTask('electron-demo');
 

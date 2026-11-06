@@ -30,6 +30,14 @@ const { isMac, isWindows, readFrontmostApp, readWindowBounds, readWindowTitle, c
 import { controlBackend, requireOcu, dataDir, runPowerShell } from './platform.mjs';
 ```
 
+## 一条命令验证控制通路
+
+```bash
+npm run demo:platform        # macOS 读 Chrome 的 AX 树；Windows 读记事本的 UIA 树
+```
+
+这是跨平台控制层的冒烟测试：同一份任务代码，macOS 走 ocu、Windows 走 UIA，输出格式一致。
+
 ## Windows 上还缺什么
 
 ### 1. 控制后端（最关键）

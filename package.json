@@ -31,6 +31,7 @@
     "doctor": "node core/platform-smoke.mjs",
     "service:install": "node core/service.mjs install",
     "service:uninstall": "node core/service.mjs uninstall",
-    "test": "node --test test/"
+    "test": "node --test test/",
+    "demo:platform": "node core/runner.mjs run platform-demo"
   }
 }
