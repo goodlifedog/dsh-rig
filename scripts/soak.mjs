@@ -43,7 +43,8 @@ async function main() {
   if (!before) { console.log('❌ 后台 daemon 没起来（7789）'); process.exit(1); }
   const health0 = await getJson(OVERLAY + '/health');
   const pid = health0 && health0.pid;
-  const historySeen = (before.history || []).length;
+  // 用「开始时间」当边界：/status 只回最近 30 条，靠长度差在记录满 30 条后会算错
+  const sinceStartedAt = (before.history && before.history[0] && before.history[0].startedAt) || null;
 
   const samples = [];
   const startedAll = Date.now();
@@ -68,7 +69,9 @@ async function main() {
 
   const after = await getJson(DAEMON + '/status');
   const history = (after && after.history) || [];
-  const newRuns = history.slice(0, Math.max(0, history.length - historySeen));
+  const newRuns = sinceStartedAt
+    ? history.filter((h) => h && h.startedAt && h.startedAt > sinceStartedAt)
+    : history.slice(0, ROUNDS);
   const failures = newRuns.filter((h) => h && h.ok === false);
   const rssStart = samples[0] ? samples[0].rss : 0;
   const rssEnd = samples[samples.length - 1] ? samples[samples.length - 1].rss : 0;
