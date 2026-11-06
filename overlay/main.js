@@ -27,6 +27,7 @@ const { normalizeDshTitle, matchesTitle } = require('./session-gate.js');
 const { createOverlayServer, DEFAULT_SESSION, SESSION_PATTERN } = require('./server.js');
 const { normalizeWindowId, resolveWindowId } = require('./window-id.js');
 const { computeFrameTarget } = require('./frame-target.js');
+const layout = require('./layout.js');
 
 const APP_NAME = 'desktop-agent-overlay';
 
@@ -392,22 +393,7 @@ let hostCheckedAt = 0;
 // 多会话平铺：优先排满右上角一行，再往下一行；都限制在 DSH 窗口内部
 function tilePosition(s, b) {
   const [cw, ch] = s.win.getSize();
-  const usableWidth = Math.max(cw, b.w - 2 * DSH_MARGIN);
-  const cols = Math.max(1, Math.floor((usableWidth + TILE_GAP) / (cw + TILE_GAP)));
-  const col = s.index % cols;
-  const row = Math.floor(s.index / cols);
-
-  const rawX = b.x + b.w - DSH_MARGIN - cw - col * (cw + TILE_GAP);
-  let rawY = b.y + DSH_MARGIN + row * (ch + TILE_GAP);
-
-  // 超出 DSH 底部时贴底，避免窗口跑到 DSH 外面（多到堆不下时才会互相压住）
-  const maxY = b.y + b.h - DSH_MARGIN - ch;
-  if (rawY > maxY) rawY = maxY;
-
-  return {
-    x: Math.round(clamp(rawX, b.x, Math.max(b.x, b.x + b.w - cw))),
-    y: Math.round(clamp(rawY, b.y, Math.max(b.y, maxY))),
-  };
+  return layout.tilePosition(b, { w: cw, h: ch }, s.index, { margin: DSH_MARGIN, gap: TILE_GAP });
 }
 
 function clampIntoDsh(s) {
@@ -417,16 +403,10 @@ function clampIntoDsh(s) {
 
   const [x, y] = win.getPosition();
   const [cw, ch] = win.getSize();
-  const minX = b.x;
-  const minY = b.y;
-  const maxX = Math.max(minX, b.x + b.w - cw);
-  const maxY = Math.max(minY, b.y + b.h - ch);
-  const nx = clamp(x, minX, maxX);
-  const ny = clamp(y, minY, maxY);
-
-  if (Math.abs(nx - x) > 1 || Math.abs(ny - y) > 1) {
+  const fixed = layout.clampIntoBounds({ x: x, y: y }, { w: cw, h: ch }, b, 1);
+  if (fixed.changed) {
     s.flags.settingBounds = true;
-    win.setPosition(Math.round(nx), Math.round(ny));
+    win.setPosition(fixed.x, fixed.y);
     setTimeout(() => { s.flags.settingBounds = false; }, 120);
   }
 }

@@ -7,7 +7,7 @@
   "main": "main.js",
   "scripts": {
     "start": "node start.mjs",
-    "check": "node --check main.js && node --check preload.js && node --check renderer.js && node --check server.js && node --check window-id.js && node --check frame-target.js && node --check platform.js && node --check start.mjs && node --check smoke-http.js",
+    "check": "node --check main.js && node --check preload.js && node --check renderer.js && node --check server.js && node --check window-id.js && node --check frame-target.js && node --check layout.js && node --check platform.js && node --check start.mjs && node --check smoke-http.js",
     "smoke": "node smoke-http.js",
     "dist": "electron-builder --mac --config electron-builder.yml",
     "dist:dir": "electron-builder --mac dir --config electron-builder.yml",
