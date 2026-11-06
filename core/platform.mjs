@@ -7,6 +7,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 
@@ -51,6 +52,20 @@ export function requireOcu() {
     throw new Error('当前平台（' + process.platform + '）没有 ocu 控制后端；macOS/Windows 请先 npm i -g open-computer-use，见 flow/CROSS-PLATFORM.md');
   }
   return bin;
+}
+
+/**
+ * 屏幕是否锁屏（仅 macOS）。
+ * 锁屏后 Chrome 等 GUI 应用启动会慢一个数量级，任务超时需要相应放宽。
+ */
+export function isScreenLocked() {
+  if (!isMac) return false;
+  try {
+    const out = execFileSync('/usr/sbin/ioreg', ['-n', 'Root', '-d1'], { encoding: 'utf8', timeout: 3000 });
+    return /CGSSessionScreenIsLocked"?\s*=\s*(Yes|true|1)/i.test(out) || out.includes('CGSSessionScreenIsLocked');
+  } catch {
+    return false;
+  }
 }
 
 /** 当前前台应用名（跨平台，失败返回空串） */
@@ -99,4 +114,4 @@ export function runPowerShell(script, timeout = 15000) {
   });
 }
 
-export default { isMac, isWindows, platform, controlBackend, resolveOcu, requireOcu, dataDir, runPowerShell, readFrontmostApp };
+export default { isMac, isWindows, platform, controlBackend, resolveOcu, requireOcu, dataDir, runPowerShell, readFrontmostApp, isScreenLocked };

@@ -27,6 +27,7 @@ import path from 'node:path';
 
 import { CDP, listTargets } from './cdp.mjs';
 import { overlay } from './agentd.mjs';
+import { isScreenLocked } from './platform.mjs';
 
 export const CHROME_BIN = process.env.CHROME_BIN
   || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
