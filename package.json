@@ -41,6 +41,8 @@
     "restart:check": "node scripts/restart-check.mjs",
     "bench:ocu": "node scripts/bench-ocu.mjs 4",
     "check:ocu": "node scripts/check-ocu.mjs",
-    "start": "node scripts/start-all.mjs"
+    "start": "node scripts/start-all.mjs",
+    "ui:regression": "node scripts/ui-regression.mjs",
+    "ui:check": "node scripts/ui-check.mjs"
   }
 }
