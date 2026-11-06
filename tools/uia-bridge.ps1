@@ -86,6 +86,10 @@ function Click-Index($idx) {
   $i = 0
   foreach ($el in $all) {
     if ($i -eq $idx) {
+      $cur = $el.Current
+      if ($target.name -and $cur.Name -ne $target.name) {
+        throw "索引 $idx 处的元素已变化（缓存=$($target.name) 现在=$($cur.Name)），请重新 snapshot"
+      }
       $pattern = $null
       if ($el.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) {
         $pattern.Invoke(); Write-Output '{"ok":true,"method":"invoke"}'; return
@@ -94,7 +98,7 @@ function Click-Index($idx) {
         $pattern.Select(); Write-Output '{"ok":true,"method":"select"}'; return
       }
       # 兜底：把焦点移过去再发回车（不移动鼠标）
-      $el.SetFocus()
+      try { $el.SetFocus() } catch { }
       $hwnd = $proc.MainWindowHandle
       [void][Native]::PostMessage($hwnd, 0x0100, [IntPtr]0x0D, [IntPtr]0)
       [void][Native]::PostMessage($hwnd, 0x0101, [IntPtr]0x0D, [IntPtr]0)

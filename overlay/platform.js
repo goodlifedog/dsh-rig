@@ -107,6 +107,13 @@ async function win32Hwnd(processName) {
   return r.ok ? r.out : '';
 }
 
+async function win32WindowTitle(processName) {
+  const safe = String(processName).replace(/'/g, "''");
+  const script = "$p = Get-Process -Name '" + safe + "' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle } | Select-Object -First 1; if ($p) { $p.MainWindowTitle }";
+  const r = await runPowerShell(script, 6000);
+  return r.ok && r.out ? r.out : null;
+}
+
 async function win32Frontmost() {
   const r = await runPowerShell(PS_WIN32_FRONT, 6000);
   return r.ok && r.out ? r.out : null;
@@ -156,7 +163,7 @@ async function readWindowBounds(processName) {
 
 async function readWindowTitle(processName) {
   if (isMac) return macWindowTitle(processName);
-  if (isWindows) return null; // Windows 下可从 GetWindowText 取，暂未实现
+  if (isWindows) return win32WindowTitle(processName);
   return null;
 }
 
