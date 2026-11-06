@@ -1,5 +1,7 @@
 # Desktop Agent
 
+[![CI](https://github.com/USER/desktop-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/USER/desktop-agent/actions/workflows/ci.yml)
+
 > 后台电脑控制 + 小窗回显。所有操作在你的真实应用里完成，但全程不抢焦点、不动你的鼠标、不切你的窗口。
 
 一个自用的 macOS 桌面自动化框架：**控制层**用 Accessibility 语义树驱动真实应用，**展示层**用一个贴在 DSH 窗口里的小窗实时回显它在干什么，**调度层**是常驻后台的 daemon 加任务运行器。
@@ -132,11 +134,15 @@ flow/               # 每个流程的方法论与踩坑记录
 
 这个项目早期正是因为拿弹窗当成功信号，连续 8 次误报。修好后的判定链是：详情 id 精确比对 → 按钮文案判断是否已联系 → 消息列表差集验收。
 
-## 验收
+## 测试与验收
 
 ```bash
-npm run accept
+npm test          # 单元测试（打分、薪资解析、平台探测）
+npm run check     # 语法检查
+npm run accept    # 端到端验收（需要本机服务在跑）
 ```
+
+CI 在 Ubuntu / macOS / Windows 三平台跑 `npm test` 与 `npm run check`。
 
 会跑一遍端到端检查：服务在线、小窗显隐、各任务是否通过，输出 Markdown 报告到 `reports/`。
 
