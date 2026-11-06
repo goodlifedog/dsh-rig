@@ -99,6 +99,15 @@ async function main() {
       failDetail = fails.length + ' / ' + hist.length + ' 次失败（最近失败：' + lf.name + '，退出码 ' + lf.code + '，' + (lf.startedAt || '').slice(5, 16).replace('T', ' ') + ' UTC）';
     }
     add('最近任务失败数', fails.length === 0, failDetail);
+
+    // 自动重试是否真的在帮忙：有重试记录说明遇到过临时性失败并救回来了
+    const retried = hist.filter((h) => h && (h.attempt || 0) > 0);
+    if (retried.length) {
+      const rescued = retried.filter((h) => h.ok).length;
+      add('自动重试', true, '最近 ' + hist.length + ' 次里重试 ' + retried.length + ' 次，救回 ' + rescued + ' 次');
+    } else {
+      add('自动重试', true, '最近 ' + hist.length + ' 次未触发重试');
+    }
   }
 
   // 4. 近 24 小时运行日志里的失败
