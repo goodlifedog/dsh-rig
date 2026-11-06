@@ -134,6 +134,14 @@ flow/               # 每个流程的方法论与踩坑记录
 
 这个项目早期正是因为拿弹窗当成功信号，连续 8 次误报。修好后的判定链是：详情 id 精确比对 → 按钮文案判断是否已联系 → 消息列表差集验收。
 
+## 打包上传
+
+```bash
+bash scripts/export.sh    # 生成 dist/desktop-agent-<version>.tar.gz，排除依赖与运行时产物
+```
+
+首次在 Windows 上运行，请按 [flow/WINDOWS-TESTING.md](flow/WINDOWS-TESTING.md) 的清单逐项确认。
+
 ## 测试与验收
 
 ```bash
@@ -155,6 +163,10 @@ CI 在 Ubuntu / macOS / Windows 三平台跑 `npm test` 与 `npm run check`。
 - [ ] 任务参数化（筛选标准可配置，先出清单再执行）
 - [ ] 小窗支持更多会话元信息（任务进度、耗时）
 - [ ] 更完整的失败重试策略
+
+## 变更记录
+
+见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## License
 

@@ -14,3 +14,5 @@ reports/
 
 # 截图源文件（保留 docs 里的展示图）
 overlay/docs/*.tmp
+# 导出产物
+dist/
