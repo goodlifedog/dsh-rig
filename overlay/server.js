@@ -312,7 +312,7 @@ function createOverlayServer(options) {
       return json(res, 200, { ok: true, session: session, closed: true });
     }
 
-    const known = ['/', '/health', '/sessions', '/windows', '/log', '/status', '/window', '/visible', '/frame', '/expand', '/close'];
+    const known = ['/', '/health', '/sessions', '/windows', '/frame-target', '/log', '/status', '/window', '/visible', '/frame', '/expand', '/close'];
     if (known.indexOf(pathname) !== -1) {
       return json(res, 405, { ok: false, error: method + ' 不被支持，请使用对应的方法' });
     }
