@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { classifyRun } from '../core/run-classify.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -104,11 +105,10 @@ async function main() {
       if (st.mtimeMs < cutoff) continue;
       recentTotal += 1;
       const text = fs.readFileSync(full, 'utf8');
-      const failed = /"event":"end","code":[1-9]/.test(text);
-      if (!failed) continue;
-      // 已知环境性失败：页面改版、宿主被占用、锁屏、投递未送达/已联系，不算代码问题
-      const known = /环境跳过|改成了指定关键词|已联系|未送达|锁屏|cgWindowNotFound|宿主窗口|还有 null 个窗口|No such file or directory|屏幕无窗口验收未过/.test(text);
-      if (known) envSkips += 1;
+      // 失败归类与验收共用一份规则（core/run-classify.mjs），避免两边判定不一致
+      const verdict = classifyRun(text);
+      if (!verdict.failed) continue;
+      if (verdict.envSkip) envSkips += 1;
       else {
         unexpected += 1;
         const ageMs = Date.now() - st.mtimeMs;

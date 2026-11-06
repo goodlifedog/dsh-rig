@@ -46,6 +46,7 @@
     "scope:check": "node scripts/session-scope-check.mjs",
     "soak": "node scripts/soak.mjs",
     "fps:check": "node scripts/fps-check.mjs",
+    "monitor": "node scripts/monitor.mjs",
     "ui:check": "node scripts/ui-check.mjs",
     "health": "node scripts/health.mjs"
   }

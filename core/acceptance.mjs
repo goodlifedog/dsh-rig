@@ -5,6 +5,7 @@ import { execFile, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { envSkipReason } from './run-classify.mjs';
 import { overlay } from './agentd.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -63,16 +64,11 @@ function frontmostBundle() {
 async function runTask(name, timeoutMs = 180000) {
   const r = await run('node', ['core/runner.mjs', 'run', name, '--timeout', String(timeoutMs)]);
   const out = r.stdout + r.stderr;
-  // 环境原因跳过（用户正在使用目标应用 / 不在目标页面）不算失败
-  const userBusy = /当前就是前台|不打扰用户|跳过扫描/.test(out);
-  // 本机 Electron 宿主可能被正在运行的 overlay 占用（cgWindowNotFound），属环境冲突不是逻辑错误
-  const hostBusy = /cgWindowNotFound|宿主窗口没起来|Electron 被其它实例接管/.test(out);
-  // form-fill 依赖线上页面结构（占位文案、输入框位置），站点改版就会失效，属演示任务的固有脆弱性
-  const pageChanged = /"改成了指定关键词": false|"已恢复原值": false/.test(out);
-  const skipped = userBusy || hostBusy || pageChanged;
+  // 环境原因跳过不算失败；规则与健康面板共用一份（core/run-classify.mjs）
+  const reason = envSkipReason(out);
+  const skipped = Boolean(reason);
   const ok = r.code === 0 || skipped;
-  const skipReason = userBusy ? '环境跳过（用户正在使用）' : hostBusy ? '环境跳过（Electron 宿主被 overlay 占用）' : pageChanged ? '环境跳过（目标页面结构已变）' : '';
-  record('任务 ' + name, ok, ok ? skipReason : out.slice(-200).replace(/\n/g, ' '), skipped);
+  record('任务 ' + name, ok, ok ? (reason ? '环境跳过（' + reason + '）' : '') : out.slice(-200).replace(/\n/g, ' '), skipped);
   return ok;
 }
 

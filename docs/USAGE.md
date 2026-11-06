@@ -429,6 +429,7 @@ curl -s http://127.0.0.1:7788/health | head -c 400   # 小窗自己怎么说
 | `npm run ui:regression` | `node scripts/ui-regression.mjs` | 小窗行为回归（出现/消失/穿透/放大比例） |
 | `npm run scope:check` | `node scripts/session-scope-check.mjs` | 会话隔离检查（只在本会话出现、切走多久消失、切回多久出现） |
 | `npm run soak` | `node scripts/soak.mjs` | 稳定性巡检：连跑 6 轮任务，看耗时、内存增长、有没有有效帧 |
+| `npm run monitor` | `node scripts/monitor.mjs` | 一键巡检：健康+小窗回归、会话隔离、帧率，汇总成 reports/monitor-*.md（`MONITOR_FAST=1` 跳过回归约 30 秒） |
 | `npm run fps:check` | `node scripts/fps-check.mjs` | 帧率压测：持续推帧 20 秒，量实际帧率/单帧体积/推帧耗时（`FPS_CHECK_EXPANDED=1` 测放大态） |
 
 ### 5.2 直接跑 node（npm 不覆盖的参数）

@@ -82,10 +82,15 @@ async function main() {
   await post('/status', { session: A, text: '会话隔离检查：切回来', titleHint: title });
   const back = await waitFor(async () => {
     const h = await health(A);
-    return { ok: h.visible === true, visible: h.visible };
+    if (h.visible === true) return { ok: true, visible: true, why: '' };
+    // 宿主不在前台（锁屏、用户在别的应用里）时按设计隐藏，不算没出现
+    const hostFront = !h.frontmost || /deepseek|\.dsh/i.test(h.frontmost);
+    if (!hostFront) return { ok: true, visible: false, why: '宿主不在前台（' + h.frontmost + '），按设计隐藏' };
+    return { ok: false, visible: false, why: '' };
   }, 3000, 50);
   const showMs = Date.now() - t2;
-  record('切回后重新出现', back.ok && showMs <= 1500, 'visible=' + back.visible + ' 用时=' + showMs + 'ms（要求 ≤1500ms）');
+  record('切回后重新出现', back.ok && (back.visible === false || showMs <= 1500),
+    back.why || ('visible=' + back.visible + ' 用时=' + showMs + 'ms（要求 ≤1500ms）'));
 
   await post('/status', { session: A, clear: true });
   await post('/visible', { session: A, visible: false });

@@ -549,6 +549,7 @@ function stopHideGuard() {
 let attachTimer = null;
 let lastAttachAt = 0;
 let lastAttachIntervalMs = ATTACH_SLOW_MS;
+let frontmostBundle = null;   // 最近一次轮询到的前台应用（健康信息里展示，便于解释为什么藏起来）
 
 let attachBusy = false;
 
@@ -559,6 +560,7 @@ async function attachTick() {
   try {
     const snap = ATTACH_TO_DSH ? await readHostSnapshot() : null;
     const front = snap ? snap.front : await readFrontmostBundle();
+    frontmostBundle = front || null;
     let bounds = null;
     if (ATTACH_TO_DSH) {
       const cg = snap ? snap.cg : await readHostWindowCg();
@@ -787,12 +789,25 @@ function scheduleIdleHide(s) {
   }, config.idleHideMs);
 }
 
+// 宿主是否在前台：不在前台就不显示，避免"闪一下又被藏"的观感
+function hostFrontmostOk() {
+  if (!ATTACH_TO_DSH) return true;
+  if (!frontmostBundle) return true; // 还没探测到时不拦，交给轮询兜底
+  const self = 'com.github.Electron';
+  return HOST_BUNDLES.includes(frontmostBundle) || frontmostBundle === self;
+}
+
 function showOverlay(s, reason) {
   const win = s.win;
   if (!win || win.isDestroyed()) return;
   // 标题门控：当前前台 DSH 会话不是它的时候，活动也不让窗口冒出来
   if (s.titleHint && !titleMatches(s)) {
     s.matched = false;
+    return;
+  }
+  // 宿主不在前台（用户在别的应用里）时同样不露头
+  if (!hostFrontmostOk()) {
+    s.state.visible = false;
     return;
   }
   s.state.visible = true;
@@ -1471,6 +1486,7 @@ function sessionHealth(s) {
     hostVisible: Boolean(hostVisible),
     hostBoundsStale: Boolean(hostBoundsStale),
     hostPoll: { lastAt: lastAttachAt || null, intervalMs: lastAttachIntervalMs, busy: attachBusy },
+    frontmost: frontmostBundle,
     logs: s.state.logs.length,
     fps: frameFps(s),
     frameBytes: s.frameBytes,
