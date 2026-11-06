@@ -37,7 +37,7 @@ export const overlay = {
   session: AGENT_SESSION,
   log: (text) => post('/log', { text }),
   status: (text, state) => post('/status', { text, state }),
-  window: (windowId) => post('/window', { windowId }),
+  window: (windowId, title) => post('/window', title ? { windowId, title } : { windowId }),
   visible: (visible) => post('/visible', { visible }),
   frame: (dataUrl, note, cursor) => post('/frame', { dataUrl, note, cursor }),
   expand: () => post('/expand', {}),
