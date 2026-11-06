@@ -19,7 +19,8 @@ import { decideRetry } from './retry-policy.mjs';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
 const PORT = Number(process.env.AGENTD_PORT || 7789);
-const TASKS_DIR = path.join(__dirname, 'tasks');
+// 允许指向别的任务目录：集成测试用临时目录，避免污染真实任务列表
+const TASKS_DIR = process.env.AGENTD_TASKS_DIR || path.join(__dirname, 'tasks');
 const LOGS = path.join(ROOT, 'logs', 'daemon');
 // 临时性失败自动重跑几次（Chrome 启动慢、端口没起来这类），环境类失败不重试
 const MAX_RETRIES = Math.max(0, Number(process.env.AGENTD_MAX_RETRIES || 1));
@@ -28,6 +29,7 @@ const state = {
   pid: process.pid,
   startedAt: new Date().toISOString(),
   current: null,      // { name, startedAt, pid }
+  pendingRetry: null, // { name, attempt, at }：失败后等待退避重跑，这段时间不能对外显示「空闲」
   queue: [],
   history: [],        // { name, ok, startedAt, durationMs, attempt } —— 内部保留 200 条用于统计
 };
@@ -145,6 +147,7 @@ function runTask(name, attempt = 0) {
     const startedAt = Date.now();
     const child = spawn(process.execPath, [file], { cwd: ROOT, env: { ...process.env, AGENTD_DAEMON: '1' } });
     state.current = { name, attempt, startedAt: new Date().toISOString(), pid: child.pid, logFile };
+    state.pendingRetry = null;
     overlay.status('后台任务：' + name + (attempt ? '（第 ' + (attempt + 1) + ' 次）' : '')).catch(() => {});
     overlay.log('开始执行 ' + name).catch(() => {});
 
@@ -195,7 +198,9 @@ function runTask(name, attempt = 0) {
       if (decision.retry) {
         await overlay.status('重试中：' + name + '（第 ' + (attempt + 2) + ' 次，' + Math.round(decision.delayMs / 1000) + 's 后）', 'running').catch(() => {});
         await overlay.log('失败原因：' + decision.reason + '；' + Math.round(decision.delayMs / 1000) + 's 后自动重试').catch(() => {});
+        state.pendingRetry = { name: name, attempt: attempt + 1, at: Date.now() + decision.delayMs };
         setTimeout(() => {
+          state.pendingRetry = null;
           state.queue.unshift({ name, attempt: attempt + 1, retry: true });
           drain();
         }, decision.delayMs);
@@ -248,7 +253,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (p === '/status' && req.method === 'GET') {
-    return json(res, 200, { ok: true, ...state, history: state.history.slice(0, 30), historyTotal: state.history.length, tasks: listTasks() });
+    return json(res, 200, { ok: true, ...state, queueLength: state.queue.length, history: state.history.slice(0, 30), historyTotal: state.history.length, tasks: listTasks() });
   }
 
   if (p === '/tasks' && req.method === 'GET') {

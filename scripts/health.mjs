@@ -88,7 +88,12 @@ async function main() {
   // 3. 队列与最近任务
   if (daemon) {
     const cur = daemon.current ? daemon.current.name : null;
-    add('当前任务', true, cur ? cur + '（运行中）' : '空闲');
+    const pending = daemon.pendingRetry;
+    if (cur) add('当前任务', true, cur + '（运行中）');
+    else if (pending) {
+      const secs = Math.max(0, Math.round((pending.at - Date.now()) / 1000));
+      add('当前任务', true, '等待重试：' + pending.name + '（第 ' + (pending.attempt + 1) + ' 次，约 ' + secs + 's 后）');
+    } else add('当前任务', true, '空闲');
     const hist = daemon.history || [];
     const fails = hist.filter((h) => h && h.ok === false);
     const fmtDur = (ms) => {
