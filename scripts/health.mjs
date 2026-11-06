@@ -34,10 +34,21 @@ async function main() {
   if (selftest) {
     const se = (selftest.checks && selftest.checks.systemEvents) || {};
     const ocu = (selftest.checks && selftest.checks.ocu) || {};
-    add('后台服务自检', Boolean(selftest.ok),
-      selftest.ok
-        ? '系统事件可用（' + (se.out || '').slice(0, 20) + ' 个进程）｜ocu ' + (ocu.ok ? '可用' : '不可用：' + (ocu.error || ''))
-        : (selftest.hint || '系统事件不可用'));
+    let locked = false;
+    try {
+      const { isScreenLocked } = await import('../core/platform.mjs');
+      locked = await isScreenLocked();
+    } catch {}
+    if (!selftest.ok) {
+      add('后台服务自检', false, selftest.hint || '系统事件不可用');
+    } else if (ocu.ok) {
+      add('后台服务自检', true, '系统事件可用（' + (se.out || '').slice(0, 20) + ' 个进程）｜ocu 可用');
+    } else if (locked) {
+      // 锁屏时系统不让访问窗口服务，ocu 会直接失败，属系统限制不是配置问题
+      add('后台服务自检', true, '系统事件可用｜ocu 锁屏期间不可用（解锁后恢复）');
+    } else {
+      add('后台服务自检', false, 'ocu 不可用：' + (ocu.error || '未知原因'));
+    }
   }
 
   const ov = await getJson('http://127.0.0.1:7788/health');
