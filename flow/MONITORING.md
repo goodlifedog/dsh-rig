@@ -33,8 +33,8 @@ npm run restart:check   # 重启 daemon + 小窗，再验证健康
 ## 三、定期：一键巡检 + 留档
 
 ```bash
-npm run monitor             # 约 40 秒：健康 + 小窗回归 + 会话隔离 + 帧率
-MONITOR_FAST=1 npm run monitor   # 跳过回归，约 30 秒
+npm run monitor                  # 约 40 秒：健康 + 小窗回归 + 会话隔离 + 帧率 + 短跑 2 轮任务
+MONITOR_FAST=1 npm run monitor    # 跳过回归，约 30 秒
 ```
 
 输出一张结论表，同时在 `reports/monitor-<时间>.md` 留档，方便过几天对比。

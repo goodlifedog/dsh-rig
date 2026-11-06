@@ -66,6 +66,17 @@ async function main() {
     detail: [fpsLine, byteLine, pushLine].map((s) => s.replace(/^\s{2}/, '')).filter(Boolean).join('｜') || '未通过',
   });
 
+  // 4. 稳定性：短跑 2 轮，抓「任务变慢/失败」这类回归（完整巡检用 npm run soak）
+  const soak = await runNode('soak.mjs', [], { SOAK_ROUNDS: '2' });
+  const soakResult = pick(soak.out, /任务结果/);
+  const soakMem = pick(soak.out, /小窗内存/);
+  steps.push({
+    name: '任务稳定性',
+    ok: soak.ok,
+    ms: soak.ms,
+    detail: [soakResult, soakMem].map((s) => s.replace(/^\s{2}/, '')).filter(Boolean).join('｜') || '未通过',
+  });
+
   const failed = steps.filter((s) => !s.ok);
   const w = Math.max(...steps.map((s) => s.name.length)) + 2;
   console.log('\n巡检结果（' + startedAt.toLocaleString('zh-CN') + '）\n');

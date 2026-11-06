@@ -263,7 +263,8 @@ npm run scope:check        # 小窗只在该会话出现？切走/切回各要�
 npm run fps:check          # 帧率压测：实际帧率、单帧体积、推帧耗时（FPS_CHECK_EXPANDED=1 测放大态）
 npm run soak               # 稳定性巡检：连跑 6 轮任务，看耗时、内存增长、有没有有效帧
 npm run accept    # 端到端验收（需要本机服务在跑）
-npm run repo:check # 仓库体检：版本一致、无依赖产物、无大文件、无隐私泄漏
+npm run verify    # 提交前一条龙：语法检查 + 单元测试 + 仓库体检
+npm run repo:check # 仓库体检：版本一致、无依赖产物、无大文件、无隐私泄漏、文档命令/图片不漂移
 npm test          # 单元测试（打分、薪资解析、平台探测、标题门控、失败归类）
 npm run check     # 语法检查
 npm run restart:check  # 重启两个服务再验证健康（抓「跑的是旧代码」这类问题）

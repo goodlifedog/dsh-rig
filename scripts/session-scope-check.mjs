@@ -45,14 +45,18 @@ async function main() {
   await cleanup();
   await sleep(300);
 
-  // A = 当前会话（标题对得上）：应该看得见
+  // A = 当前会话（标题对得上）：应该看得见；宿主不在前台（锁屏/用户在别的应用）时按设计隐藏
+  const hostAway = (h) => !h.frontmost || !/deepseek|\.dsh/i.test(h.frontmost);
   await post('/status', { session: A, text: '会话隔离检查：本会话', titleHint: title });
   await post('/visible', { session: A, visible: true });
   const shownA = await waitFor(async () => {
     const h = await health(A);
-    return { ok: h.visible === true && h.matched === true, visible: h.visible, matched: h.matched };
+    const matched = h.matched === true;
+    if (h.visible === true && matched) return { ok: true, visible: true, matched: true, why: '' };
+    if (matched && hostAway(h)) return { ok: true, visible: false, matched: true, why: '宿主不在前台（' + h.frontmost + '），按设计隐藏' };
+    return { ok: false, visible: h.visible, matched: h.matched, why: '' };
   }, 4000, 100);
-  record('召唤它的会话里可见', shownA.ok, 'visible=' + shownA.visible + ' matched=' + shownA.matched);
+  record('召唤它的会话里可见', shownA.ok, shownA.why || ('visible=' + shownA.visible + ' matched=' + shownA.matched));
 
   // B = 另一个会话（标题对不上）：必须藏起来，哪怕显式要求显示
   await post('/status', { session: B, text: '会话隔离检查：别的会话', titleHint: title + '（另一个会话）' });
@@ -63,9 +67,10 @@ async function main() {
   }, 3000, 100);
   record('别的会话里不可见', hiddenB.ok, 'visible=' + hiddenB.visible + ' matched=' + hiddenB.matched);
 
-  // B 的活动不能把 A 顶掉：A 仍然可见
+  // B 的活动不能把 A 顶掉：A 仍然可见（宿主不在前台时 A 本来就该藏着）
   const stillA = await health(A);
-  record('别的会话活动不影响本会话', stillA.visible === true, 'A.visible=' + stillA.visible);
+  const stillOk = stillA.visible === true || (stillA.matched === true && hostAway(stillA));
+  record('别的会话活动不影响本会话', stillOk, 'A.visible=' + stillA.visible + ' matched=' + stillA.matched);
 
   // 切走：把 A 的归属改成别的会话，模拟用户切到别的会话——应该很快消失
   const before = Date.now();
