@@ -105,6 +105,19 @@ test('会话字段做了白名单校验', async () => {
   });
 });
 
+test('推帧只接受 data:image/ 开头，挡住外部 URL', async () => {
+  await withServer(async (base) => {
+    const missing = await post(base, '/frame', {});
+    assert.equal(missing.status, 400);
+
+    const remote = await post(base, '/frame', { dataUrl: 'https://example.com/a.jpg' });
+    assert.equal(remote.status, 400, '不能让它去抓外网/本地文件');
+
+    const ok = await post(base, '/frame', { dataUrl: 'data:image/png;base64,AAAA', width: 600, height: 380 });
+    assert.equal(ok.status, 200);
+  });
+});
+
 test('未知接口 404', async () => {
   await withServer(async (base) => {
     const r = await get(base, '/nope');
