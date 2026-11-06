@@ -90,8 +90,8 @@ npm run run browser-demo
 | --- | --- | --- |
 | 小窗展示 | ✅ screencapture | ✅ PrintWindow（未实机验证） |
 | 前台/窗口信息 | ✅ osascript | ✅ PowerShell + User32（未实机验证） |
-| 控制（点击/读界面） | ✅ ocu | ❌ UI Automation 待实现 |
-| 后台输入 | ✅ sky_key | ❌ 待实现 |
+| 控制（点击/读界面） | ✅ ocu | ✅ ocu（官方支持 Windows） |
+| 后台输入 | ✅ sky_key（私有 SkyLight） | ✅ ocu 窗口消息投递 |
 | 浏览器 | ✅ 离屏 Chrome + CDP | ✅ 逻辑通用 |
 
 平台差异都收在 `overlay/platform.js`（渲染侧）和 `core/platform.mjs`（逻辑侧），业务代码不再直接调 osascript。

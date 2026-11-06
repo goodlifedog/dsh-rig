@@ -31,7 +31,7 @@
 | macOS / Windows 系统工具 | osascript、screencapture、PowerShell、launchctl、schtasks | 系统自带 | 否 |
 
 **重点说明**：macOS 上的点击、读界面、后台输入，底层能力来自 `ocu`。本项目做的是把它的 CLI 包装成可调度、可验证、可展示的一层——不是自己实现了 Accessibility 控制。
-换掉 `ocu` 后，macOS 控制就不可用；这也是为什么 `flow/CROSS-PLATFORM.md` 里 Windows 必须另写 UIA 后端。
+换掉 `ocu` 后，macOS 和 Windows 的控制都不可用——ocu 的安装包里带 `dist/windows/{amd64,arm64}` 原生运行时，官方支持 Windows。我们自写的 UIA 桥只是没有 ocu 时的兜底。
 
 ## 三、仅作资料参考、未使用其代码
 

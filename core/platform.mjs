@@ -2,34 +2,42 @@
 
 /**
  * 平台抽象（Node 侧）：解析控制后端、路径、服务管理命令。
- * macOS 用 ocu（Accessibility）；Windows 计划用 UI Automation，目前是预留。
+ * 控制后端统一走 ocu（官方支持 macOS 与 Windows）；UIA 桥是没有 ocu 时的兜底。
  */
 import os from 'node:os';
 import path from 'node:path';
+import { existsSync } from 'node:fs';
 import { execFile } from 'node:child_process';
 
 export const isMac = process.platform === 'darwin';
 export const isWindows = process.platform === 'win32';
 export const platform = process.platform;
 
-/** 控制后端：macOS=ocu，Windows=uia（未实现），其它=unsupported */
+/**
+ * 控制后端：ocu 官方支持 macOS 与 Windows（dist/windows 有原生运行时），
+ * 所以两边都优先用 ocu；UIA 桥仅作为没有 ocu 时的兜底方案。
+ */
 export function controlBackend() {
-  if (isMac) return 'ocu';
-  if (isWindows) return 'uia';
+  if (isMac || isWindows) return 'ocu';
   return 'unsupported';
 }
 
-/** ocu 可执行文件路径（仅 macOS） */
+/** ocu 可执行文件路径（macOS 与 Windows 都有 npm 全局安装） */
 export function resolveOcu() {
   if (process.env.OCU_BIN) return process.env.OCU_BIN;
   if (isMac) return path.join(os.homedir(), '.local/bin/ocu');
+  if (isWindows) {
+    const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+    const cand = path.join(appData, 'npm', 'ocu.cmd');
+    return existsSync(cand) ? cand : 'ocu.cmd'; // 退回 PATH 查找
+  }
   return null;
 }
 
 export function requireOcu() {
   const bin = resolveOcu();
   if (!bin) {
-    throw new Error('当前平台（' + process.platform + '）没有 ocu 控制后端；Windows 需要 UI Automation 后端，见 flow/CROSS-PLATFORM.md');
+    throw new Error('当前平台（' + process.platform + '）没有 ocu 控制后端；macOS/Windows 请先 npm i -g open-computer-use，见 flow/CROSS-PLATFORM.md');
   }
   return bin;
 }

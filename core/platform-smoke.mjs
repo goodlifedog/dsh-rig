@@ -18,12 +18,12 @@ function add(name, ok, detail) { rows.push({ name, ok, detail }); }
 add('平台', true, platform + (isMac ? '（macOS）' : isWindows ? '（Windows）' : ''));
 add('控制后端', controlBackend() !== 'unsupported', controlBackend());
 
-if (isMac) {
+if ((isMac || isWindows) && controlBackend() === 'ocu') {
   const ocu = resolveOcu();
   let ocuOk = false;
   try { await fsp.access(ocu); ocuOk = true; } catch {}
   add('ocu 可执行文件', ocuOk, ocu || 'not found');
-} else if (isWindows) {
+} else if (isWindows && controlBackend() !== 'ocu') {
   const bridge = path.join(ROOT, 'tools', 'uia-bridge.ps1');
   let bridgeOk = false;
   try { await fsp.access(bridge); bridgeOk = true; } catch {}

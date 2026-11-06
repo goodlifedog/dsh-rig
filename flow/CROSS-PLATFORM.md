@@ -8,8 +8,8 @@
 | --- | --- | --- | --- |
 | 展示（小窗） | Electron + screencapture | Electron + PrintWindow | ✅ 已抽象，Windows 侧未实机验证 |
 | 前台/窗口信息 | osascript | PowerShell + User32 | ✅ 已抽象，Windows 侧未实机验证 |
-| 控制（点击/读界面） | ocu（Accessibility） | UI Automation（已写，未验证） | 🟡 代码就绪 |
-| 后台输入 | sky_key | PostMessage(WM_CHAR) | 🟡 代码就绪 |
+| 控制（点击/读界面） | ocu（Accessibility） | **ocu 官方同样支持 Windows**（dist/windows 有原生运行时） | ✅ 同一后端 |
+| 后台输入 | sky_key（私有 SkyLight） | ocu 的窗口消息投递；UIA 桥的 PostMessage 作为兜底 | ✅ |
 | 浏览器 | 离屏 Chrome + CDP | 同样可用（Chrome 跨平台） | ✅ 逻辑通用 |
 | 常驻服务 | launchd | 任务计划程序 schtasks | ✅ core/service.mjs 已支持两边 |
 
@@ -42,7 +42,9 @@ npm run demo:platform        # macOS 读 Chrome 的 AX 树；Windows 读记事�
 
 ### 1. 控制后端（最关键）
 
-ocu 只支持 macOS。Windows 侧已经写了 `tools/uia-bridge.ps1` + `core/backends/uia.mjs`，提供 snapshot / click / type / key 四个动作，接口形状对齐 ocu：
+**更正**：ocu 官方支持 macOS / Windows / Linux，安装包里 `dist/windows/{amd64,arm64}` 就是 Windows 原生运行时。所以 Windows 应该优先用 ocu，而不是自研。
+
+已保留的自研部分：`tools/uia-bridge.ps1` + `core/backends/uia.mjs`，作为没有 ocu 时的兜底方案。，提供 snapshot / click / type / key 四个动作，接口形状对齐 ocu：
 
 ```js
 import * as uia from './core/backends/uia.mjs';

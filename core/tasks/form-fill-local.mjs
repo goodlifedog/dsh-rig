@@ -14,7 +14,7 @@ import { resolveOcu } from '../platform.mjs';
 
 import { isMac } from '../platform.mjs';
 if (!isMac) {
-  console.error('此任务依赖 macOS 的 ocu/osascript，Windows 版待移植；跨平台通路验证请跑 platform-demo');
+  console.error('此任务依赖 osascript 或 sky_key（macOS 专属），Windows 版待移植；跨平台通路验证请跑 platform-demo');
   process.exit(2);
 }
 const OCU = resolveOcu() || path.join(os.homedir(), '.local/bin/ocu');
