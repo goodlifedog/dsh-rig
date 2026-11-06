@@ -74,7 +74,7 @@ const config = {
   host: process.env.OVERLAY_HOST || '127.0.0.1',
   port: Math.round(toNumber(process.env.OVERLAY_PORT, DEFAULT_PORT)),
   // 抓帧频率：默认 7fps（约 143ms 一帧，screencapture 单帧约 100–125ms）
-  fps: clamp(toNumber(process.env.OVERLAY_FPS, 7), 1, 12),
+  fps: clamp(toNumber(process.env.OVERLAY_FPS, 15), 1, 30),
   width: Math.round(toNumber(process.env.OVERLAY_WIDTH, DEFAULT_WIDTH)),
   height: Math.round(toNumber(process.env.OVERLAY_HEIGHT, DEFAULT_HEIGHT)),
   margin: Math.round(toNumber(process.env.OVERLAY_MARGIN, 16)),
@@ -826,6 +826,23 @@ function pushExternalFrame(s, dataUrl, note, cursor) {
   markActivity(s, 'frame');
 }
 
+/** 从 JPEG 字节里读宽高（不解码整图），失败返回 null */
+function jpegSize(buf) {
+  try {
+    let i = 2;
+    while (i < buf.length) {
+      if (buf[i] !== 0xff) { i++; continue; }
+      const marker = buf[i + 1];
+      const len = buf.readUInt16BE(i + 2);
+      if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+        return { height: buf.readUInt16BE(i + 5), width: buf.readUInt16BE(i + 7) };
+      }
+      i += 2 + len;
+    }
+  } catch {}
+  return { width: 0, height: 0 };
+}
+
 async function captureThumbnail(s) {
   const win = s.win;
   if (!win || win.isDestroyed() || !s.flags.ready) return;
@@ -838,32 +855,47 @@ async function captureThumbnail(s) {
   s.flags.capturing = true;
   const captureStartedAt = Date.now();
   const slug = String(s.id).replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 40) || 'default';
-  const file = path.join(tempDir, 'frame-' + slug + '-' + Date.now() + '-' + (s.thumbSeq++) + '.png');
+  const file = path.join(tempDir, 'frame-' + slug + '-' + Date.now() + '-' + (s.thumbSeq++) + '.jpg');
   pendingTempFiles.add(file);
 
   try {
-    let image;
+    let jpeg;
+    let frameSize;
     if (platform.isMac) {
+      // 直接让 screencapture 输出 JPEG，省掉 nativeImage 的解码 + 重编码（约占单帧六成耗时）
       await execFileAsync(
         SCREENSHOT_CMD,
-        ['-x', '-o', '-l', String(s.state.windowId), '-t', 'png', file],
-        { timeout: CAPTURE_TIMEOUT_MS, maxBuffer: 1024 * 1024 }
+        ['-x', '-o', '-l', String(s.state.windowId), '-t', 'jpg', file],
+        { timeout: CAPTURE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024 }
       );
-      image = nativeImage.createFromPath(file);
+      const raw = await fs.promises.readFile(file);
+      frameSize = jpegSize(raw);
+      // 全尺寸帧太大（可达数百 KB），小窗用不到，缩到目标宽度后再编码
+      const targetWidth = thumbnailTargetWidth(s);
+      if (frameSize.width > targetWidth) {
+        const image = nativeImage.createFromBuffer(raw);
+        if (!image.isEmpty()) {
+          const frame = image.resize({ width: targetWidth, quality: 'good' });
+          frameSize = frame.getSize();
+          jpeg = frame.toJPEG(THUMB_JPEG_QUALITY);
+        } else {
+          jpeg = raw;
+        }
+      } else {
+        jpeg = raw;
+      }
     } else {
       const bytes = await platform.captureWindow(s.state.windowId, { title: s.state.windowTitle });
-      image = nativeImage.createFromBuffer(bytes);
+      const image = nativeImage.createFromBuffer(bytes);
+      if (!image || image.isEmpty()) throw new Error('截图没有产出有效图片');
+      const targetWidth = thumbnailTargetWidth(s);
+      const original = image.getSize();
+      const frame = original.width > targetWidth ? image.resize({ width: targetWidth, quality: 'best' }) : image;
+      frameSize = frame.getSize();
+      jpeg = frame.toJPEG(THUMB_JPEG_QUALITY);
     }
-    if (!image || image.isEmpty()) throw new Error('截图没有产出有效图片');
-
-    const original = image.getSize();
-    // 只做一次 nativeImage.resize：PNG 中间格式无损，最终只编码一次 JPEG
-    const targetWidth = thumbnailTargetWidth(s);
-    const frame = original.width > targetWidth
-      ? image.resize({ width: targetWidth, quality: 'best' })
-      : image;
-    const frameSize = frame.getSize();
-    const jpeg = frame.toJPEG(THUMB_JPEG_QUALITY);
+    if (!jpeg || !jpeg.length) throw new Error('截图没有产出有效图片');
+    if (!frameSize || !frameSize.width) frameSize = { width: 0, height: 0 };
 
     s.state.thumbnail = {
       state: 'live',
@@ -927,7 +959,7 @@ function startThumbnailLoop(s) {
   // 自调度：上一帧结束后再按「目标周期 - 本帧耗时」安排下一帧。
   // 用固定 setInterval 时，抓帧一旦超过周期就会被跳过一轮，实际帧率掉到一半；
   // 自调度可以把「抓一帧 + 编码」串起来，实际帧率稳定在 1000/单帧耗时。
-  const period = Math.max(100, Math.round(1000 / config.fps));
+  const period = Math.max(33, Math.round(1000 / config.fps));
   const tick = () => {
     if (!s.timers.thumb) return;
     const startedAt = Date.now();
