@@ -199,7 +199,7 @@ flow/               # 每个流程的方法论与踩坑记录
 
 点 `⤢` 放大看细节（960×600，画面按 2× 出图，1920×1200 像素）：
 
-![放大态](overlay/docs/ui-live-expanded.png)
+![放大态](overlay/docs/ui-live-expanded.jpg)
 
 多会话并存时，每个会话一个窗口：
 
