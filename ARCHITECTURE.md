@@ -86,6 +86,8 @@ overlay ──screencapture 约 7fps──▶ 每个会话独立的窗口
 | 小窗黑屏 | Windows 把 desktopCapturer 序号当 HWND | 传窗口标题反查 |
 | 点击无效 | 弹窗遮罩还在页面上 | 操作前先清理残留弹窗 |
 | 抓不到图 | 窗口在别的 Space 或已最小化 | 先激活/切换 Space，或改用外部推帧 |
+| 任务卡在「启动离屏 Chrome」 | 多个流程同时用同一个 profile，锁冲突 | daemon 会串行；手工并发跑任务会撞，先清残留 Chrome |
+| 锁屏时任务变慢/超时 | 系统锁屏后 Chrome 启动从 ~1s 变 ~18s | 放宽超时，或等解锁再跑 |
 
 ## 八、验证
 
