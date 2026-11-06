@@ -56,7 +56,8 @@
      ──POST /window──▶ overlay ──screencapture/PrintWindow──▶ 缩略图
      ──POST /frame ──▶ overlay（外部帧优先，暂停本地抓图）
      ──GET  /frame-target──▶ 取"小窗现在需要多大像素"，按需出图（收起 600px / 放大 1920px）
-overlay ──screencapture 约 13fps──▶ 每个会话独立的窗口
+overlay ──screencapture 约 6fps──▶ 每个会话独立的窗口（真实窗口路径，单帧约 150ms）
+任务 ──POST /frame（离屏 CDP 推帧，约 13fps）──▶ 同一个窗口
 守护进程在任务结束时会自动解绑窗口，抓帧循环随之停止，不会空转
 ```
 

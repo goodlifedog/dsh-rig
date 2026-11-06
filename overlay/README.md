@@ -343,7 +343,7 @@ GET /health 关键字段：
 
 - 分辨率：按「小窗宽度 × 2（Retina）」出图，上限 1600 像素；放大到 4:3 大窗时窗口变宽，目标分辨率自动跟着变大（实测量到 frameWidth=1600）。
 - 质量：最终 JPEG 质量 88（原 72）。
-- 帧率：默认 15fps 上限（OVERLAY_FPS 可调 1–30），实际受 screencapture 单帧耗时限制约 8–13fps；/health 的 fps 是最近 5 帧的平均值。
+- 帧率：默认 15fps 上限（OVERLAY_FPS 可调 1–30）。真实窗口抓图约 6fps（screencapture 单帧约 150ms），离屏推帧约 13fps；/health 的 fps 是最近 5 帧的平均值，窗口隐藏时暂停抓帧。
 - 抓图：`screencapture -x -o -l <windowID> -t png <临时文件>`（PNG 无损中间格式，避免 JPEG 二次编码），然后用 nativeImage 解码、只 resize 一次、再编码一次 JPEG。
 - 调度：自调度而不是固定 setInterval——上一帧结束再按「目标周期 - 本帧耗时」安排下一帧，避免抓帧超过周期时被跳过一轮导致实际帧率只有一半。同一时刻只允许一帧在抓（per-session 锁）。
 - 外部推帧（/frame）：见下一节「外部帧 / headless 画面」。

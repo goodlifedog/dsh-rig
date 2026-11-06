@@ -549,7 +549,10 @@ plist 在 `~/Library/LaunchAgents/`：`com.desktop-agent.daemon.plist`、`com.de
 - **锁屏时 AX/UIA 全失效**，Chrome 启动慢一个数量级。
 - **Safari 网页内容**在 AX 里读不到；微信/Telegram 只有窗口壳。
 - **小窗不跟随 Space**：切到别的桌面就看不到它（有意为之，避免跟着你到处飘）。
-- **小窗画面会比真实操作滞后**：抓帧约 13fps（受 screencapture 单帧 100–125ms 限制），编码/缩放再加几十毫秒。
+- **小窗画面会比真实操作滞后**，两条路速度不同：
+  - 真实窗口回显（`screencapture -l`）：约 6fps，单帧约 150ms（实测 6.2–6.3fps / 151–158ms）
+  - 离屏推帧（headless CDP 主动 `POST /frame`）：约 13fps，单帧约 48ms
+  小窗隐藏时不抓帧（实测 3 秒内 0 次 screencapture），显示时补一帧。
 - **对用户应用截图会把窗口提到前台**，所以用户应用一律不截图。
 - **小窗 HTTP 无鉴权**，只监听回环地址。
 - **form-fill 与 overlay 同时跑可能失败**（`cgWindowNotFound`，环境冲突，不是逻辑错误）。

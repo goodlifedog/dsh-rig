@@ -56,8 +56,13 @@ npm run fps:check                        # 收起态
 FPS_CHECK_EXPANDED=1 npm run fps:check   # 放大态
 ```
 
-参考值（Apple Silicon，本机实测）：收起态 12.7fps / 600px / 43KB 一帧 / 49ms 一帧；
-放大态 12.6fps / 1920px / 223KB / 57ms。低于 10fps 或单帧明显变慢，先看系统负载。
+fps:check 测的是**离屏推帧**这条路（CDP 主动推 `/frame`），参考值：收起态 12.7–12.8fps /
+600px / 43KB 一帧 / 48ms 一帧；放大态 12.6fps / 1920px / 223KB / 57ms。
+低于 10fps 或单帧明显变慢，先看系统负载。
+
+**真实窗口回显是另一条路**（`screencapture -l`），实测约 6fps、单帧 150ms 左右，
+窗口大小影响不大（抓的是窗口本身，再缩到目标宽度）。这是系统命令的固有开销，
+不是代码问题；要更高帧率只能走离屏推帧。
 
 ### 长时间是否稳定
 
