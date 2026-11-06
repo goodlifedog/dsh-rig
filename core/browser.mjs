@@ -258,7 +258,11 @@ function restoreFront(prevBundleId) {
  */
 export async function launch(opts = {}) {
   const userDataDir = opts.userDataDir || DEFAULT_PROFILE;
-  const timeoutMs = opts.timeoutMs || 30000;
+  // 锁屏时 GUI 应用启动会慢一个数量级（实测 Chrome ~1s → ~18s），超时相应放宽
+  const screenLocked = isScreenLocked();
+  const baseTimeout = opts.timeoutMs || 30000;
+  const timeoutMs = screenLocked ? baseTimeout * 3 : baseTimeout;
+  if (screenLocked) console.log('[browser] 检测到锁屏，启动超时放宽到 ' + timeoutMs + 'ms');
   const attempts = Math.max(1, Number(opts.retries == null ? 2 : opts.retries));
   await fsp.mkdir(userDataDir, { recursive: true });
 

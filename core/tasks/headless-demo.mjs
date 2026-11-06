@@ -129,6 +129,8 @@ async function humanClick(page, to) {
 }
 
 async function main() {
+  const { isScreenLocked } = await import('../platform.mjs');
+  const locked = isScreenLocked();
   const failures = [];
   const report = { ok: false, frontmost: {}, launch: {}, nav: {}, frames: [], click: {}, screen: {}, close: {} };
 
@@ -228,6 +230,15 @@ async function main() {
     residue = out.split('\n').filter((l) => l.includes(PROFILE) && l.includes('MacOS/Google Chrome') && !l.includes('Helper') && !l.includes('--type=')).length;
   } catch {}
   report.close = { ms: Date.now() - t2, ...closed, residueProcesses: residue };
+  // 锁屏时读不到前台应用与窗口列表，这不是失败，标记为跳过
+  if (locked) {
+    const before = failures.length;
+    for (let i = failures.length - 1; i >= 0; i -= 1) {
+      if (/前台|窗口/.test(failures[i])) failures.splice(i, 1);
+    }
+    report.skipped = ['锁屏状态下无法校验前台与窗口数（' + (before - failures.length) + ' 项）'];
+    console.log('[!] 锁屏中，跳过前台与窗口数校验');
+  }
   console.log('[6] 关闭:', report.close.ms, 'ms, 进程已退出:', !closed.alive, '；同 profile 残留进程:', residue);
   if (residue > 0) failures.push('关闭后仍有 ' + residue + ' 个残留进程');
 

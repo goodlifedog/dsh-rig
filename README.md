@@ -37,6 +37,9 @@
 
 ## 快速开始
 
+> 日常使用、排查、命令速查见 [docs/USAGE.md](docs/USAGE.md)。
+
+
 环境要求：macOS 14+、Node.js 20+、[open-computer-use](https://github.com/iFurySt/open-computer-use)（`ocu`）。
 
 ```bash
