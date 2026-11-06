@@ -28,6 +28,7 @@ const { createOverlayServer, DEFAULT_SESSION, SESSION_PATTERN } = require('./ser
 const { normalizeWindowId, resolveWindowId } = require('./window-id.js');
 const { computeFrameTarget } = require('./frame-target.js');
 const layout = require('./layout.js');
+const { shouldEvictSession } = require('./session-policy.js');
 
 const APP_NAME = 'desktop-agent-overlay';
 
@@ -81,7 +82,7 @@ function clamp(value, min, max) {
 const config = {
   host: process.env.OVERLAY_HOST || '127.0.0.1',
   port: Math.round(toNumber(process.env.OVERLAY_PORT, DEFAULT_PORT)),
-  // 抓帧频率：默认 7fps（约 143ms 一帧，screencapture 单帧约 100–125ms）
+  // 抓帧频率上限（实际受 screencapture 单帧 100–125ms 限制，通常 8–13fps）
   fps: clamp(toNumber(process.env.OVERLAY_FPS, 15), 1, 30),
   width: Math.round(toNumber(process.env.OVERLAY_WIDTH, DEFAULT_WIDTH)),
   height: Math.round(toNumber(process.env.OVERLAY_HEIGHT, DEFAULT_HEIGHT)),
@@ -90,6 +91,8 @@ const config = {
   windowId: resolveWindowId(process.argv, process.env),
   // 最后一次活动后多少毫秒自动隐藏；0 表示关闭自动隐藏
   idleHideMs: Math.max(0, Math.round(toNumber(process.env.OVERLAY_IDLE_HIDE_MS, 5000))),
+  // 会话窗口回收：多久没活动就自动关掉（0 = 不回收）。默认 30 分钟，避免开久了堆窗口占内存。
+  sessionTtlMs: Math.max(0, Math.round(toNumber(process.env.OVERLAY_SESSION_TTL_MS, 30 * 60 * 1000))),
 };
 
 let overlayServer = null;
@@ -505,6 +508,31 @@ async function attachToDsh(s, front, bounds) {
 // 就无视 hover / 自动隐藏开关之外的状态，强制把窗口收起来，保证「没操作就一定消失」。
 const HARD_HIDE_MS = Math.max(15000, config.idleHideMs * 3);
 let hideGuardTimer = null;
+
+// 会话窗口回收：过期会话自动关窗，下次有活动会按需重建
+let sessionSweepTimer = null;
+
+function startSessionSweep() {
+  if (sessionSweepTimer || !config.sessionTtlMs) return;
+  sessionSweepTimer = setInterval(() => {
+    const now = Date.now();
+    for (const s of Array.from(sessions.values())) {
+      const snapshot = {
+        pinned: s.state.pinned,
+        expanded: s.flags.expanded,
+        visible: s.state.visible,
+        hovering: s.flags.hovering,
+        lastActivityAt: s.state.lastActivityAt,
+        createdAt: s.createdAt,
+      };
+      if (!shouldEvictSession(snapshot, now, config.sessionTtlMs)) continue;
+      pushLog(s, '超过 ' + Math.round(config.sessionTtlMs / 60000) + ' 分钟没有活动，自动关闭该会话窗口', 'system');
+      closeSession(s.id);
+    }
+  // 扫得比 TTL 勤一些：TTL 小时也能及时回收（生产默认 30 分钟 → 每 60 秒扫一次）
+  }, clamp(Math.round(config.sessionTtlMs / 4), 2000, 60000));
+  if (typeof sessionSweepTimer.unref === 'function') sessionSweepTimer.unref();
+}
 
 function startHideGuard() {
   if (hideGuardTimer) return;
@@ -1710,6 +1738,7 @@ function cleanup() {
 
   stopHideGuard();
   stopCursorWatch();
+  if (sessionSweepTimer) { clearInterval(sessionSweepTimer); sessionSweepTimer = null; }
 
   stopAttachLoop();
 
@@ -1745,6 +1774,7 @@ async function boot() {
   startAttachLoop();
   startHideGuard();
   startCursorWatch();
+  startSessionSweep();
 
   // 启动时先扫一遍窗口，填充 selfWindowIds，避免把小窗绑到 DeepSeek Harness 自己身上。
   listWindows().catch(() => {});

@@ -538,6 +538,7 @@ plist 在 `~/Library/LaunchAgents/`：`com.desktop-agent.daemon.plist`、`com.de
 | `OVERLAY_ATTACH_FAST_MS` | `400` | 有小窗露着时轮询宿主的间隔（切会话靠它及时隐藏） |
 | `OVERLAY_ATTACH_SLOW_MS` | `1500` | 小窗全藏着时的轮询间隔（省电） |
 | `OVERLAY_MAX_SESSIONS` | `12` | 最多会话窗口数 |
+| `OVERLAY_SESSION_TTL_MS` | `1800000` | 会话窗口多久没活动就自动关掉（默认 30 分钟，0 关闭回收；下次有活动按需重建） |
 | `OVERLAY_SHOW_DOCK` | `0` | 设 1 保留 Dock 图标 |
 
 ---
