@@ -26,6 +26,7 @@ const supervisor = require('./supervisor.js');
 const { normalizeDshTitle, matchesTitle } = require('./session-gate.js');
 const { createOverlayServer, DEFAULT_SESSION, SESSION_PATTERN } = require('./server.js');
 const { normalizeWindowId, resolveWindowId } = require('./window-id.js');
+const { computeFrameTarget } = require('./frame-target.js');
 
 const APP_NAME = 'desktop-agent-overlay';
 
@@ -1452,12 +1453,12 @@ function frameTargetOf(s) {
       // 窗口销毁瞬间读不到，用默认值
     }
   }
-  const targetWidth = clamp(Math.round(width * THUMB_SCALE), THUMB_MIN_PIXEL_WIDTH, THUMB_MAX_PIXEL_WIDTH);
-  return {
-    width: targetWidth,
-    height: Math.max(1, Math.round(targetWidth * (height / width))),
-    expanded: Boolean(s.flags.expanded),
-  };
+  const size = computeFrameTarget(width, height, {
+    scale: THUMB_SCALE,
+    min: THUMB_MIN_PIXEL_WIDTH,
+    max: THUMB_MAX_PIXEL_WIDTH,
+  });
+  return { width: size.width, height: size.height, expanded: Boolean(s.flags.expanded) };
 }
 
 function sessionHealth(s) {
