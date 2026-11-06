@@ -144,6 +144,7 @@ bash scripts/export.sh    # 生成 dist/desktop-agent-<version>.tar.gz，排除�
 ## 测试与验收
 
 ```bash
+npm run repo:check # 仓库体检：版本一致、无依赖产物、无大文件、无隐私泄漏
 npm test          # 单元测试（打分、薪资解析、平台探测）
 npm run check     # 语法检查
 npm run accept    # 端到端验收（需要本机服务在跑）

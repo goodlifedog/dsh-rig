@@ -1,0 +1,61 @@
+'use strict';
+// 仓库体检：保证可以安全地传到公开仓库，且各处版本一致。
+//   node scripts/repo-check.mjs
+import { execFileSync } from 'node:child_process';
+import fsp from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.join(__dirname, '..');
+const rows = [];
+function add(name, ok, detail) { rows.push({ name, ok, detail: detail || '' }); }
+
+async function exists(p) { try { await fsp.access(p); return true; } catch { return false; } }
+
+// 1. 必需文件
+for (const f of ['README.md', 'LICENSE', 'CHANGELOG.md', 'package.json', '.gitignore']) {
+  add('存在 ' + f, await exists(path.join(ROOT, f)));
+}
+
+// 2. 版本一致性
+const pkg = JSON.parse(await fsp.readFile(path.join(ROOT, 'package.json'), 'utf8'));
+const changelog = await fsp.readFile(path.join(ROOT, 'CHANGELOG.md'), 'utf8');
+const topVersion = (changelog.match(/^## (\d+\.\d+\.\d+)/m) || [])[1];
+add('package.json 版本与 CHANGELOG 一致', pkg.version === topVersion, pkg.version + ' vs ' + topVersion);
+
+// 3. 没有把依赖/产物提交进去
+let tracked = [];
+try {
+  tracked = execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' }).trim().split('\n').filter(Boolean);
+} catch { add('git 仓库可用', false, 'git ls-files 失败'); }
+const junk = tracked.filter((f) => /node_modules\/|^logs\/|^reports\/|^dist\/|\.DS_Store$|^overlay\/node_modules/.test(f));
+add('没有提交依赖与运行时产物', junk.length === 0, junk.slice(0, 3).join(', '));
+
+// 4. 大文件
+const big = [];
+for (const f of tracked) {
+  try {
+    const st = await fsp.stat(path.join(ROOT, f));
+    if (st.size > 2 * 1024 * 1024) big.push(f + ' (' + Math.round(st.size / 1024) + 'KB)');
+  } catch {}
+}
+add('没有超过 2MB 的文件', big.length === 0, big.slice(0, 3).join(', '));
+
+// 5. 隐私扫描（邮箱/手机号/绝对用户路径）
+const leaks = [];
+for (const f of tracked) {
+  if (!/\.(mjs|js|md|json|ps1|sh)$/.test(f)) continue;
+  const text = await fsp.readFile(path.join(ROOT, f), 'utf8').catch(() => '');
+  if (/\/Users\/[a-zA-Z0-9_.-]+\/(Desktop|Documents|Downloads)/.test(text)) leaks.push(f + ' 含绝对用户路径');
+  // 手机号要独立成数，避免把 13 位时间戳误判
+  if (/(?<!\d)1[3-9]\d{9}(?!\d)/.test(text.replace(/https?:\/\/\S+/g, ''))) leaks.push(f + ' 疑似手机号');
+}
+add('没有绝对路径/手机号泄漏', leaks.length === 0, leaks.slice(0, 3).join(', '));
+
+const width = Math.max(...rows.map((r) => r.name.length)) + 2;
+console.log('\n仓库体检\n');
+for (const r of rows) console.log((r.ok ? '  ✅ ' : '  ❌ ') + r.name.padEnd(width) + r.detail);
+const bad = rows.filter((r) => !r.ok);
+console.log('\n' + (bad.length ? bad.length + ' 项未通过' : '全部通过') + '\n');
+process.exit(bad.length ? 1 : 0);

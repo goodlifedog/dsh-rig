@@ -460,7 +460,7 @@ curl -s http://127.0.0.1:9333/json/version
 curl -s http://127.0.0.1:9333/json/list
 
 # 3. 读标题 / DOM
-cd /Users/tester/Desktop/desktop-agent
+cd ~/your-workspace/desktop-agent
 node desktop-agent/core/cdp.mjs eval --port=9333 --expr="document.title"
 node desktop-agent/core/cdp.mjs inspect --port=9333
 

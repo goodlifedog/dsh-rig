@@ -22,6 +22,9 @@ jobs:
         run: npm test
       - name: 语法检查
         run: npm run check
+      - name: 仓库体检（隐私与大文件）
+        run: npm run repo:check
+        if: matrix.os == 'ubuntu-latest'
       - name: 平台自检（允许失败，仅提供信息）
         run: node core/platform-smoke.mjs
         continue-on-error: true
