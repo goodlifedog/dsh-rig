@@ -28,6 +28,19 @@ if (isMac) {
   let bridgeOk = false;
   try { await fsp.access(bridge); bridgeOk = true; } catch {}
   add('UIA 桥脚本', bridgeOk, bridge);
+  if (bridgeOk) {
+    try {
+      const { execFile } = await import('node:child_process');
+      const out = await new Promise((resolve) => execFile('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', bridge, 'selftest'],
+        { timeout: 20000, maxBuffer: 8 * 1024 * 1024 }, (err, stdout) => resolve(err ? '' : String(stdout || ''))));
+      const line = out.split(/\r?\n/).filter((l) => l.trim().startsWith('{')).pop();
+      const r = line ? JSON.parse(line) : null;
+      const failed = r && r.checks ? r.checks.filter((c) => !c.ok).map((c) => c.name) : ['selftest 无输出'];
+      add('UIA 自检', Boolean(r && r.ok), r && r.ok ? 'ok' : failed.join(', '));
+    } catch (e) {
+      add('UIA 自检', false, e.message);
+    }
+  }
 }
 
 // 目录可写性

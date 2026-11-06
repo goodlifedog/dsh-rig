@@ -134,10 +134,48 @@ function Press-Key($name) {
   Write-Output '{"ok":true}'
 }
 
+function SelfTest {
+  $out = @{ ok = $true; checks = @() }
+  function Add-Check($name, $ok, $detail) {
+    $script:last = $null
+    $out.checks += [pscustomobject]@{ name = $name; ok = $ok; detail = $detail }
+    if (-not $ok) { $out.ok = $false }
+  }
+
+  Add-Check 'PowerShell' $true $PSVersionTable.PSVersion.ToString()
+
+  try {
+    Add-Type -AssemblyName UIAutomationClient -ErrorAction Stop
+    Add-Check 'UIAutomationClient 程序集' $true 'ok'
+  } catch { Add-Check 'UIAutomationClient 程序集' $false $_.Exception.Message }
+
+  try {
+    Add-Type -AssemblyName UIAutomationTypes -ErrorAction Stop
+    Add-Check 'UIAutomationTypes 程序集' $true 'ok'
+  } catch { Add-Check 'UIAutomationTypes 程序集' $false $_.Exception.Message }
+
+  try {
+    $root = [System.Windows.Automation.AutomationElement]::RootElement
+    Add-Check '可读桌面根元素' ($null -ne $root) 'ok'
+  } catch { Add-Check '可读桌面根元素' $false $_.Exception.Message }
+
+  try {
+    $procs = Get-Process | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 3 -ExpandProperty ProcessName
+    Add-Check '可枚举窗口进程' ($procs.Count -gt 0) ($procs -join ', ')
+  } catch { Add-Check '可枚举窗口进程' $false $_.Exception.Message }
+
+  try {
+    Add-Type -AssemblyName System.Drawing -ErrorAction Stop
+    Add-Check 'System.Drawing（抓图依赖）' $true 'ok'
+  } catch { Add-Check 'System.Drawing（抓图依赖）' $false $_.Exception.Message }
+
+  Write-Output ($out | ConvertTo-Json -Depth 5 -Compress)
+}
 switch ($Command) {
   'snapshot' { Snapshot (Get-TargetProcess) }
   'click'    { Click-Index $Index }
   'type'     { Type-Text $Text }
   'key'      { Press-Key $Key }
+  'selftest' { SelfTest }
   default    { throw "未知命令: $Command" }
 }

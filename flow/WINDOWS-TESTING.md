@@ -14,7 +14,15 @@
 node core\platform-smoke.mjs
 ```
 
-预期：平台=win32、控制后端=uia、UIA 桥脚本存在、数据目录可写。
+预期：平台=win32、控制后端=uia、UIA 桥脚本存在、**UIA 自检通过**、数据目录可写。
+
+UIA 自检失败时，可以单独跑一次看细节：
+
+```powershell
+powershell -File tools\uia-bridge.ps1 selftest
+```
+
+它会逐项报告：PowerShell 版本、UIAutomationClient/Types 程序集、能否读桌面根元素、能否枚举窗口进程、System.Drawing 是否可用。
 两个服务显示未启动是正常的（还没装）。
 
 ## 2. 依赖与小窗
