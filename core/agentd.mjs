@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-const OCU = process.env.OCU_BIN || path.join(os.homedir(), '.local/bin/ocu');
+import { resolveOcu } from './platform.mjs';
+const OCU = resolveOcu() || path.join(os.homedir(), '.local/bin/ocu');
 const OVERLAY = process.env.OVERLAY_URL || 'http://127.0.0.1:7788';
 // 当前 agent 所属的 DSH 会话：每个会话召唤自己的小窗，缺省 default（旧行为不变）
 const AGENT_SESSION = (process.env.AGENT_SESSION || '').trim() || 'default';

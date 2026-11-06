@@ -3,7 +3,8 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-const OCU = process.env.OCU_BIN || path.join(os.homedir(), '.local/bin/ocu');
+import { resolveOcu } from '../platform.mjs';
+const OCU = resolveOcu() || path.join(os.homedir(), '.local/bin/ocu');
 const NODES = Number(process.env.COVERAGE_NODES || 6000);
 const OUT_JSON = process.env.COVERAGE_JSON || '/tmp/coverage-latest.json';
 const RAW_DIR = process.env.COVERAGE_RAW_DIR || '/tmp/coverage-raw';

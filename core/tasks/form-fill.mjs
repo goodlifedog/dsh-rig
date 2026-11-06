@@ -7,7 +7,8 @@ import { ocu, guard } from '../agentd.mjs';
 
 const APP = process.env.TARGET_APP || 'Google Chrome';
 const FRAG = 'zhipin.com/web/geek/jobs';
-const OCU = process.env.OCU_BIN || path.join(os.homedir(), '.local/bin/ocu');
+import { resolveOcu } from '../platform.mjs';
+const OCU = resolveOcu() || path.join(os.homedir(), '.local/bin/ocu');
 const NEW_KEYWORD = process.env.FILL_KEYWORD || 'Java开发工程师';
 const JS_TIMEOUT_MS = Number(process.env.FILL_JS_TIMEOUT_MS || 90000);
 

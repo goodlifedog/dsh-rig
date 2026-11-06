@@ -9,7 +9,8 @@ import { overlay } from '../agentd.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
-const OCU = path.join(os.homedir(), '.local/bin/ocu');
+import { resolveOcu } from '../platform.mjs';
+const OCU = resolveOcu() || path.join(os.homedir(), '.local/bin/ocu');
 
 const CFG = {
   salaryMin: Number(process.env.SALARY_MIN || 5),

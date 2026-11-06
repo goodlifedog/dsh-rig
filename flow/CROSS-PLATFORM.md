@@ -11,7 +11,7 @@
 | 控制（点击/读界面） | ocu（Accessibility） | UI Automation（已写，未验证） | 🟡 代码就绪 |
 | 后台输入 | sky_key | PostMessage(WM_CHAR) | 🟡 代码就绪 |
 | 浏览器 | 离屏 Chrome + CDP | 同样可用（Chrome 跨平台） | ✅ 逻辑通用 |
-| 常驻服务 | launchd | 任务计划程序 schtasks | ⏳ 需补安装脚本 |
+| 常驻服务 | launchd | 任务计划程序 schtasks | ✅ core/service.mjs 已支持两边 |
 
 ## 已经做完的抽象
 
@@ -64,11 +64,14 @@ $root = [System.Windows.Automation.AutomationElement]::RootElement
 
 优先 PostMessage，失败再退回 SendInput，并在文档里标明局限。
 
-### 3. 服务自启
+### 3. 服务自启（已实现）
 
-```powershell
-schtasks /Create /TN desktop-agent /TR "node C:\path\core\daemon.mjs" /SC ONLOGON
+```bash
+node core/service.mjs install    # macOS 写 launchd，Windows 建计划任务
+node core/service.mjs uninstall
 ```
+
+Windows 侧用 `schtasks /SC ONLOGON`，等价于 macOS 的 RunAtLoad。
 
 ## 验证方式
 

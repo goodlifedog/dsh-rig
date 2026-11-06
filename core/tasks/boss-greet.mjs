@@ -18,7 +18,8 @@ import { readChatItems, diffChat } from './greet-verify.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
-const OCU = process.env.OCU_BIN || path.join(os.homedir(), '.local/bin/ocu');
+import { resolveOcu } from '../platform.mjs';
+const OCU = resolveOcu() || path.join(os.homedir(), '.local/bin/ocu');
 const APP = process.env.TARGET_APP || 'Google Chrome';
 const TARGET = Math.max(1, Number(process.env.GREET_LIMIT || 2));
 const MAX_FAILED = 2;            // 同一岗位失败几次后放弃

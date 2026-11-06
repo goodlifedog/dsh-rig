@@ -7,7 +7,8 @@ import { ocu, overlay, guard, parseJobs, countElements } from '../agentd.mjs';
 
 const APP = process.env.TARGET_APP || 'Google Chrome';
 const TARGET_FRAGMENT = 'zhipin.com/web/geek/jobs';
-const OCU = process.env.OCU_BIN || path.join(os.homedir(), '.local/bin/ocu');
+import { resolveOcu } from '../platform.mjs';
+const OCU = resolveOcu() || path.join(os.homedir(), '.local/bin/ocu');
 const MIN_JOBS = Number(process.env.MIN_JOBS || 10);
 const MAX_JOB_LOGS = Number(process.env.MAX_JOB_LOGS || 50);
 const JS_TIMEOUT_MS = Number(process.env.SCAN_JS_TIMEOUT_MS || 90000);

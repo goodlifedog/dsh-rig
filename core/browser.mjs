@@ -48,17 +48,34 @@ async function waitForPort(userDataDir, { timeoutMs = 30000 } = {}) {
   throw new Error('等待 Chrome 调试端口超时：' + userDataDir);
 }
 
+/** 列出进程（跨平台），返回 [{ pid, command }] */
+async function listProcesses() {
+  const { execFileSync } = await import('node:child_process');
+  if (process.platform === 'win32') {
+    try {
+      const out = execFileSync('powershell', ['-NoProfile', '-Command',
+        'Get-CimInstance Win32_Process | Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress'],
+        { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+      const arr = JSON.parse(out || '[]');
+      return (Array.isArray(arr) ? arr : [arr]).map((x) => ({ pid: Number(x.ProcessId), command: String(x.CommandLine || '') }));
+    } catch { return []; }
+  }
+  const out = execFileSync('ps', ['-ax', '-o', 'pid=,command='], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+  return out.split('\n').filter(Boolean).map((line) => {
+    const m = line.trim().match(/^(\d+)\s+(.*)$/);
+    return m ? { pid: Number(m[1]), command: m[2] } : null;
+  }).filter(Boolean);
+}
+
 /** 通过 user-data-dir 在进程表里找到 Chrome 主进程 pid */
 export async function findChromePid(userDataDir, { timeoutMs = 8000 } = {}) {
   const started = Date.now();
+  const exeHint = process.platform === 'win32' ? 'chrome.exe' : 'MacOS/Google Chrome';
   while (Date.now() - started < timeoutMs) {
     try {
-      const { execFileSync } = await import('node:child_process');
-      const out = execFileSync('ps', ['-ax', '-o', 'pid=,command='], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
-      for (const line of out.split('\n')) {
-        if (line.includes(userDataDir) && line.includes('MacOS/Google Chrome') && !line.includes('Helper')) {
-          const pid = Number(line.trim().split(' ')[0]);
-          if (pid) return pid;
+      for (const p of await listProcesses()) {
+        if (p.command.includes(userDataDir) && p.command.includes(exeHint) && !p.command.includes('Helper') && !p.command.includes('--type=')) {
+          return p.pid;
         }
       }
     } catch {}
@@ -152,6 +169,12 @@ export async function launch(opts = {}) {
     child = spawn('open', ['-g', '-n', '-a', 'Google Chrome', '--args', ...args], { detached: true, stdio: ['ignore', 'ignore', 'ignore'] });
     child.unref();
     child = { pid: await findChromePid(userDataDir) };
+  } else if (process.platform === 'win32') {
+    // Windows 没有等价的后台启动：直接起进程，窗口可能短暂获得前台
+    child = spawn(CHROME_BIN, args, { detached: true, stdio: ['ignore', 'ignore', 'ignore'], windowsHide: true });
+    child.unref();
+    const pid = await findChromePid(userDataDir);
+    if (pid) child = { pid };
   } else {
     child = spawn(CHROME_BIN, args, { detached: true, stdio: ['ignore', 'ignore', 'ignore'] });
     child.unref();

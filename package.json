@@ -6,8 +6,17 @@
   "description": "后台电脑控制 + 小窗回显：用 Accessibility 语义树驱动真实 macOS 应用，全程不抢焦点",
   "license": "MIT",
   "author": "goodlifedog",
-  "engines": { "node": ">=20" },
-  "keywords": ["macos", "accessibility", "computer-use", "automation", "electron", "overlay"],
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "macos",
+    "accessibility",
+    "computer-use",
+    "automation",
+    "electron",
+    "overlay"
+  ],
   "scripts": {
     "status": "node core/status.mjs",
     "accept": "node core/acceptance.mjs",
@@ -17,7 +26,10 @@
     "stop": "node core/cli.mjs stop",
     "agent": "node core/cli.mjs status",
     "task": "node core/cli.mjs run",
-    "check": "node --check core/daemon.mjs && node --check core/runner.mjs && node --check core/agentd.mjs && node --check core/platform.mjs && node --check overlay/platform.js",
-    "overlay": "cd overlay && npm start"
+    "check": "node --check core/daemon.mjs && node --check core/runner.mjs && node --check core/agentd.mjs && node --check core/platform.mjs && node --check core/service.mjs && node --check overlay/platform.js",
+    "overlay": "cd overlay && npm start",
+    "doctor": "node core/platform-smoke.mjs",
+    "service:install": "node core/service.mjs install",
+    "service:uninstall": "node core/service.mjs uninstall"
   }
 }

@@ -10,7 +10,8 @@ import path from 'node:path';
  * 再读回 AX 校验。没有 submit，不提交任何表单。
  */
 
-const OCU = process.env.OCU_BIN || path.join(os.homedir(), '.local/bin/ocu');
+import { resolveOcu } from '../platform.mjs';
+const OCU = resolveOcu() || path.join(os.homedir(), '.local/bin/ocu');
 // 用一个独立 bundle id 的 Electron 副本承载本地表单：
 // overlay 本身也是 Electron(com.github.Electron)，同名会撞车，且我们不想弹窗打扰用户。
 const HOST_APP = process.env.FORM_HOST_APP || '/tmp/OCUFormHost.app';

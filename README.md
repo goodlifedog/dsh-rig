@@ -38,11 +38,17 @@
 环境要求：macOS 14+、Node.js 20+、[open-computer-use](https://github.com/iFurySt/open-computer-use)（`ocu`）。
 
 ```bash
+# 0. 环境自检（换机器先跑这个）
+npm run doctor
+
 # 1. 装依赖
 npm install
 cd overlay && npm install && cd ..
 
-# 2. 启后台服务（daemon + 小窗）
+# 2. 装成开机自启（macOS launchd / Windows 计划任务）
+npm run service:install
+
+# 或者只临时启一下
 npm run daemon
 
 # 3. 看状态
