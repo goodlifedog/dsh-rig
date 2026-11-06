@@ -9,6 +9,8 @@
 - 环境自检：`npm run doctor`（控制后端、可执行文件、数据目录、两个服务）
 - 验收：真失败与环境跳过分离，输出 6/6 通过 + 2 跳过
 - 测试：`core/lib/salary.mjs`、`core/lib/score.mjs` 抽出为纯函数，11 个用例 + 三平台 CI
+- 小窗启动改为 `overlay/start.mjs`，不再依赖 POSIX 的 `env -u`（Windows 可跑）
+- 平台冒烟任务 `platform-demo`，接入验收
 
 ## 0.4.0 (2026-11-06)
 

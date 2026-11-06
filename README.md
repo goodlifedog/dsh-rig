@@ -43,9 +43,8 @@
 # 0. 环境自检（换机器先跑这个）
 npm run doctor
 
-# 1. 装依赖
-npm install
-cd overlay && npm install && cd ..
+# 1. 装依赖（根目录与 overlay 一起）
+npm run setup
 
 # 2. 装成开机自启（macOS launchd / Windows 计划任务）
 npm run service:install
