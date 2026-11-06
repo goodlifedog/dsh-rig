@@ -149,6 +149,15 @@ function tempPath(ext) {
   return path.join(os.tmpdir(), 'overlay-cap-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + ext);
 }
 
+/** 屏幕是否锁屏（仅 macOS）：锁屏时抓帧会失败、应用启动变慢，健康检查里要能看出来 */
+function isScreenLocked() {
+  if (!isMac) return false;
+  try {
+    const out = require('node:child_process').execFileSync('/usr/sbin/ioreg', ['-n', 'Root', '-d1'], { encoding: 'utf8', timeout: 3000 });
+    return out.includes('CGSSessionScreenIsLocked');
+  } catch { return false; }
+}
+
 async function readFrontmostApp() {
   if (isMac) return { bundle: await macFrontmostBundle() };
   if (isWindows) return { bundle: await win32Frontmost() };
@@ -186,4 +195,5 @@ module.exports = {
   readWindowBounds,
   readWindowTitle,
   captureWindow,
+  isScreenLocked,
 };

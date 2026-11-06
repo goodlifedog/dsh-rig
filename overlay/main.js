@@ -1319,6 +1319,7 @@ function sessionHealth(s) {
     expanded: s.flags.expanded,
     hovering: s.flags.hovering,
     clickThrough: Boolean(s.flags.clickThrough),
+    screenLocked: platform.isScreenLocked(),
     lastActivityAt: s.state.lastActivityAt,
     hardHideMs: HARD_HIDE_MS,
     windowId: s.state.windowId,
