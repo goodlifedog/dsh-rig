@@ -10,6 +10,7 @@ const { execFile } = require('node:child_process');
 const fsp = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
+const { psQuote, psLikeContains, hwndExpression } = require('./ps-quote.js');
 
 const isMac = process.platform === 'darwin';
 const isWindows = process.platform === 'win32';
@@ -74,7 +75,7 @@ const PS_WIN32_BOUNDS = (processName) => [
   'public struct RECT { public int Left, Top, Right, Bottom; }',
   'public class W { [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r); }',
   '"@',
-  '$p = Get-Process -Name "' + processName + '" -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1',
+  '$p = Get-Process -Name ' + psQuote(processName) + ' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1',
   'if (-not $p) { exit 0 }',
   '$r = New-Object RECT',
   '[void][W]::GetWindowRect($p.MainWindowHandle, [ref]$r)',
@@ -98,18 +99,18 @@ const PS_WIN32_CAPTURE = (hwndExpr, outPath) => [
   '$hdc = $g.GetHdc()',
   '[void][W]::PrintWindow($h, $hdc, 2)',
   '$g.ReleaseHdc($hdc); $g.Dispose()',
-  '$bmp.Save("' + outPath.replace(/\\/g, '\\\\') + '", [System.Drawing.Imaging.ImageFormat]::Png)',
+  '$bmp.Save(' + psQuote(outPath) + ', [System.Drawing.Imaging.ImageFormat]::Png)',
   '$bmp.Dispose()'
 ].join('\n');
 
 async function win32Hwnd(processName) {
-  const r = await runPowerShell('(Get-Process -Name "' + processName + '" -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1).MainWindowHandle');
+  // 一律用单引号字符串 + 转义，避免进程名/标题里的 $(...) 被当成命令执行
+  const r = await runPowerShell('(Get-Process -Name ' + psQuote(processName) + ' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1).MainWindowHandle');
   return r.ok ? r.out : '';
 }
 
 async function win32WindowTitle(processName) {
-  const safe = String(processName).replace(/'/g, "''");
-  const script = "$p = Get-Process -Name '" + safe + "' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle } | Select-Object -First 1; if ($p) { $p.MainWindowTitle }";
+  const script = '$p = Get-Process -Name ' + psQuote(processName) + ' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle } | Select-Object -First 1; if ($p) { $p.MainWindowTitle }';
   const r = await runPowerShell(script, 6000);
   return r.ok && r.out ? r.out : null;
 }
@@ -129,15 +130,18 @@ async function win32WindowBounds(processName) {
 
 async function win32HwndByTitle(title) {
   if (!title) return '';
-  const safe = String(title).replace(/'/g, "''");
-  const r = await runPowerShell('(Get-Process | Where-Object { $_.MainWindowTitle -like "*' + safe + '*" } | Select-Object -First 1).MainWindowHandle');
+  // 标题来自外部（/window 的 title），必须按单引号字符串转义后再拼进脚本
+  const r = await runPowerShell('(Get-Process | Where-Object { $_.MainWindowTitle -like ' + psLikeContains(title) + ' } | Select-Object -First 1).MainWindowHandle');
   return r.ok ? r.out : '';
 }
 
 async function win32CaptureWindow(windowId, outPath, hints) {
   // Windows 上 windowId 来自 desktopCapturer 的序号，不是 HWND；优先按窗口标题反查
   const byTitle = hints && hints.title ? await win32HwndByTitle(hints.title) : '';
-  const hwndExpr = byTitle || (windowId ? '0x' + Number(windowId).toString(16) : await win32Hwnd('Electron'));
+  const byId = hwndExpression(windowId);
+  // byTitle 来自 PowerShell 输出，也按白名单校验，只接受 0x 十六进制
+  const fromTitle = /^0x[0-9a-f]+$/i.test(String(byTitle || '').trim()) ? String(byTitle).trim() : '';
+  const hwndExpr = fromTitle || byId || await win32Hwnd('Electron');
   const r = await runPowerShell(PS_WIN32_CAPTURE(hwndExpr, outPath), 8000);
   if (!r.ok) throw new Error('PrintWindow 失败: ' + (r.err && r.err.message));
   return fsp.readFile(outPath);
