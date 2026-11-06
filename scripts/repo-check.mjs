@@ -59,6 +59,42 @@ for (const f of tracked) {
 }
 add('没有绝对路径/手机号泄漏', leaks.length === 0, leaks.slice(0, 3).join(', '));
 
+// 6. 文档里提到的 npm run 命令必须真实存在（文档漂移最容易发生在这里）
+// overlay 有自己的 package.json（打包用），它文档里的命令要在 overlay 的 scripts 里找
+const scripts = Object.assign({}, pkg.scripts || {});
+try {
+  const ovPkg = JSON.parse(await fsp.readFile(path.join(ROOT, 'overlay', 'package.json'), 'utf8'));
+  Object.assign(scripts, ovPkg.scripts || {});
+} catch {}
+const docFiles = ['README.md', 'docs/USAGE.md', 'ARCHITECTURE.md', 'overlay/README.md'];
+const missing = new Set();
+let mentioned = 0;
+for (const f of docFiles) {
+  if (!(await exists(path.join(ROOT, f)))) continue;
+  const text = await fsp.readFile(path.join(ROOT, f), 'utf8');
+  for (const m of text.matchAll(/npm run ([a-z0-9:_-]+)/g)) {
+    const name = m[1];
+    mentioned += 1;
+    if (!scripts[name]) missing.add(name);
+  }
+}
+add('文档里的 npm 命令都存在', missing.size === 0,
+  missing.size ? '缺：' + Array.from(missing).join(', ') : mentioned + ' 处引用全部命中');
+
+// 7. 文档里引用的图片文件必须存在（README 常见断链）
+const brokenImages = [];
+for (const f of docFiles) {
+  if (!(await exists(path.join(ROOT, f)))) continue;
+  const text = await fsp.readFile(path.join(ROOT, f), 'utf8');
+  const dir = path.dirname(path.join(ROOT, f));
+  for (const m of text.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)) {
+    const target = m[1].split(/[?#]/)[0];
+    if (/^https?:/i.test(target)) continue;
+    if (!(await exists(path.resolve(dir, target)))) brokenImages.push(f + ' → ' + target);
+  }
+}
+add('文档引用的图片都存在', brokenImages.length === 0, brokenImages.slice(0, 3).join('；'));
+
 const width = Math.max(...rows.map((r) => r.name.length)) + 2;
 console.log('\n仓库体检\n');
 for (const r of rows) console.log((r.ok ? '  ✅ ' : '  ❌ ') + r.name.padEnd(width) + r.detail);
