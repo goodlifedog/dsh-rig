@@ -91,6 +91,7 @@ overlay ──screencapture 约 13fps──▶ 每个会话独立的窗口
 | 抓不到图 | 窗口在别的 Space 或已最小化 | 先激活/切换 Space，或改用外部推帧 |
 | 任务卡在「启动离屏 Chrome」 | 多个流程同时用同一个 profile，锁冲突 | daemon 会串行；手工并发跑任务会撞，先清残留 Chrome |
 | 锁屏时任务变慢/超时 | 系统锁屏后 Chrome 启动从 ~1s 变 ~18s | 放宽超时，或等解锁再跑 |
+| 偶发「等待 Chrome 调试端口超时」 | 系统忙或上一次实例没退干净 | daemon 按重试策略（`core/retry-policy.mjs`）自动重跑 1 次并退避，环境类失败不重试 |
 
 ## 八、验证
 

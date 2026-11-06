@@ -14,12 +14,15 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { overlay } from './agentd.mjs';
+import { decideRetry } from './retry-policy.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
 const PORT = Number(process.env.AGENTD_PORT || 7789);
 const TASKS_DIR = path.join(__dirname, 'tasks');
 const LOGS = path.join(ROOT, 'logs', 'daemon');
+// 临时性失败自动重跑几次（Chrome 启动慢、端口没起来这类），环境类失败不重试
+const MAX_RETRIES = Math.max(0, Number(process.env.AGENTD_MAX_RETRIES || 1));
 
 const state = {
   pid: process.pid,
@@ -61,6 +64,19 @@ async function selfTest() {
   };
 }
 
+// 读日志末尾：重试判定要看到失败原因
+function tailOf(file, bytes = 4096) {
+  try {
+    const st = fs.statSync(file);
+    const start = Math.max(0, st.size - bytes);
+    const fd = fs.openSync(file, 'r');
+    const buf = Buffer.alloc(st.size - start);
+    fs.readSync(fd, buf, 0, buf.length, start);
+    fs.closeSync(fd);
+    return buf.toString('utf8');
+  } catch { return ''; }
+}
+
 function listTasks() {
   if (!fs.existsSync(TASKS_DIR)) return [];
   return fs.readdirSync(TASKS_DIR).filter((f) => f.endsWith('.mjs')).map((f) => f.replace(/\.mjs$/, '')).sort();
@@ -80,7 +96,7 @@ function readBody(req) {
   });
 }
 
-function runTask(name) {
+function runTask(name, attempt = 0) {
   return new Promise((resolve) => {
     const file = path.join(TASKS_DIR, name + '.mjs');
     if (!fs.existsSync(file)) return resolve({ ok: false, error: '未知任务：' + name, available: listTasks() });
@@ -91,8 +107,8 @@ function runTask(name) {
 
     const startedAt = Date.now();
     const child = spawn(process.execPath, [file], { cwd: ROOT, env: { ...process.env, AGENTD_DAEMON: '1' } });
-    state.current = { name, startedAt: new Date().toISOString(), pid: child.pid, logFile };
-    overlay.status('后台任务：' + name).catch(() => {});
+    state.current = { name, attempt, startedAt: new Date().toISOString(), pid: child.pid, logFile };
+    overlay.status('后台任务：' + name + (attempt ? '（第 ' + (attempt + 1) + ' 次）' : '')).catch(() => {});
     overlay.log('开始执行 ' + name).catch(() => {});
 
     child.stdout.on('data', (b) => { out.write(b); });
@@ -128,7 +144,7 @@ function runTask(name) {
       try { out.end(); } catch {}
       const durationMs = Date.now() - startedAt;
       const ok = code === 0;
-      const entry = { name, ok, code, startedAt: new Date(startedAt).toISOString(), durationMs, logFile };
+      const entry = { name, attempt, ok, code, startedAt: new Date(startedAt).toISOString(), durationMs, logFile };
       state.current = null;
       state.history.unshift(entry);
       state.history = state.history.slice(0, 30);
@@ -136,7 +152,22 @@ function runTask(name) {
       // 再解绑窗口（停掉抓帧循环、清掉陈旧错误），最后落「完成/失败」状态。
       await overlay.log((ok ? '完成 ' : '失败 ') + name + ' 用时 ' + (durationMs / 1000).toFixed(1) + 's').catch(() => {});
       await overlay.window(null).catch(() => {});
-      await overlay.status((ok ? '完成：' : '失败：') + name + ' · ' + (durationMs / 1000).toFixed(1) + 's', ok ? 'idle' : 'error').catch(() => {});
+
+      // 临时性失败（Chrome 启动慢、端口没起来）自动重跑；环境类问题重试也没用
+      const decision = decideRetry({ ok, text: tailOf(logFile), attempt, maxAttempts: MAX_RETRIES, code });
+      if (decision.retry) {
+        await overlay.status('重试中：' + name + '（第 ' + (attempt + 2) + ' 次，' + Math.round(decision.delayMs / 1000) + 's 后）', 'running').catch(() => {});
+        await overlay.log('失败原因：' + decision.reason + '；' + Math.round(decision.delayMs / 1000) + 's 后自动重试').catch(() => {});
+        setTimeout(() => {
+          state.queue.unshift({ name, attempt: attempt + 1, retry: true });
+          drain();
+        }, decision.delayMs);
+      } else {
+        await overlay.status((ok ? '完成：' : '失败：') + name + ' · ' + (durationMs / 1000).toFixed(1) + 's', ok ? 'idle' : 'error').catch(() => {});
+        if (!ok && decision.reason === '不是临时性失败') {
+          await overlay.log('不做自动重试：' + decision.reason).catch(() => {});
+        }
+      }
       resolve(entry);
     });
   });
@@ -144,8 +175,10 @@ function runTask(name) {
 
 async function drain() {
   if (state.current || !state.queue.length) return;
-  const name = state.queue.shift();
-  await runTask(name);
+  const item = state.queue.shift();
+  const name = typeof item === 'string' ? item : item.name;
+  const attempt = typeof item === 'string' ? 0 : (item.attempt || 0);
+  await runTask(name, attempt);
   drain();
 }
 

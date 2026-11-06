@@ -142,16 +142,31 @@ async function main() {
     add('随包 ocu', true, '未打包（用全局安装）');
   }
 
-  // 6. --deep：顺带跑一遍小窗效果回归（会出现/消失/放大，约 20 秒）
+  // 6. --deep：顺带跑小窗效果回归 + 会话隔离（约 20 秒）
+  // 失败时 execFileSync 会抛错，但 stdout 里有具体哪几条没通过，要抓出来展示
   if (process.argv.includes('--deep')) {
-    try {
-      const out = execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'ui-regression.mjs')], { encoding: 'utf8', timeout: 120000 });
-      const passed = (out.match(/✅/g) || []).length;
+    const runCheck = (script) => {
+      try {
+        return { out: execFileSync(process.execPath, [path.join(ROOT, 'scripts', script)], { encoding: 'utf8', timeout: 120000 }), crashed: false };
+      } catch (e) {
+        return { out: String(e.stdout || '') + String(e.stderr || ''), crashed: Boolean(e.stderr && !String(e.stdout || '').trim()) };
+      }
+    };
+    const summarize = (out) => {
+      const total = (out.match(/✅/g) || []).length + (out.match(/❌/g) || []).length;
       const failed = (out.match(/❌/g) || []).length;
-      add('小窗效果回归', failed === 0, passed + ' 项通过' + (failed ? '，' + failed + ' 项失败' : ''));
-    } catch (e) {
-      add('小窗效果回归', false, '执行失败：' + String(e.message).slice(0, 60));
-    }
+      const names = out.split('\n').filter((l) => l.includes('❌')).map((l) => l.replace(/.*❌\s*/, '').trim().slice(0, 18));
+      return { total, failed, detail: total ? (total + ' 项，' + failed + ' 项失败' + (names.length ? '：' + names.join('、') : '')) : '没有输出' };
+    };
+
+    const ui = runCheck('ui-regression.mjs');
+    const uiSum = summarize(ui.out);
+    add('小窗效果回归', uiSum.failed === 0 && uiSum.total > 0, uiSum.detail);
+    if (!uiSum.total) add('小窗效果回归失败原因', false, ui.out.slice(-120).replace(/\n/g, ' '));
+
+    const scope = runCheck('session-scope-check.mjs');
+    const scopeSum = summarize(scope.out);
+    add('会话隔离检查', scopeSum.failed === 0 && scopeSum.total > 0, scopeSum.detail);
   }
 
   const width = Math.max(...rows.map((r) => r.name.length)) + 2;
