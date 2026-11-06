@@ -246,18 +246,24 @@ bash scripts/export.sh    # 生成 dist/desktop-agent-<version>.tar.gz，排除�
 ## 测试与验收
 
 ```bash
-npm run health    # 一条命令看全局（服务/权限/小窗/队列/失败）
-npm run health -- --deep  # 再加上小窗效果回归
-npm run repo:check # 仓库体检：版本一致、无依赖产物、无大文件、无隐私泄漏
-npm test          # 单元测试（打分、薪资解析、平台探测）
-npm run check     # 语法检查
+npm run monitor   # 一键巡检：健康 + 小窗回归 + 会话隔离 + 帧率，结果写 reports/monitor-*.md
+npm run health    # 一条命令看全局（服务/身份权限/小窗/队列/失败）
+npm run health -- --deep   # 再加上 14 项小窗效果回归
+npm run scope:check        # 小窗只在该会话出现？切走/切回各要多久？（逐项给出毫秒）
+npm run fps:check          # 帧率压测：实际帧率、单帧体积、推帧耗时（FPS_CHECK_EXPANDED=1 测放大态）
+npm run soak               # 稳定性巡检：连跑 6 轮任务，看耗时、内存增长、有没有有效帧
 npm run accept    # 端到端验收（需要本机服务在跑）
+npm run repo:check # 仓库体检：版本一致、无依赖产物、无大文件、无隐私泄漏
+npm test          # 单元测试（打分、薪资解析、平台探测、标题门控、失败归类）
+npm run check     # 语法检查
 npm run restart:check  # 重启两个服务再验证健康（抓「跑的是旧代码」这类问题）
 ```
 
 CI 在 Ubuntu / macOS / Windows 三平台跑 `npm test` 与 `npm run check`。
 
-会跑一遍端到端检查：服务在线、小窗显隐、各任务是否通过，输出 Markdown 报告到 `reports/`。
+端到端验收会跑一遍服务在线、小窗显隐、各任务，输出 Markdown 报告到 `reports/`。
+「环境不具备」（用户正在用目标应用、没开指定页面、锁屏、缺辅助功能权限）会记为
+环境跳过并在报告里注明原因，不算失败；归类规则只有一份，见 `core/run-classify.mjs`。
 
 已知问题：`form-fill` 在 overlay 同时运行时可能失败——本机 Electron 宿主抢不到窗口句柄（`cgWindowNotFound`），属于环境冲突，不是逻辑错误。
 
@@ -266,6 +272,8 @@ CI 在 Ubuntu / macOS / Windows 三平台跑 `npm test` 与 `npm run check`。
 - [ ] Windows 控制后端（UI Automation），补齐 click/typeText/pressKey
 - [ ] Windows 服务自启（schtasks 安装脚本）
 - [ ] 任务参数化（筛选标准可配置，先出清单再执行）
+- [x] 小窗只出现在召唤它的会话；切走 ~0.5s 收起、切回 ~0.7s 重新出现
+- [x] 帧率/清晰度按窗口尺寸自适应（收起 600px、放大 1920px）
 - [ ] 小窗支持更多会话元信息（任务进度、耗时）
 - [ ] 更完整的失败重试策略
 
