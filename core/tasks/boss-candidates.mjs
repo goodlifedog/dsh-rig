@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { overlay } from '../agentd.mjs';
+import { scoreJob } from '../lib/score.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
@@ -21,32 +22,9 @@ const CFG = {
   excludeCompanies: (process.env.EXCLUDE_COMPANIES || '外包,人力,派遣,猎头').split(','),
 };
 
-function parseSalary(text) {
-  const m = /(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)\s*K/i.exec(text) || /(\d+(?:\.\d+)?)\s*K/i.exec(text);
-  if (!m) return null;
-  const a = Number(m[1]);
-  const b = m[2] ? Number(m[2]) : a;
-  return { min: Math.min(a, b), max: Math.max(a, b) };
-}
-
+// 打分与薪资解析统一走 core/lib，便于单测
 function score(job) {
-  const reasons = [];
-  let s = 0;
-  const hay = job.title + ' ' + (job.ctx || '');
-  const kw = CFG.keywords.find((k) => hay.includes(k));
-  if (kw) { s += 30; reasons.push('方向匹配：' + kw); }
-  const sal = parseSalary(hay);
-  if (sal) {
-    if (sal.min <= CFG.salaryMax && sal.max >= CFG.salaryMin) { s += 25; reasons.push('薪资在区间 ' + sal.min + '-' + sal.max + 'K'); }
-    else if (sal.min > CFG.salaryMax) { s -= 20; reasons.push('薪资偏高 ' + sal.min + 'K+，可能够不着'); }
-  } else { reasons.push('薪资未标注'); }
-  if (/在校|应届|经验不限|实习|1年以内/.test(hay)) { s += 20; reasons.push('接受应届/在校'); }
-  if (/1-3年/.test(hay)) { s += 8; reasons.push('1-3年，可尝试'); }
-  if (/3-5年|5-10年/.test(hay)) { s -= 30; reasons.push('经验要求偏高'); }
-  if (/硕士/.test(hay)) { s -= 40; reasons.push('学历要求过高'); }
-  const badCo = CFG.excludeCompanies.find((c) => hay.includes(c));
-  if (badCo) { s -= 15; reasons.push('公司类型可疑：' + badCo); }
-  return { score: s, reasons };
+  return scoreJob({ title: job.title, ctx: job.ctx }, CFG);
 }
 
 const inner = [

@@ -30,6 +30,7 @@
     "overlay": "cd overlay && npm start",
     "doctor": "node core/platform-smoke.mjs",
     "service:install": "node core/service.mjs install",
-    "service:uninstall": "node core/service.mjs uninstall"
+    "service:uninstall": "node core/service.mjs uninstall",
+    "test": "node --test test/"
   }
 }

@@ -197,3 +197,17 @@ $ GREET_LIMIT=1 node core/runner.mjs run boss-greet --timeout 600000
 - `core/tasks/boss-greet.mjs` —— 外层：逐条发 + 用消息列表核对
 - `core/tasks/greet-inner.mjs` —— 内层（在 ocu 运行时里跑）：点卡片 / 点立即沟通 / 关弹窗
 - `core/tasks/greet-verify.mjs` —— 读消息列表 + 差集，唯一验收标准
+## 附：BOSS 列表页的可读性限制（实测）
+
+用 Accessibility 读岗位列表时：
+
+| 字段 | 能否读到 | 说明 |
+| --- | --- | --- |
+| 岗位标题 | ✅ | link 文本 |
+| 经验要求 | ✅ | 如 `3-5年`、`应届` |
+| 学历 | ✅ | 如 `本科`、`硕士` |
+| 公司名 | ✅ | 公司页 link |
+| 城市/区域 | ✅ | 如 `武汉·汉阳区` |
+| 薪资 | ❌ | AX 文本只有 `-K`，数字没暴露 |
+
+所以「按薪资筛选」在列表页做不到，必须点进详情页或用 OCR。这也是筛选器里大量岗位显示「薪资未标注」的原因。
