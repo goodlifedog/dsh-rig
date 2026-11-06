@@ -28,6 +28,7 @@ const { createOverlayServer, DEFAULT_SESSION, SESSION_PATTERN } = require('./ser
 const { normalizeWindowId, resolveWindowId } = require('./window-id.js');
 const { computeFrameTarget } = require('./frame-target.js');
 const layout = require('./layout.js');
+const { appleScriptQuote } = require('./quote.js');
 const { shouldEvictSession } = require('./session-policy.js');
 
 const APP_NAME = 'desktop-agent-overlay';
@@ -266,8 +267,8 @@ function readDshBounds() {
         }
       }
       // 兜底：老办法，window 1
-      const fallback = 'tell application "System Events" to tell process "' + DSH_PROCESS +
-        '" to get {' + '{position of window 1}' + ', ' + '{size of window 1}' + '}';
+      const fallback = 'tell application "System Events" to tell process ' + appleScriptQuote(DSH_PROCESS) +
+        ' to get {' + '{position of window 1}' + ', ' + '{size of window 1}' + '}';
       execFile('/usr/bin/osascript', ['-e', fallback], { timeout: 2000 }, (fallbackErr, fallbackOut) => {
         if (fallbackErr) return resolve(null);
         const nums = String(fallbackOut).match(/-?\d+/g);
