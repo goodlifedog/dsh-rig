@@ -45,6 +45,7 @@
     "ui:regression": "node scripts/ui-regression.mjs",
     "scope:check": "node scripts/session-scope-check.mjs",
     "soak": "node scripts/soak.mjs",
+    "fps:check": "node scripts/fps-check.mjs",
     "ui:check": "node scripts/ui-check.mjs",
     "health": "node scripts/health.mjs"
   }
