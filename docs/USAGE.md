@@ -454,7 +454,7 @@ node core/tasks/<任务>.mjs          # 单跑一个任务文件（不经 runner
 | GET | `/frame-target?session=x` | 小窗当前需要的画面像素尺寸（收起 600×380，放大 1920×…），推帧方按它出图 |
 | POST | `/log` | `{"text"}` 追加动作日志 |
 | POST | `/status` | `{"text","state"}` 更新胶囊；state: `idle/running/error`；`{"clear":true}` 复位成「待命」 |
-| POST | `/window` | `{"windowId"}` 切换缩略图目标（绑自身窗口返回 403） |
+| POST | `/window` | `{"windowId"}` 切换缩略图目标（绑自身窗口返回 403；传 `null` 解绑并停止抓帧） |
 | POST | `/visible` | `{"visible":true}` 或 `false`：手动显隐；true 会固定显示（暂停自动隐藏） |
 | POST | `/expand` | `{}` 放大/还原 |
 | POST | `/frame` | `{"dataUrl","cursor","width","height"}` 外部推帧 |
@@ -476,6 +476,7 @@ curl -s -X POST http://127.0.0.1:7788/close -H 'Content-Type: application/json' 
 | --- | --- | --- |
 | GET | `/` | 健康检查 + 任务列表 + 队列长度 |
 | GET | `/status` | 完整状态：current / queue / history |
+| GET | `/selftest` | 后台服务自检：系统事件、ocu 在当前服务身份下是否可用 |
 | GET | `/tasks` | 任务名 + 历史 |
 | POST | `/run` | `{"task":"xxx"}` 或 `{"tasks":["a","b"]}` 入队 |
 | POST | `/stop` | 清队列并停当前任务 |

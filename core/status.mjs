@@ -46,8 +46,20 @@ function recentRuns(n = 5) {
 async function main() {
   const h = await overlay.health();
   console.log('=== 桌面代理状态 ===');
-  console.log('小窗     : ' + (h.ok ? '在线 pid=' + h.pid + ' | 状态「' + h.status + '」| ' + (h.visible ? '可见' : '已隐藏') : '离线'));
-  if (h.ok) console.log('缩略图   : ' + h.thumbnail.state + (h.windowId ? ' (窗口 ' + h.windowId + ')' : '') + ' | 日志 ' + h.logs + ' 条');
+  console.log('小窗     : ' + (h.ok
+    ? '在线 pid=' + h.pid + (h.label ? ' | 会话「' + h.label + '」' : '') + ' | 状态「' + h.status + '」| ' + (h.visible ? '可见' : '已隐藏')
+    : '离线'));
+  if (h.ok) {
+    // 把内部状态翻译成人话，别让用户看 no-window / error 这种枚举
+    const state = (h.thumbnail && h.thumbnail.state) || 'waiting';
+    const text = {
+      live: '画面正常' + (h.fps ? ' ' + h.fps + 'fps' : '') + (h.frameWidth ? ' ' + h.frameWidth + 'px' : ''),
+      waiting: '正在连接被控窗口',
+      'no-window': '未绑定被控窗口（空闲时正常）',
+      error: '抓帧失败：' + ((h.thumbnail && h.thumbnail.error) || '未知原因'),
+    }[state] || ('状态 ' + state);
+    console.log('画面     : ' + text + (h.windowId ? '（窗口 ' + h.windowId + '）' : '') + ' | 日志 ' + h.logs + ' 条');
+  }
 
   const locks = listLocks();
   console.log('运行中   : ' + (locks.length ? locks.map((l) => l.app + '(' + Math.round((Date.now() - l.since) / 1000) + 's)').join(', ') : '无任务'));

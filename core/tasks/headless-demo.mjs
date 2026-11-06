@@ -234,14 +234,16 @@ async function main() {
     residue = out.split('\n').filter((l) => l.includes(PROFILE) && l.includes('MacOS/Google Chrome') && !l.includes('Helper') && !l.includes('--type=')).length;
   } catch {}
   report.close = { ms: Date.now() - t2, ...closed, residueProcesses: residue };
-  // 锁屏时读不到前台应用与窗口列表，这不是失败，标记为跳过
-  if (locked) {
+  // 锁屏、或后台服务拿不到辅助功能权限时，读不到前台应用与窗口列表：
+  // 这是环境限制不是代码失败，标成「环境跳过」，别占用失败率也不误报
+  if (locked || winCount === null) {
     const before = failures.length;
     for (let i = failures.length - 1; i >= 0; i -= 1) {
       if (/前台|窗口/.test(failures[i])) failures.splice(i, 1);
     }
-    report.skipped = ['锁屏状态下无法校验前台与窗口数（' + (before - failures.length) + ' 项）'];
-    console.log('[!] 锁屏中，跳过前台与窗口数校验');
+    const reason = locked ? '锁屏' : '读不到窗口数（后台服务缺辅助功能权限）';
+    report.skipped = [reason + '，无法校验前台与窗口数（' + (before - failures.length) + ' 项）'];
+    console.log('[!] ' + reason + '，跳过前台与窗口数校验');
   }
   console.log('[6] 关闭:', report.close.ms, 'ms, 进程已退出:', !closed.alive, '；同 profile 残留进程:', residue);
   if (residue > 0) failures.push('关闭后仍有 ' + residue + ' 个残留进程');

@@ -8,7 +8,7 @@
  *   - 任务串行执行（同一时刻只操作一个应用，避免互相踩）；
  *   - 全程把状态推给 overlay 小窗（7788），用户只看小窗即可。
  */
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
@@ -28,6 +28,38 @@ const state = {
   queue: [],
   history: [],        // { name, ok, startedAt, durationMs }
 };
+
+// 后台服务是 launchd 起的，系统按「这个可执行文件」认权限，和终端里跑不是一回事。
+// 这里实际探一次，把「能不能控制系统」量出来，别让任务失败后靠猜。
+function probe(cmd, args, timeout = 6000) {
+  return new Promise((resolve) => {
+    execFile(cmd, args, { timeout, maxBuffer: 4 * 1024 * 1024 }, (err, stdout, stderr) => {
+      resolve({
+        ok: !err,
+        out: String(stdout || '').trim().slice(0, 200),
+        error: err ? (String(stderr || '').trim().split('\n')[0] || err.message).slice(0, 160) : '',
+      });
+    });
+  });
+}
+
+async function selfTest() {
+  const checks = {};
+  checks.systemEvents = await probe('/usr/bin/osascript', ['-e', 'tell application "System Events" to count processes']);
+  const ocuPath = [process.env.OCU_BIN, path.join(ROOT, 'third_party', 'open-computer-use', 'bin', 'ocu')]
+    .filter(Boolean).find((p) => { try { return fs.existsSync(p); } catch { return false; } });
+  if (ocuPath) {
+    checks.ocu = await probe(ocuPath, ['call', 'list_apps'], 15000);
+  } else {
+    checks.ocu = { ok: false, out: '', error: '找不到 ocu（可设 OCU_BIN）' };
+  }
+  const axOk = checks.systemEvents.ok;
+  return {
+    ok: axOk,
+    checks,
+    hint: axOk ? '' : '后台服务缺少辅助功能权限：系统设置 → 隐私与安全性 → 辅助功能，把 ' + process.execPath + ' 加进去',
+  };
+}
 
 function listTasks() {
   if (!fs.existsSync(TASKS_DIR)) return [];
@@ -83,13 +115,14 @@ function runTask(name) {
       state.current = null;
       state.history.unshift(entry);
       state.history = state.history.slice(0, 30);
-      overlay.status('失败：' + name).catch(() => {});
       overlay.log('启动失败 ' + name + '：' + entry.error).catch(() => {});
+      overlay.window(null).catch(() => {});
+      overlay.status('失败：' + name + ' · ' + entry.error.slice(0, 40), 'error').catch(() => {});
       return entry;
     };
     child.on('error', (err) => { try { resolve(failEarly(err)); } catch {} });
 
-    child.on('close', (code) => {
+    child.on('close', async (code) => {
       clearInterval(beat);
       clearTimeout(timer);
       try { out.end(); } catch {}
@@ -99,8 +132,11 @@ function runTask(name) {
       state.current = null;
       state.history.unshift(entry);
       state.history = state.history.slice(0, 30);
-      overlay.status(ok ? '完成：' + name : '失败：' + name).catch(() => {});
-      overlay.log((ok ? '完成 ' : '失败 ') + name + ' 用时 ' + (durationMs / 1000).toFixed(1) + 's').catch(() => {});
+      // 顺序有讲究：日志会被当成「动作」把状态点成运行中，所以先写日志，
+      // 再解绑窗口（停掉抓帧循环、清掉陈旧错误），最后落「完成/失败」状态。
+      await overlay.log((ok ? '完成 ' : '失败 ') + name + ' 用时 ' + (durationMs / 1000).toFixed(1) + 's').catch(() => {});
+      await overlay.window(null).catch(() => {});
+      await overlay.status((ok ? '完成：' : '失败：') + name + ' · ' + (durationMs / 1000).toFixed(1) + 's', ok ? 'idle' : 'error').catch(() => {});
       resolve(entry);
     });
   });
@@ -127,6 +163,14 @@ const server = http.createServer(async (req, res) => {
       queued: state.queue.length,
       tasks: listTasks(),
     });
+  }
+
+  if (p === '/selftest' && req.method === 'GET') {
+    try {
+      return json(res, 200, Object.assign({ ok: true }, await selfTest()));
+    } catch (error) {
+      return json(res, 500, { ok: false, error: String(error.message || error) });
+    }
   }
 
   if (p === '/status' && req.method === 'GET') {

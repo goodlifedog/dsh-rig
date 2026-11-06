@@ -1247,17 +1247,22 @@ function startThumbnailLoop(s) {
 function setWindowId(s, raw, source, title) {
   const id = normalizeWindowId(raw);
   if (!id) {
-    // 传 null / 非法值 = 解绑：必须把旧的错误态一起清掉，否则会一直显示上次的「目标窗口已失效」
-    if (s.state.windowId !== null) {
-      s.state.windowId = null;
-      s.state.windowTitle = '';
-      s.state.thumbnail.state = 'no-window';
-      s.state.thumbnail.error = null;
-      s.lastCaptureError = null;
-      s.lastThumbSignal = '';
-      stopThumbnailLoop(s);
-      signalThumbState(s, true);
-      if (raw === null || raw === undefined || raw === '') pushLog(s, '已解绑缩略图目标窗口', 'system');
+    // 传 null / 非法值 = 解绑：必须把旧的错误态一起清掉，否则会一直显示上次的「目标窗口已失效」。
+    // 即使之前已经解绑过（windowId 已是 null）也要清：任务结束时可能只剩一条陈旧的抓帧错误。
+    const hadWindow = s.state.windowId !== null;
+    const hadError = Boolean(s.state.thumbnail.error);
+    s.state.windowId = null;
+    s.state.windowTitle = '';
+    s.state.thumbnail.state = 'no-window';
+    s.state.thumbnail.error = null;
+    s.lastCaptureError = null;
+    s.lastThumbSignal = '';
+    stopThumbnailLoop(s);
+    signalThumbState(s, true);
+    if (hadWindow && (raw === null || raw === undefined || raw === '')) {
+      pushLog(s, '已解绑缩略图目标窗口', 'system');
+    } else if (hadError) {
+      pushLog(s, '已清除上一条抓帧错误', 'system');
     }
     return null;
   }

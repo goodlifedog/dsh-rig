@@ -236,8 +236,16 @@ function createOverlayServer(options) {
       }
       const body = await readJsonBody(req);
       const session = sessionFrom(url, body);
+      if (body.windowId === undefined && body.id === undefined) {
+        return json(res, 400, { ok: false, error: '缺少 windowId（要解绑请显式传 null）' });
+      }
       const raw = body.windowId !== undefined ? body.windowId : body.id;
+      // null / 空串 = 显式解绑：任务结束时靠它停掉抓帧循环、清掉旧错误
+      const explicitUnbind = raw === null || raw === '';
       const windowId = await handlers.onWindow(session, raw, body.title);
+      if (explicitUnbind && !windowId) {
+        return json(res, 200, { ok: true, session: session, windowId: null, unbound: true });
+      }
       if (!windowId) {
         return json(res, 400, { ok: false, error: 'windowId 无效，示例：68544 或 "window:68544:0"' });
       }

@@ -28,6 +28,17 @@ async function main() {
   const daemon = await getJson('http://127.0.0.1:7789/status');
   add('后台 daemon 7789', Boolean(daemon && daemon.ok), daemon ? 'pid=' + daemon.pid + ' 队列=' + daemon.queued : '未启动');
 
+  // 后台服务是 launchd 起的，权限身份和终端里跑不同：实际探一次系统事件与 ocu 是否可控
+  const selftest = await getJson('http://127.0.0.1:7789/selftest', 20000);
+  if (selftest) {
+    const se = (selftest.checks && selftest.checks.systemEvents) || {};
+    const ocu = (selftest.checks && selftest.checks.ocu) || {};
+    add('后台服务自检', Boolean(selftest.ok),
+      selftest.ok
+        ? '系统事件可用（' + (se.out || '').slice(0, 20) + ' 个进程）｜ocu ' + (ocu.ok ? '可用' : '不可用：' + (ocu.error || ''))
+        : (selftest.hint || '系统事件不可用'));
+  }
+
   const ov = await getJson('http://127.0.0.1:7788/health');
   add('小窗 7788', Boolean(ov && ov.ok), ov ? 'pid=' + ov.pid + ' session=' + ov.session : '未启动');
   if (ov) {
