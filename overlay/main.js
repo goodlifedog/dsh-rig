@@ -1098,6 +1098,8 @@ async function captureThumbnail(s) {
 
   s.flags.capturing = true;
   const captureStartedAt = Date.now();
+  // 记下这次抓的是哪个窗口：抓帧期间可能被解绑/换目标，回来时要把结果丢掉
+  const captureWindowId = s.state.windowId;
   const slug = String(s.id).replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 40) || 'default';
   const file = path.join(tempDir, 'frame-' + slug + '-' + Date.now() + '-' + (s.thumbSeq++) + '.jpg');
   pendingTempFiles.add(file);
@@ -1149,6 +1151,10 @@ async function captureThumbnail(s) {
       updatedAt: Date.now(),
       error: null,
     };
+    if (s.state.windowId !== captureWindowId) {
+      // 窗口在抓帧途中被换掉/解绑：这帧作废，别覆盖新窗口的画面
+      return;
+    }
     s.lastCaptureError = null;
     s.captureFailStreak = 0;
     s.captureMs = Date.now() - captureStartedAt;
@@ -1168,6 +1174,9 @@ async function captureThumbnail(s) {
     });
     signalThumbState(s);
   } catch (error) {
+    // 窗口在抓帧途中被解绑/换目标：这是旧目标失败，不该报在当前会话上
+    // （否则会出现"已经解绑了，却还挂着目标窗口已失效"的残留）
+    if (s.state.windowId !== captureWindowId) return;
     const message = explainCaptureError(error);
     // 偶发失败（窗口刚切换、系统瞬时不给出图像）很常见：screencapture 会报
     // "could not create image from window"，但下一次通常就好了。
