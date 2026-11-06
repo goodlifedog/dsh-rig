@@ -2,18 +2,24 @@
 
 /**
  * 会话标题门控（纯函数，便于单测）。
- * 规则：没有 titleHint 的会话不受门控；读不到 DSH 标题时也不门控（避免误藏）。
+ * 宿主应用可以是任意程序：标题后缀可由调用方传入（默认 DeepSeek Harness）。
  */
 
-// DSH 窗口标题形如「规划布局探讨 — DeepSeek Harness」，匹配前先去掉后缀
-function normalizeDshTitle(raw) {
-  return String(raw || '').trim().replace(/\s*[—–-]\s*DeepSeek Harness\s*$/i, '').trim();
+const DEFAULT_SUFFIX = 'DeepSeek Harness';
+
+function normalizeHostTitle(raw, suffix) {
+  const s = String(raw || '').trim();
+  const tail = String(suffix || DEFAULT_SUFFIX).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return s.replace(new RegExp('\\s*[—–-]\\s*' + tail + '\\s*$', 'i'), '').trim();
 }
 
-function matchesTitle(titleHint, dshTitle) {
+// 兼容旧名
+const normalizeDshTitle = normalizeHostTitle;
+
+function matchesTitle(titleHint, hostTitle, suffix) {
   if (!titleHint) return true;
-  if (!dshTitle) return true;
-  return normalizeDshTitle(dshTitle).indexOf(titleHint) !== -1;
+  if (!hostTitle) return true;
+  return normalizeHostTitle(hostTitle, suffix).indexOf(titleHint) !== -1;
 }
 
-module.exports = { normalizeDshTitle, matchesTitle };
+module.exports = { normalizeHostTitle, normalizeDshTitle, matchesTitle, DEFAULT_SUFFIX };

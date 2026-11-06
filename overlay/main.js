@@ -31,12 +31,22 @@ const APP_NAME = 'desktop-agent-overlay';
 
 // 贴在 DeepSeek Harness 窗口内（右上角），多会话按格子平铺，不自由漂浮
 const ATTACH_TO_DSH = process.env.OVERLAY_ATTACH_DSH !== '0';
-const DSH_PROCESS = process.env.OVERLAY_DSH_PROCESS || 'DeepSeek Harness';
+// 宿主应用（小窗贴谁、按谁的会话标题门控）——默认 DSH，可用环境变量换成任何应用
+const HOST_PROCESS = process.env.OVERLAY_HOST_PROCESS || process.env.OVERLAY_DSH_PROCESS || 'DeepSeek Harness';
+const HOST_BUNDLES = (process.env.OVERLAY_HOST_BUNDLES || 'com.deepseek.dsh')
+  .split(',').map((x) => x.trim()).filter(Boolean);
+const HOST_TITLE_SUFFIX = process.env.OVERLAY_HOST_TITLE_SUFFIX || 'DeepSeek Harness';
+// 兼容旧变量名
+const DSH_PROCESS = HOST_PROCESS;
 const DSH_MARGIN = 16;
 const TILE_GAP = 10;
 
 // 这些窗口永远不能被当成"被控目标"：DeepSeek Harness 自己，以及 overlay 自己的窗口
-const SELF_WINDOW_PATTERN = /DeepSeek Harness|com\.deepseek\.dsh|\bdsh\b|^Desktop Agent/i;
+const SELF_WINDOW_PATTERN = new RegExp([
+  HOST_PROCESS.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+  ...HOST_BUNDLES.map((b) => b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+  '^Desktop Agent$',
+].join('|'), 'i');
 const MAX_LOGS = 200;
 const MAX_SESSIONS = Math.max(1, Math.round(Number(process.env.OVERLAY_MAX_SESSIONS) || 12));
 const DEFAULT_PORT = 7788;
@@ -319,7 +329,7 @@ function clampIntoDsh(s) {
 function maybeAutoBindTitle(s) {
   if (s.explicitTitleHint || s.autoTitleBound) return;
   if (!dshTitle) return;
-  const short = normalizeDshTitle(dshTitle);
+  const short = normalizeDshTitle(dshTitle, HOST_TITLE_SUFFIX);
   if (!short) return;
   s.titleHint = short.slice(0, 120);
   s.autoTitleBound = true;
@@ -355,7 +365,7 @@ function setTitleHint(s, raw) {
 }
 
 function titleMatches(s) {
-  return matchesTitle(s.titleHint, dshTitle);
+  return matchesTitle(s.titleHint, dshTitle, HOST_TITLE_SUFFIX);
 }
 
 async function attachToDsh(s, front, bounds) {
@@ -366,9 +376,9 @@ async function attachToDsh(s, front, bounds) {
 
   // 只在「召唤它的 DSH 会话」里显示：DSH 不在前台、或当前前台会话标题对不上，就隐藏。
   // 标题门控对放大态同样生效，避免别的会话的小窗一直挂着。
-  const ours = 'com.deepseek.dsh';
+  // 宿主可以是任意应用：由 HOST_BUNDLES 配置
   const self = 'com.github.Electron';
-  const frontOk = !front || front === ours || front === self;
+  const frontOk = !front || HOST_BUNDLES.includes(front) || front === self;
   const shouldHide = !frontOk || !s.matched;
   if (shouldHide) {
     if (win.isVisible()) {
@@ -439,6 +449,12 @@ async function attachTick() {
     } else {
       bounds = dshBounds;
     }
+  }
+  // 兜底：拿不到宿主窗口（System Events 无权限、宿主不在运行）就贴到屏幕右上角，
+  // 保证小窗在任何宿主环境下都可用。
+  if (!bounds) {
+    const area = screen.getPrimaryDisplay().workArea;
+    bounds = { x: area.x, y: area.y, w: area.width, h: area.height };
   }
   if (!sessions.size) return;
   for (const s of sessions.values()) {
@@ -1271,7 +1287,7 @@ function toggleExpand(s) {
   } else {
     if (s.flags.smallBounds) win.setBounds(s.flags.smallBounds);
     s.flags.expanded = false;
-    setTimeout(() => { attachToDsh(s, 'com.deepseek.dsh', dshBounds).catch(() => {}); }, 100);
+    setTimeout(() => { attachToDsh(s, HOST_BUNDLES[0] || null, dshBounds).catch(() => {}); }, 100);
     scheduleIdleHide(s);
   }
   return { expanded: s.flags.expanded };
