@@ -8,6 +8,12 @@ import { ocu, overlay, guard, parseJobs, countElements } from '../agentd.mjs';
 const APP = process.env.TARGET_APP || 'Google Chrome';
 const TARGET_FRAGMENT = 'zhipin.com/web/geek/jobs';
 import { resolveOcu } from '../platform.mjs';
+
+import { isMac } from '../platform.mjs';
+if (!isMac) {
+  console.error('此任务依赖 macOS 的 ocu/osascript，Windows 版待移植；跨平台通路验证请跑 platform-demo');
+  process.exit(2);
+}
 const OCU = resolveOcu() || path.join(os.homedir(), '.local/bin/ocu');
 const MIN_JOBS = Number(process.env.MIN_JOBS || 10);
 const MAX_JOB_LOGS = Number(process.env.MAX_JOB_LOGS || 50);

@@ -15,6 +15,12 @@ import path from 'node:path';
 import { launch } from '../browser.mjs';
 import { overlay } from '../agentd.mjs';
 
+import { isMac } from '../platform.mjs';
+if (!isMac) {
+  console.error('此任务依赖 macOS 的 ocu/osascript，Windows 版待移植；跨平台通路验证请跑 platform-demo');
+  process.exit(2);
+}
+
 const CHROME_DIR = path.join(os.homedir(), 'Library/Application Support/Google/Chrome');
 const PROFILE = process.env.AGENT_CHROME_PROFILE || path.join(os.homedir(), '.desktop-agent', 'chrome-profile');
 const KEYWORD = process.env.SCAN_KEYWORD || 'AI Agent';

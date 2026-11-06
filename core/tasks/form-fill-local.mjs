@@ -11,6 +11,12 @@ import path from 'node:path';
  */
 
 import { resolveOcu } from '../platform.mjs';
+
+import { isMac } from '../platform.mjs';
+if (!isMac) {
+  console.error('此任务依赖 macOS 的 ocu/osascript，Windows 版待移植；跨平台通路验证请跑 platform-demo');
+  process.exit(2);
+}
 const OCU = resolveOcu() || path.join(os.homedir(), '.local/bin/ocu');
 // 用一个独立 bundle id 的 Electron 副本承载本地表单：
 // overlay 本身也是 Electron(com.github.Electron)，同名会撞车，且我们不想弹窗打扰用户。

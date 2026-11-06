@@ -4,6 +4,12 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { resolveOcu } from '../platform.mjs';
+
+import { isMac } from '../platform.mjs';
+if (!isMac) {
+  console.error('此任务依赖 macOS 的 ocu/osascript，Windows 版待移植；跨平台通路验证请跑 platform-demo');
+  process.exit(2);
+}
 const OCU = resolveOcu() || path.join(os.homedir(), '.local/bin/ocu');
 const NODES = Number(process.env.COVERAGE_NODES || 6000);
 const OUT_JSON = process.env.COVERAGE_JSON || '/tmp/coverage-latest.json';

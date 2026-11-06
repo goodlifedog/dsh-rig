@@ -8,6 +8,12 @@ import { ocu, guard } from '../agentd.mjs';
 const APP = process.env.TARGET_APP || 'Google Chrome';
 const FRAG = 'zhipin.com/web/geek/jobs';
 import { resolveOcu } from '../platform.mjs';
+
+import { isMac } from '../platform.mjs';
+if (!isMac) {
+  console.error('此任务依赖 macOS 的 ocu/osascript，Windows 版待移植；跨平台通路验证请跑 platform-demo');
+  process.exit(2);
+}
 const OCU = resolveOcu() || path.join(os.homedir(), '.local/bin/ocu');
 const NEW_KEYWORD = process.env.FILL_KEYWORD || 'Java开发工程师';
 const JS_TIMEOUT_MS = Number(process.env.FILL_JS_TIMEOUT_MS || 90000);

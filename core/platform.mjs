@@ -34,6 +34,34 @@ export function requireOcu() {
   return bin;
 }
 
+/** 当前前台应用名（跨平台，失败返回空串） */
+export function readFrontmostApp() {
+  return new Promise((resolve) => {
+    if (isMac) {
+      execFile('/usr/bin/osascript', ['-e',
+        'tell application "System Events" to get name of first application process whose frontmost is true'],
+        { timeout: 5000, encoding: 'utf8' },
+        (err, stdout) => resolve(err ? '' : String(stdout || '').trim()));
+      return;
+    }
+    if (isWindows) {
+      const script = [
+        'Add-Type @"',
+        'using System; using System.Runtime.InteropServices; using System.Diagnostics;',
+        'public class F { [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();',
+        ' [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid); }',
+        '"@',
+        '$h = [F]::GetForegroundWindow(); $pid2 = 0; [void][F]::GetWindowThreadProcessId($h, [ref]$pid2);',
+        'try { (Get-Process -Id $pid2).ProcessName } catch { "" }',
+      ].join('\n');
+      execFile('powershell', ['-NoProfile', '-NonInteractive', '-Command', script], { timeout: 6000 }, (err, stdout) =>
+        resolve(err ? '' : String(stdout || '').trim()));
+      return;
+    }
+    resolve('');
+  });
+}
+
 /** 用户数据目录（跨平台） */
 export function dataDir(name) {
   if (isMac) return path.join(os.homedir(), '.desktop-agent', name);
@@ -52,4 +80,4 @@ export function runPowerShell(script, timeout = 15000) {
   });
 }
 
-export default { isMac, isWindows, platform, controlBackend, resolveOcu, requireOcu, dataDir, runPowerShell };
+export default { isMac, isWindows, platform, controlBackend, resolveOcu, requireOcu, dataDir, runPowerShell, readFrontmostApp };

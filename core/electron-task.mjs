@@ -30,6 +30,7 @@
  */
 
 import { execFile, spawn } from 'node:child_process';
+import { readFrontmostApp } from './platform.mjs';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
@@ -279,14 +280,7 @@ export async function writeOffscreenHost(options) {
 
 /** 读当前前台应用名（用来证明没抢焦点）。失败返回空串。 */
 export function frontmostApp() {
-  return new Promise((resolve) => {
-    execFile(
-      'osascript',
-      ['-e', 'tell application "System Events" to get name of first application process whose frontmost is true'],
-      { timeout: 5000, encoding: 'utf8' },
-      (error, stdout) => resolve(error ? '' : String(stdout || '').trim())
-    );
-  });
+  return readFrontmostApp();
 }
 
 function createLogBuffer() {
