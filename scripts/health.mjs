@@ -54,6 +54,10 @@ async function main() {
   const ov = await getJson('http://127.0.0.1:7788/health');
   add('小窗 7788', Boolean(ov && ov.ok), ov ? 'pid=' + ov.pid + ' session=' + ov.session : '未启动');
   if (ov) {
+    const sess = await getJson('http://127.0.0.1:7788/sessions');
+    if (sess && typeof sess.count === 'number') {
+      add('会话窗口', sess.count > 0, sess.count + ' 个（闲置 30 分钟自动回收，有活动按需重建）');
+    }
     add('小窗宿主可见', ov.hostVisible === true, 'hostVisible=' + ov.hostVisible + ' stale=' + ov.hostBoundsStale);
     add('点击穿透', ov.clickThrough === true, 'clickThrough=' + ov.clickThrough);
     // 画面：只有「真出错」和「该有画面却停住」才算问题；空闲没绑窗口是正常态
