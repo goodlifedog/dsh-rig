@@ -137,8 +137,13 @@ function readBody(req) {
 
 function runTask(name, attempt = 0) {
   return new Promise((resolve) => {
+    // 任务名必须是任务目录里真实存在的名字：不做校验会被 ../ 跳出目录执行任意脚本
+    const available = listTasks();
+    if (!available.includes(name)) {
+      return resolve({ ok: false, error: '未知任务：' + name, available: available });
+    }
     const file = path.join(TASKS_DIR, name + '.mjs');
-    if (!fs.existsSync(file)) return resolve({ ok: false, error: '未知任务：' + name, available: listTasks() });
+    if (!fs.existsSync(file)) return resolve({ ok: false, error: '未知任务：' + name, available: available });
 
     fs.mkdirSync(LOGS, { recursive: true });
     const logFile = path.join(LOGS, name + '-' + new Date().toISOString().replace(/[:.]/g, '-') + '.log');
@@ -264,6 +269,11 @@ const server = http.createServer(async (req, res) => {
     const body = await readBody(req);
     const names = body.tasks || (body.task ? [body.task] : []);
     if (!names.length) return json(res, 400, { ok: false, error: '缺少 task 或 tasks' });
+    const available = listTasks();
+    const unknown = names.filter((n) => typeof n !== 'string' || !available.includes(n));
+    if (unknown.length) {
+      return json(res, 400, { ok: false, error: '未知任务：' + unknown.join(', '), available: available });
+    }
     for (const n of names) state.queue.push(n);
     overlay.log('排队任务：' + names.join(', ')).catch(() => {});
     drain();

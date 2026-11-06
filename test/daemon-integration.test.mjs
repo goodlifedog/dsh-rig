@@ -60,6 +60,16 @@ test('daemon：队列串行、环境失败不重试、临时失败重试一次',
   }, 15000);
   assert.ok(up, 'daemon 没能在 15 秒内起来');
 
+  // 目录穿越：不存在的任务名必须被拒，且不能真的去执行目录外脚本
+  for (const evil of ['../core/runner', '../../etc/passwd', 'ok-task/../../x', 'ok-task.mjs']) {
+    const res = await fetch(BASE + '/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ task: evil }),
+    });
+    assert.equal(res.status, 400, '应拒绝可疑任务名：' + evil);
+  }
+
   const started = Date.now();
   await fetch(BASE + '/run', {
     method: 'POST',
