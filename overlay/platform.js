@@ -120,8 +120,17 @@ async function win32WindowBounds(processName) {
   return { x: n[0], y: n[1], w: n[2], h: n[3] };
 }
 
-async function win32CaptureWindow(windowId, outPath) {
-  const hwndExpr = windowId ? '0x' + Number(windowId).toString(16) : await win32Hwnd('Electron');
+async function win32HwndByTitle(title) {
+  if (!title) return '';
+  const safe = String(title).replace(/'/g, "''");
+  const r = await runPowerShell('(Get-Process | Where-Object { $_.MainWindowTitle -like "*' + safe + '*" } | Select-Object -First 1).MainWindowHandle');
+  return r.ok ? r.out : '';
+}
+
+async function win32CaptureWindow(windowId, outPath, hints) {
+  // Windows 上 windowId 来自 desktopCapturer 的序号，不是 HWND；优先按窗口标题反查
+  const byTitle = hints && hints.title ? await win32HwndByTitle(hints.title) : '';
+  const hwndExpr = byTitle || (windowId ? '0x' + Number(windowId).toString(16) : await win32Hwnd('Electron'));
   const r = await runPowerShell(PS_WIN32_CAPTURE(hwndExpr, outPath), 8000);
   if (!r.ok) throw new Error('PrintWindow 失败: ' + (r.err && r.err.message));
   return fsp.readFile(outPath);
@@ -151,11 +160,11 @@ async function readWindowTitle(processName) {
   return null;
 }
 
-async function captureWindow(windowId) {
+async function captureWindow(windowId, hints) {
   const out = tempPath('.png');
   try {
     if (isMac) return await macCaptureWindow(windowId, out);
-    if (isWindows) return await win32CaptureWindow(windowId, out);
+    if (isWindows) return await win32CaptureWindow(windowId, out, hints);
     throw new Error('不支持的平台: ' + process.platform);
   } finally {
     fsp.rm(out, { force: true }).catch(() => {});

@@ -213,7 +213,7 @@ function createOverlayServer(options) {
       const body = await readJsonBody(req);
       const session = sessionFrom(url, body);
       const raw = body.windowId !== undefined ? body.windowId : body.id;
-      const windowId = await handlers.onWindow(session, raw);
+      const windowId = await handlers.onWindow(session, raw, body.title);
       if (!windowId) {
         return json(res, 400, { ok: false, error: 'windowId 无效，示例：68544 或 "window:68544:0"' });
       }

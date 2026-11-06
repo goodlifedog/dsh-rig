@@ -87,6 +87,21 @@ Windows（待补）：
 node core\platform-smoke.mjs   # 检查 PrintWindow / UIA 可用性
 ```
 
+## Windows 抓图的关键坑：窗口句柄
+
+macOS 的 `screencapture -l` 直接吃 desktopCapturer 给的窗口序号，Windows 的 `PrintWindow` 要的是 HWND，两者不是一回事。
+
+现在的处理：`POST /window` 支持同时传 `title`，Windows 侧用 `Get-Process | Where MainWindowTitle -like` 反查出真正的 HWND；传不了标题时才退回把序号当 HWND 用（大概率失败）。
+
+调用方（agentd/任务）在 Windows 上应带上标题：
+
+```js
+await fetch('http://127.0.0.1:7788/window', {
+  method: 'POST',
+  body: JSON.stringify({ windowId, title: 'BOSS直聘 - Google Chrome' }),
+});
+```
+
 ## 诚实说明
 
 Windows 分支代码是照着 Win32 API 写的，**没有在真实 Windows 上跑过**。当前开发机是 macOS 26.5.1，无法验证。

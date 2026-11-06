@@ -838,7 +838,7 @@ async function captureThumbnail(s) {
       );
       image = nativeImage.createFromPath(file);
     } else {
-      const bytes = await platform.captureWindow(s.state.windowId);
+      const bytes = await platform.captureWindow(s.state.windowId, { title: s.state.windowTitle });
       image = nativeImage.createFromBuffer(bytes);
     }
     if (!image || image.isEmpty()) throw new Error('截图没有产出有效图片');
@@ -929,7 +929,7 @@ function startThumbnailLoop(s) {
 
 // ---------- 窗口 ----------
 
-function setWindowId(s, raw, source) {
+function setWindowId(s, raw, source, title) {
   const id = normalizeWindowId(raw);
   if (!id) return null;
 
@@ -944,6 +944,8 @@ function setWindowId(s, raw, source) {
   }
 
   s.state.windowId = id;
+  // Windows 抓图要 HWND：用窗口标题反查，标题由 /window 请求一起传
+  s.state.windowTitle = typeof title === 'string' ? title : '';
   s.state.thumbnail.state = 'waiting';
   s.state.thumbnail.error = null;
   s.lastThumbSignal = '';
@@ -1195,11 +1197,11 @@ async function startServer() {
         maybeAutoBindTitle(s);
         return setStatus(s, text, requestedActivity);
       },
-      onWindow: async (session, raw) => {
+      onWindow: async (session, raw, title) => {
         const s = ensureSession(session, 'HTTP /window');
         await refreshSelfWindows();
         const id = normalizeWindowId(raw);
-        const result = setWindowId(s, raw, 'HTTP /window');
+        const result = setWindowId(s, raw, 'HTTP /window', title);
         if (!result && id && selfWindowIds.has(id)) {
           const error = new Error('拒绝绑定 DeepSeek Harness 自身窗口（' + id + '），请指定被控应用窗口');
           error.statusCode = 403;
