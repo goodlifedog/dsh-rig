@@ -29,7 +29,7 @@ const state = {
   startedAt: new Date().toISOString(),
   current: null,      // { name, startedAt, pid }
   queue: [],
-  history: [],        // { name, ok, startedAt, durationMs }
+  history: [],        // { name, ok, startedAt, durationMs, attempt } —— 内部保留 200 条用于统计
 };
 
 // 后台服务是 launchd 起的，系统按「这个可执行文件」认权限，和终端里跑不是一回事。
@@ -75,6 +75,43 @@ function tailOf(file, bytes = 4096) {
     fs.closeSync(fd);
     return buf.toString('utf8');
   } catch { return ''; }
+}
+
+// 按任务聚合最近运行记录：成功率、平均/最慢耗时、重试次数
+function statsOf() {
+  const runs = state.history;
+  const byTask = new Map();
+  let okCount = 0;
+  let totalMs = 0;
+  let retries = 0;
+  for (const run of runs) {
+    if (!run) continue;
+    const item = byTask.get(run.name) || { name: run.name, count: 0, ok: 0, totalMs: 0, maxMs: 0, retries: 0 };
+    item.count += 1;
+    if (run.ok) { item.ok += 1; okCount += 1; }
+    item.totalMs += run.durationMs || 0;
+    totalMs += run.durationMs || 0;
+    item.maxMs = Math.max(item.maxMs, run.durationMs || 0);
+    if ((run.attempt || 0) > 0) { item.retries += 1; retries += 1; }
+    byTask.set(run.name, item);
+  }
+  const tasks = Array.from(byTask.values())
+    .map((t) => ({
+      name: t.name,
+      count: t.count,
+      okRate: t.count ? Math.round((t.ok / t.count) * 100) : 0,
+      avgMs: t.count ? Math.round(t.totalMs / t.count) : 0,
+      maxMs: t.maxMs,
+      retries: t.retries,
+    }))
+    .sort((a, b) => b.count - a.count);
+  return {
+    runs: runs.length,
+    okRate: runs.length ? Math.round((okCount / runs.length) * 100) : 0,
+    avgMs: runs.length ? Math.round(totalMs / runs.length) : 0,
+    retries,
+    tasks,
+  };
 }
 
 function listTasks() {
@@ -127,10 +164,10 @@ function runTask(name, attempt = 0) {
       clearInterval(beat);
       clearTimeout(timer);
       try { out.end(); } catch {}
-      const entry = { name, ok: false, code: null, error: String(err && err.message || err), startedAt: new Date(startedAt).toISOString(), durationMs: Date.now() - startedAt, logFile };
+      const entry = { name, attempt, ok: false, code: null, error: String(err && err.message || err), startedAt: new Date(startedAt).toISOString(), durationMs: Date.now() - startedAt, logFile };
       state.current = null;
       state.history.unshift(entry);
-      state.history = state.history.slice(0, 30);
+      state.history = state.history.slice(0, 200);
       overlay.log('启动失败 ' + name + '：' + entry.error).catch(() => {});
       overlay.window(null).catch(() => {});
       overlay.status('失败：' + name + ' · ' + entry.error.slice(0, 40), 'error').catch(() => {});
@@ -147,7 +184,7 @@ function runTask(name, attempt = 0) {
       const entry = { name, attempt, ok, code, startedAt: new Date(startedAt).toISOString(), durationMs, logFile };
       state.current = null;
       state.history.unshift(entry);
-      state.history = state.history.slice(0, 30);
+      state.history = state.history.slice(0, 200);
       // 顺序有讲究：日志会被当成「动作」把状态点成运行中，所以先写日志，
       // 再解绑窗口（停掉抓帧循环、清掉陈旧错误），最后落「完成/失败」状态。
       await overlay.log((ok ? '完成 ' : '失败 ') + name + ' 用时 ' + (durationMs / 1000).toFixed(1) + 's').catch(() => {});
@@ -198,6 +235,10 @@ const server = http.createServer(async (req, res) => {
     });
   }
 
+  if (p === '/stats' && req.method === 'GET') {
+    return json(res, 200, Object.assign({ ok: true }, statsOf()));
+  }
+
   if (p === '/selftest' && req.method === 'GET') {
     try {
       return json(res, 200, Object.assign({ ok: true }, await selfTest()));
@@ -207,7 +248,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (p === '/status' && req.method === 'GET') {
-    return json(res, 200, { ok: true, ...state, tasks: listTasks() });
+    return json(res, 200, { ok: true, ...state, history: state.history.slice(0, 30), historyTotal: state.history.length, tasks: listTasks() });
   }
 
   if (p === '/tasks' && req.method === 'GET') {

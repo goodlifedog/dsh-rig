@@ -61,6 +61,17 @@ async function main() {
     console.log('画面     : ' + text + (h.windowId ? '（窗口 ' + h.windowId + '）' : '') + ' | 日志 ' + h.logs + ' 条');
   }
 
+  // 耗时趋势（daemon 侧聚合）：哪个任务慢、成功率多少
+  try {
+    const stats = await (await fetch('http://127.0.0.1:7789/stats', { signal: AbortSignal.timeout(2000) })).json();
+    if (stats && stats.runs) {
+      const secs = (ms) => (ms >= 1000 ? (ms / 1000).toFixed(1) + 's' : Math.round(ms) + 'ms');
+      const slowest = (stats.tasks || []).slice().sort((a, b) => b.avgMs - a.avgMs)[0];
+      console.log('耗时     : 近 ' + stats.runs + ' 次成功率 ' + stats.okRate + '%，平均 ' + secs(stats.avgMs) +
+        (slowest ? '，最慢 ' + slowest.name + ' ' + secs(slowest.avgMs) : ''));
+    }
+  } catch {}
+
   const locks = listLocks();
   console.log('运行中   : ' + (locks.length ? locks.map((l) => l.app + '(' + Math.round((Date.now() - l.since) / 1000) + 's)').join(', ') : '无任务'));
 

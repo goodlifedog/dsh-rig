@@ -478,6 +478,7 @@ curl -s -X POST http://127.0.0.1:7788/close -H 'Content-Type: application/json' 
 | GET | `/` | 健康检查 + 任务列表 + 队列长度 |
 | GET | `/status` | 完整状态：current / queue / history |
 | GET | `/selftest` | 后台服务自检：系统事件、ocu 在当前服务身份下是否可用 |
+| GET | `/stats` | 按任务聚合最近运行：次数、成功率、平均/最慢耗时、重试次数 |
 | GET | `/tasks` | 任务名 + 历史 |
 | POST | `/run` | `{"task":"xxx"}` 或 `{"tasks":["a","b"]}` 入队 |
 | POST | `/stop` | 清队列并停当前任务 |

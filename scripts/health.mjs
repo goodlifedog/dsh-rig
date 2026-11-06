@@ -108,6 +108,16 @@ async function main() {
     } else {
       add('自动重试', true, '最近 ' + hist.length + ' 次未触发重试');
     }
+
+    // 耗时趋势：按任务聚合，能看出哪个任务在拖后腿
+    const stats = await getJson('http://127.0.0.1:7789/stats');
+    if (stats && stats.runs) {
+      const secs = (ms) => (ms >= 1000 ? (ms / 1000).toFixed(1) + 's' : Math.round(ms) + 'ms');
+      const slowest = (stats.tasks || []).slice().sort((a, b) => b.avgMs - a.avgMs)[0];
+      add('任务耗时', true,
+        '近 ' + stats.runs + ' 次：成功率 ' + stats.okRate + '%｜平均 ' + secs(stats.avgMs) +
+        (slowest ? '｜最慢 ' + slowest.name + ' ' + secs(slowest.avgMs) + '（最多 ' + secs(slowest.maxMs) + '）' : ''));
+    }
   }
 
   // 4. 近 24 小时运行日志里的失败
