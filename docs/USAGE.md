@@ -460,6 +460,7 @@ node core/tasks/<任务>.mjs          # 单跑一个任务文件（不经 runner
 | POST | `/visible` | `{"visible":true}` 或 `false`：手动显隐；true 会固定显示（暂停自动隐藏） |
 | POST | `/expand` | `{}` 放大/还原 |
 | POST | `/frame` | `{"dataUrl","cursor","width","height"}` 外部推帧 |
+| POST | `/stop-task` | `{}` 停止后台正在跑的任务（队列一并清空；用户主动停止不会触发自动重试） |
 | POST | `/close` | `{}` 关掉该会话窗口 |
 
 ```bash

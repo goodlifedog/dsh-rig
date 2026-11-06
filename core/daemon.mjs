@@ -32,6 +32,7 @@ const state = {
   startedAt: new Date().toISOString(),
   current: null,      // { name, startedAt, pid }
   pendingRetry: null, // { name, attempt, at }：失败后等待退避重跑，这段时间不能对外显示「空闲」
+  cancelled: false,   // 用户主动停止（POST /stop）：这种结束不该触发自动重试
   queue: [],
   history: [],        // { name, ok, startedAt, durationMs, attempt } —— 内部保留 200 条用于统计
 };
@@ -155,6 +156,7 @@ function runTask(name, attempt = 0) {
     const child = spawn(process.execPath, [file], { cwd: ROOT, env: { ...process.env, AGENTD_DAEMON: '1' } });
     state.current = { name, attempt, startedAt: new Date().toISOString(), pid: child.pid, logFile };
     state.pendingRetry = null;
+    state.cancelled = false;
     overlay.status('后台任务：' + name + (attempt ? '（第 ' + (attempt + 1) + ' 次）' : '')).catch(() => {});
     overlay.log('开始执行 ' + name).catch(() => {});
 
@@ -201,7 +203,10 @@ function runTask(name, attempt = 0) {
       await overlay.window(null).catch(() => {});
 
       // 临时性失败（Chrome 启动慢、端口没起来）自动重跑；环境类问题重试也没用
-      const decision = decideRetry({ ok, text: tailOf(logFile), attempt, maxAttempts: MAX_RETRIES, code });
+      const cancelled = state.cancelled === true;
+      const decision = cancelled
+        ? { retry: false, reason: '用户主动停止', delayMs: 0 }
+        : decideRetry({ ok, text: tailOf(logFile), attempt, maxAttempts: MAX_RETRIES, code });
       if (decision.retry) {
         await overlay.status('重试中：' + name + '（第 ' + (attempt + 2) + ' 次，' + Math.round(decision.delayMs / 1000) + 's 后）', 'running').catch(() => {});
         await overlay.log('失败原因：' + decision.reason + '；' + Math.round(decision.delayMs / 1000) + 's 后自动重试').catch(() => {});
@@ -212,8 +217,9 @@ function runTask(name, attempt = 0) {
           drain();
         }, decision.delayMs);
       } else {
-        await overlay.status((ok ? '完成：' : '失败：') + name + ' · ' + (durationMs / 1000).toFixed(1) + 's', ok ? 'idle' : 'error').catch(() => {});
-        if (!ok && decision.reason === '不是临时性失败') {
+        const label = cancelled ? '已停止：' + name : (ok ? '完成：' : '失败：') + name;
+        await overlay.status(label + ' · ' + (durationMs / 1000).toFixed(1) + 's', 'idle').catch(() => {});
+        if (!ok && !cancelled && decision.reason === '不是临时性失败') {
           await overlay.log('不做自动重试：' + decision.reason).catch(() => {});
         }
       }
@@ -287,11 +293,13 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (p === '/stop' && req.method === 'POST') {
+    const hadTask = Boolean(state.current && state.current.pid);
     state.queue = [];
-    if (state.current && state.current.pid) {
+    state.cancelled = hadTask;
+    if (hadTask) {
       try { process.kill(state.current.pid, 'SIGTERM'); } catch {}
     }
-    return json(res, 200, { ok: true, stopped: true });
+    return json(res, 200, { ok: true, stopped: hadTask, task: hadTask ? state.current.name : null });
   }
 
   return json(res, 404, { ok: false, error: 'not found', path: p });

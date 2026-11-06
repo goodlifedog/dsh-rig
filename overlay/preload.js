@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('overlay', {
   getState: () => ipcRenderer.invoke('overlay:get-state'),
   close: () => ipcRenderer.send('overlay:close'),
   toggleExpand: () => ipcRenderer.invoke('overlay:toggle-expand'),
+  stopTask: () => ipcRenderer.send('overlay:stop-task'),
   setHover: (v) => ipcRenderer.send('overlay:hover', Boolean(v)),
   // 鼠标进入按钮/拖拽条热区时告诉主进程，切换「点击穿透」；其余区域保持穿透
   setInteractive: (v) => ipcRenderer.send('overlay:interactive', Boolean(v)),

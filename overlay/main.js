@@ -1582,6 +1582,7 @@ async function startServer() {
       onVisible: (session, visible) => setVisibleManual(ensureSession(session, 'HTTP /visible'), visible),
       onFrame: (session, dataUrl, note, cursor, width, height) => pushExternalFrame(ensureSession(session, 'HTTP /frame'), dataUrl, note, cursor, width, height),
       onExpand: (session) => toggleExpand(ensureSession(session, 'HTTP /expand')),
+      stopTask: (session) => stopBackgroundTask(sessions.get(session) || null),
       close: (session) => closeSession(session),
       frameTarget: (session) => {
         const s = sessions.get(session);
@@ -1655,6 +1656,24 @@ function toggleExpand(s) {
   return { expanded: s.flags.expanded };
 }
 
+// 停止后台任务：小窗上的「■」按钮和 POST /stop-task 都走这里
+async function stopBackgroundTask(s) {
+  const url = (process.env.AGENTD_URL || 'http://127.0.0.1:7789') + '/stop';
+  try {
+    const res = await fetch(url, { method: 'POST', signal: AbortSignal.timeout(2000) });
+    const data = await res.json().catch(() => null);
+    const stopped = Boolean(data && data.stopped);
+    if (s) {
+      pushLog(s, stopped ? '已请求停止当前任务（等待进程退出）' : '没有正在运行的任务', 'action');
+      setStatus(s, stopped ? '正在停止任务…' : '待命', stopped ? 'running' : 'idle');
+    }
+    return { ok: Boolean(res.ok), stopped: stopped };
+  } catch (error) {
+    if (s) pushLog(s, '停止任务失败：' + String(error && error.message || error).slice(0, 60), 'system');
+    return { ok: false, error: String(error && error.message || error) };
+  }
+}
+
 function sessionFromEvent(event) {
   for (const s of sessions.values()) {
     if (s.win && !s.win.isDestroyed() && s.win.webContents === event.sender) return s;
@@ -1700,6 +1719,11 @@ function registerIpc() {
     if (!s) return;
     if (kind === 'settings') openScreenRecordingSettings();
     else retryThumbnailCapture(s);
+  });
+
+  ipcMain.on('overlay:stop-task', (event) => {
+    const s = sessionFromEvent(event);
+    stopBackgroundTask(s).catch(() => {});
   });
 
   ipcMain.on('overlay:close', (event) => {

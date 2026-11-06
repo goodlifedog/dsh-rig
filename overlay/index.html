@@ -197,6 +197,27 @@
     #expand:hover { background: rgba(0, 0, 0, 0.7); }
     #close:hover { background: rgba(0, 0, 0, 0.7); }
 
+    /* 任务运行时才出现的「停止」按钮：用户看到小窗在动，要能随时叫停 */
+    #stop {
+      position: absolute;
+      top: 9px;
+      right: 65px;
+      z-index: 6;
+      -webkit-app-region: no-drag;
+      width: 22px;
+      height: 22px;
+      padding: 0;
+      border: 0;
+      border-radius: 50%;
+      background: rgba(255, 69, 58, 0.55);
+      color: #fff;
+      font-size: 10px;
+      line-height: 1;
+      cursor: pointer;
+      display: none;
+    }
+    #stop:hover { background: rgba(255, 69, 58, 0.85); }
+
     /* 画面区域 */
     #stage {
       position: absolute;
@@ -386,6 +407,7 @@
       <div id="drag-right" class="drag-strip" aria-hidden="true"></div>
       <div id="drag-bottom" class="drag-strip" aria-hidden="true"></div>
 
+      <button id="stop" type="button" title="停止当前任务" aria-label="停止任务">■</button>
       <button id="expand" type="button" title="放大（按画面比例）" aria-label="放大">⤢</button>
       <button id="close" type="button" title="关闭（Esc）" aria-label="关闭">✕</button>
 

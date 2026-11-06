@@ -21,6 +21,7 @@ function stubHandlers(overrides = {}) {
     onVisible: (session, visible) => ({ visible }),
     onExpand: () => ({ expanded: true }),
     onFrame: () => ({ ok: true }),
+    stopTask: () => ({ stopped: true, task: 'demo' }),
     close: () => true,
     health: (session) => ({ session, exists: true, pid: 1 }),
     sessions: () => [],
@@ -115,6 +116,18 @@ test('推帧只接受 data:image/ 开头，挡住外部 URL', async () => {
 
     const ok = await post(base, '/frame', { dataUrl: 'data:image/png;base64,AAAA', width: 600, height: 380 });
     assert.equal(ok.status, 200);
+  });
+});
+
+test('停止任务接口可用，且登记在已知路由里', async () => {
+  await withServer(async (base) => {
+    const r = await post(base, '/stop-task', { session: 'demo' });
+    assert.equal(r.status, 200);
+    assert.equal(r.json.stopped, true);
+
+    // GET 走错方法应回 405（说明该路由被登记），而不是 404
+    const wrong = await get(base, '/stop-task');
+    assert.equal(wrong.status, 405);
   });
 });
 

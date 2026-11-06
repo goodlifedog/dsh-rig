@@ -299,6 +299,16 @@ function createOverlayServer(options) {
       });
     }
 
+    if (pathname === '/stop-task' && method === 'POST') {
+      if (typeof handlers.stopTask !== 'function') {
+        return json(res, 501, { ok: false, error: '停止任务接口未启用' });
+      }
+      const body = await readJsonBody(req);
+      const session = sessionFrom(url, body);
+      const result = await handlers.stopTask(session);
+      return json(res, 200, Object.assign({ ok: true, session: session }, result || {}));
+    }
+
     if (pathname === '/close' && method === 'POST') {
       if (typeof handlers.close !== 'function') {
         return json(res, 501, { ok: false, error: '关闭接口未启用' });
@@ -312,7 +322,7 @@ function createOverlayServer(options) {
       return json(res, 200, { ok: true, session: session, closed: true });
     }
 
-    const known = ['/', '/health', '/sessions', '/windows', '/frame-target', '/log', '/status', '/window', '/visible', '/frame', '/expand', '/close'];
+    const known = ['/', '/health', '/sessions', '/windows', '/frame-target', '/log', '/status', '/window', '/visible', '/frame', '/expand', '/stop-task', '/close'];
     if (known.indexOf(pathname) !== -1) {
       return json(res, 405, { ok: false, error: method + ' 不被支持，请使用对应的方法' });
     }
