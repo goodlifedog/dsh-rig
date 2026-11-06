@@ -43,6 +43,7 @@
     "check:ocu": "node scripts/check-ocu.mjs",
     "start": "node scripts/start-all.mjs",
     "ui:regression": "node scripts/ui-regression.mjs",
+    "scope:check": "node scripts/session-scope-check.mjs",
     "ui:check": "node scripts/ui-check.mjs",
     "health": "node scripts/health.mjs"
   }

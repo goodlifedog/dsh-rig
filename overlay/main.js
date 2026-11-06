@@ -464,9 +464,11 @@ function setTitleHint(s, raw) {
     return null;
   }
   s.matched = titleMatches(s);
-  if (!s.matched && s.win && !s.win.isDestroyed() && s.win.isVisible()) {
+  if (!s.matched) {
+    // 归属一变就立刻收起，不等轮询；窗口即便已不可见也要把状态标成 false，
+    // 否则健康信息会出现「说可见、其实已藏」的不一致
     s.flags.suppressBySession = true;
-    s.win.hide();
+    if (s.win && !s.win.isDestroyed() && s.win.isVisible()) s.win.hide();
     s.state.visible = false;
   }
   return s.titleHint;

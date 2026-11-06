@@ -427,6 +427,7 @@ curl -s http://127.0.0.1:7788/health | head -c 400   # 小窗自己怎么说
 | `npm run check:ocu` | `node scripts/check-ocu.mjs` | 对比随包 ocu 与 npm 最新版 |
 | `npm run ui:check` | `node scripts/ui-check.mjs` | 截小窗区域 + 附 health 指标，改外观前后对比 |
 | `npm run ui:regression` | `node scripts/ui-regression.mjs` | 小窗行为回归（出现/消失/穿透/放大比例） |
+| `npm run scope:check` | `node scripts/session-scope-check.mjs` | 会话隔离检查（只在本会话出现、切走多久消失、切回多久出现） |
 
 ### 5.2 直接跑 node（npm 不覆盖的参数）
 
