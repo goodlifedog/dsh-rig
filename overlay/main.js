@@ -1018,55 +1018,14 @@ function thumbnailTargetWidth(s) {
 }
 
 // dataURL 里的真实图片字节数（base64 长度 ≠ 字节数，别把 base64 长度当 frameBytes）
-function base64DataBytes(dataUrl) {
-  const text = String(dataUrl || '');
-  const comma = text.indexOf(',');
-  if (comma < 0) return 0;
-  const b64 = text.length - comma - 1;
-  let padding = 0;
-  if (text.endsWith('==')) padding = 2;
-  else if (text.endsWith('=')) padding = 1;
-  return Math.max(0, Math.floor((b64 * 3) / 4) - padding);
-}
+const imageMeta = require('./image-meta.js');
 
-// 只读图片头拿宽高（JPEG SOF / PNG IHDR），不整图解码。
-// 连续推帧时尺寸已知就完全不解析，避免每帧 nativeImage 解码拖慢主进程。
-function imageSizeFromDataUrl(dataUrl) {
-  try {
-    const text = String(dataUrl || '');
-    const comma = text.indexOf(',');
-    if (comma < 0) return null;
-    const meta = text.slice(0, comma);
-    const buf = Buffer.from(text.slice(comma + 1), 'base64');
-    if (!buf.length) return null;
-    if (/^data:image\/png/i.test(meta)) {
-      if (buf.length >= 24 && buf.readUInt32BE(12) === 0x49484452) { // 'IHDR'
-        const width = buf.readUInt32BE(16);
-        const height = buf.readUInt32BE(20);
-        if (width > 0 && height > 0) return { width: width, height: height };
-      }
-    } else {
-      const size = jpegSize(buf);
-      if (size && size.width > 0 && size.height > 0) return size;
-    }
-  } catch (error) {
-    // 解析失败按「尺寸未知」处理
-  }
-  return null;
-}
-
-// cursor 是画面像素坐标 { x, y, click }，渲染进程据此画虚拟光标
-function sanitizeCursor(cursor) {
-  if (!cursor || typeof cursor !== 'object') return null;
-  const x = Number(cursor.x);
-  const y = Number(cursor.y);
-  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-  return {
-    x: Math.round(x * 100) / 100,
-    y: Math.round(y * 100) / 100,
-    click: Boolean(cursor.click),
-  };
-}
+// 图片头解析、字节数、光标校验都在 overlay/image-meta.js（纯函数，带单测）
+// 只读图片头拿宽高（JPEG SOF / PNG IHDR），不整图解码：连续推帧时已知尺寸就不解析，
+// 避免每帧 nativeImage 解码拖慢主进程。
+const base64DataBytes = imageMeta.base64DataBytes;
+const imageSizeFromDataUrl = imageMeta.imageSizeFromDataUrl;
+const sanitizeCursor = imageMeta.sanitizeCursor;
 
 // 外部推送的画面（例如 headless CDP 截图）：接管该会话的缩略图，暂停 screencapture。
 // 连续推帧时每次都会刷新时间戳/状态，不会被当成「一次性画面」；
@@ -1119,21 +1078,7 @@ function pushExternalFrame(s, dataUrl, note, cursor, width, height) {
 }
 
 /** 从 JPEG 字节里读宽高（不解码整图），失败返回 null */
-function jpegSize(buf) {
-  try {
-    let i = 2;
-    while (i < buf.length) {
-      if (buf[i] !== 0xff) { i++; continue; }
-      const marker = buf[i + 1];
-      const len = buf.readUInt16BE(i + 2);
-      if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
-        return { height: buf.readUInt16BE(i + 5), width: buf.readUInt16BE(i + 7) };
-      }
-      i += 2 + len;
-    }
-  } catch {}
-  return { width: 0, height: 0 };
-}
+const jpegSize = imageMeta.jpegSize;
 
 async function captureThumbnail(s) {
   const win = s.win;
