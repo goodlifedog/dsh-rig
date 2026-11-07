@@ -11,7 +11,7 @@
 | 本机任意进程驱动守护进程 / 小窗 | 任何本地进程都能 POST /run 让后台跑任务，或调 overlay 读窗口标题、往浮窗塞图 | **daemon 与 overlay 的全部接口都要 `X-Agent-Token`**；token 启动时随机生成写到 `~/.desktop-agent/api-token`（文件 600、目录 700），客户端自动读取；实测两个服务无 token 均 401。默认只认请求头：`?token=` 会漏进 shell history/访问日志，必须显式 `AGENT_ALLOW_QUERY_TOKEN=1` 才认（实测默认下查询串 401） |
 | AppleScript 注入 | 应用名/进程名里塞引号或换行把脚本截断，执行任意命令 | 拼进脚本的名字走白名单校验（`isSafeIdentifier`），含引号/反斜杠/控制字符一律不执行；`isSafeScriptLiteral` 再做一层 |
 | AppleScript 授权弹窗 | 后台流程被系统弹框打断，或替用户点"允许" | 先用 `AEDeterminePermissionToAutomateTarget(askUserIfNeeded=false)` 静默查授权，没授权**不发 Apple 事件** |
-| CDP 端口劫持 | 本地进程抢先监听调试端口冒充 CDP，我们连上去等于把页面内容/输入交给它 | 连之前用 `lsof` 查端口主人，必须等于目标应用 pid，否则拒绝（`debugPortTrust`） |
+| CDP 端口劫持 | 本地进程抢先监听调试端口冒充 CDP，我们连上去等于把页面内容/输入交给它 | 连之前用 `lsof` 查端口主人：知道应用 pid 时必须相等（`debugPortTrust`）；拿不到 pid 时校验端口主人的可执行路径属于该应用；两者都拿不到就**拒绝连接**（fail closed）。启动和 attach 两处都校验，实机用假 CDP 占端口验证过拒绝路径 |
 | pid 复用误杀 | pgrep 和 kill 之间 pid 被系统复用，把用户别的程序 TERM 掉 | 杀之前 `ps -p pid -o comm=` 复核，名字对不上就不杀（`pidMatchesProcess`） |
 | 预置可执行文件 | `~/.desktop-agent/bin/ae-permission` 被别人换成恶意程序 | 执行前校验归属和权限（必须本用户所有、不能被组/其他人写），缓存目录不可信时**拒绝执行**；编译走临时文件 + rename |
 | 未保存数据被强杀 | 退出应用时如果卡在"要保存吗"，强杀会丢内容 | 退不掉时先查保存/删除类弹窗，有就返回 `needs-confirm` 且不发 TERM |

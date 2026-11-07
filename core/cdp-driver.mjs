@@ -95,6 +95,68 @@ export async function debugPortOwner(port, options = {}) {
 }
 
 /**
+ * 找应用主进程 pid（尽力而为）：先按进程名精确匹配，再交给调用方传 findPid。
+ * 用途：校准「调试端口主人」是不是我们刚启动的那个应用。
+ * @returns {Promise<number>} pid，查不到返回 0
+ */
+export async function findAppPid(app, options = {}) {
+  const opts = options || {};
+  const run = (opts.deps && opts.deps.exec) || exec;
+  const names = [app && app.processName, app && app.process, app && app.exe].filter(Boolean).map(String);
+  for (const name of names) {
+    if (!/^[A-Za-z0-9 ._-]{1,64}$/.test(name)) continue;
+    try {
+      const { stdout } = await run('/usr/bin/pgrep', ['-x', name], { timeout: 3000 });
+      const pid = Number(String(stdout || '').trim().split('\n')[0]);
+      if (Number.isInteger(pid) && pid > 0) return pid;
+    } catch {}
+  }
+  return 0;
+}
+
+/** 端口主人的可执行路径（ps -p pid -o comm=），拿不到返回空串 */
+export async function portOwnerCommand(pid, options = {}) {
+  const opts = options || {};
+  const run = (opts.deps && opts.deps.exec) || exec;
+  try {
+    const { stdout } = await run('/bin/ps', ['-p', String(pid), '-o', 'comm='], { timeout: 3000 });
+    return String(stdout || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * 校验调试端口主人是不是目标应用（连之前必须过这道）。
+ *
+ * 两种判据：
+ *  1. 知道应用 pid：端口主人 pid 必须相等（debugPortTrust）；
+ *  2. 不知道 pid：端口主人的可执行路径必须落在该应用里（名字/bundle 命中）。
+ * 都拿不到就 fail closed——连一个来路不明的 CDP 端口，等于把页面内容和键入交给它。
+ *
+ * @returns {Promise<{ok:boolean, trust:string, ownerPid:number, appPid:number, command?:string}>}
+ */
+export async function verifyDebugPortOwner(options = {}) {
+  const opts = options || {};
+  const deps = opts.deps || {};
+  const port = Number(opts.port);
+  const portOwner = opts.portOwner || deps.portOwner || debugPortOwner;
+  const ownerPid = await portOwner(port);
+  const appPid = Number(opts.expectedPid) || 0;
+  if (!ownerPid) return { ok: false, trust: 'no-listener', ownerPid: 0, appPid };
+  if (appPid) {
+    const trust = debugPortTrust({ ownerPid, appPid });
+    return { ok: trust === 'ok', trust, ownerPid, appPid };
+  }
+  const app = opts.app || {};
+  const command = await portOwnerCommand(ownerPid, { deps });
+  const candidates = [app.appName, app.name, app.processName, app.process, app.bundleId]
+    .filter(Boolean).map(String);
+  const hit = Boolean(command) && candidates.some((c) => c && command.includes(c));
+  return { ok: hit, trust: hit ? 'path-match' : (command ? 'path-mismatch' : 'unknown-owner'), ownerPid, appPid: 0, command };
+}
+
+/**
  * 探测某个端口上有没有活的 CDP 服务。
  * @returns {Promise<{ok:boolean, version?:object, error?:string}>}
  */
@@ -141,7 +203,25 @@ export async function launchWithDebug(app, options = {}) {
   const started = Date.now();
   for (;;) {
     const probe = await deps.probe(port, { timeoutMs: 1000 });
-    if (probe.ok) return { ok: true, port, waitedMs: Date.now() - started, version: probe.version };
+    if (probe.ok) {
+      // 端口有 CDP 响应 ≠ 是我们拉起的那个应用：调试端口是固定哈希值，
+      // 本机别的进程可以先占住它。连之前必须确认端口主人，否则会把页面内容和键入交给别人。
+      const appPid = await (deps.findPid || ((target) => findAppPid(target, { deps })))(app);
+      const gate = await verifyDebugPortOwner({ port, expectedPid: appPid, app, deps });
+      if (!gate.ok) {
+        return {
+          ok: false,
+          port,
+          waitedMs: Date.now() - started,
+          version: probe.version,
+          appPid,
+          trust: gate.trust,
+          error: '调试端口主人校验未通过（' + gate.trust + '，owner=' + gate.ownerPid
+            + ' 应用=' + (appPid || '未识别') + '），拒绝连接',
+        };
+      }
+      return { ok: true, port, waitedMs: Date.now() - started, version: probe.version, appPid, trust: gate.trust };
+    }
     const waited = Date.now() - started;
     if (waited >= waitMs) return { ok: false, port, waitedMs: waited, error: probe.error || '端口始终没起来' };
     await deps.sleep(intervalMs);
@@ -155,12 +235,22 @@ export async function launchWithDebug(app, options = {}) {
  */
 export async function attachPage(options = {}) {
   const opts = options || {};
-  // 给了 expectedPid 就先确认端口主人，避免连到一个冒充 CDP 的本地进程
-  if (opts.expectedPid) {
-    const ownerPid = await (opts.portOwner || debugPortOwner)(opts.port, opts);
-    const trust = debugPortTrust({ ownerPid, appPid: opts.expectedPid });
-    if (trust !== 'ok') {
-      return { ok: false, trust, error: '调试端口主人校验未通过（' + trust + '，owner=' + ownerPid + ' 期望=' + opts.expectedPid + '）' };
+  // 给了 expectedPid / app 就先确认端口主人，避免连到一个冒充 CDP 的本地进程
+  if (opts.expectedPid || opts.app) {
+    const gate = await verifyDebugPortOwner({
+      port: opts.port,
+      expectedPid: opts.expectedPid,
+      app: opts.app,
+      deps: opts.deps || {},
+      portOwner: opts.portOwner,
+    });
+    if (!gate.ok) {
+      return {
+        ok: false,
+        trust: gate.trust,
+        error: '调试端口主人校验未通过（' + gate.trust + '，owner=' + gate.ownerPid
+          + (opts.expectedPid ? ' 期望=' + opts.expectedPid : ' 应用=' + ((opts.app && (opts.app.appName || opts.app.name)) || '未命名')) + '）',
+      };
     }
   }
   const timeoutMs = Number.isFinite(opts.timeoutMs) ? opts.timeoutMs : 8000;

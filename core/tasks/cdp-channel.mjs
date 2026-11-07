@@ -55,7 +55,7 @@ async function main() {
 
     let up = null;
     for (let i = 0; i < 40; i += 1) {
-      up = await attachPage({ port: PORT, timeoutMs: 800 });
+      up = await attachPage({ port: PORT, timeoutMs: 800, expectedPid: chrome.pid });
       if (up.ok) break;
       await sleep(250);
     }

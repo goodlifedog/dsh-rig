@@ -52,7 +52,10 @@ async function main() {
       continue;
     }
     row.browser = launch.version && launch.version.Browser ? launch.version.Browser : '';
-    const attached = await attachPage({ port });
+    row.appPid = launch.appPid || 0;
+    row.portTrust = launch.trust || '';
+    // 传 expectedPid 让 attachPage 再核一次端口主人（launch 阶段已核过，这里是第二道）
+    const attached = await attachPage({ port, expectedPid: launch.appPid, app });
     if (!attached.ok) {
       row.status = 'attach-failed';
       row.detail = attached.error || '';

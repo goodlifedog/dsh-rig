@@ -63,12 +63,69 @@ test('launchWithDebug：open 带对参数，端口起来就返回', async () => 
       exec: async (bin, args) => { calls.push([bin, ...args].join(' ')); return { stdout: '' }; },
       probe: async () => { probeCount += 1; return probeCount >= 2 ? { ok: true, version: { Browser: 'Chrome/1' } } : { ok: false, error: 'refused' }; },
       sleep: async () => {},
+      findPid: async () => 4242,
+      portOwner: async () => 4242,
     },
   });
   assert.equal(r.ok, true);
   assert.equal(r.port, 9333);
+  assert.equal(r.appPid, 4242, 'launch 要带出应用 pid，后面 attach 才有得比');
+  assert.equal(r.trust, 'ok');
   assert.ok(calls[0].includes('/usr/bin/open'));
   assert.ok(calls[0].includes('--remote-debugging-port=9333'));
+});
+
+test('launchWithDebug：端口被别的进程占住（固定端口哈希会撞）→ 拒绝，不返回成功', async () => {
+  const r = await launchWithDebug({ bundle: 'a.b', name: 'AppX' }, {
+    port: 9333,
+    waitMs: 1000,
+    deps: {
+      exec: async () => ({ stdout: '' }),
+      probe: async () => ({ ok: true, version: { Browser: 'Chrome/1' } }),
+      sleep: async () => {},
+      findPid: async () => 4242,
+      portOwner: async () => 9999,   // 冒充 CDP 的本地进程
+    },
+  });
+  assert.equal(r.ok, false, '端口主人不是目标应用时必须失败');
+  assert.equal(r.trust, 'mismatch');
+  assert.ok(r.error.includes('校验未通过'));
+});
+
+test('launchWithDebug：查不到应用 pid 时按端口主人可执行路径判断，路径不对照样拒绝', async () => {
+  const baseDeps = {
+    exec: async (cmd) => {
+      if (cmd === '/bin/ps') return { stdout: '/Applications/Evil.app/Contents/MacOS/Evil' };
+      return { stdout: '' };
+    },
+    probe: async () => ({ ok: true, version: { Browser: 'Chrome/1' } }),
+    sleep: async () => {},
+    findPid: async () => 0,
+    portOwner: async () => 7777,
+  };
+  const bad = await launchWithDebug({ bundle: 'a.b', name: 'AppX' }, { port: 9333, waitMs: 1000, deps: baseDeps });
+  assert.equal(bad.ok, false);
+  assert.equal(bad.trust, 'path-mismatch');
+  const goodDeps = Object.assign({}, baseDeps, {
+    exec: async (cmd) => (cmd === '/bin/ps' ? { stdout: '/Applications/AppX.app/Contents/MacOS/AppX' } : { stdout: '' }),
+  });
+  const good = await launchWithDebug({ bundle: 'a.b', name: 'AppX' }, { port: 9333, waitMs: 1000, deps: goodDeps });
+  assert.equal(good.ok, true);
+  assert.equal(good.trust, 'path-match');
+});
+
+test('attachPage：expectedPid 对不上端口主人 → 拒绝连接', async () => {
+  const r = await attachPage({
+    port: 9333,
+    expectedPid: 4242,
+    timeoutMs: 300,
+    deps: {
+      portOwner: async () => 9999,
+      listTargets: async () => { throw new Error('不该连上'); },
+    },
+  });
+  assert.equal(r.ok, false);
+  assert.equal(r.trust, 'mismatch');
 });
 
 test('launchWithDebug：端口一直不来要如实失败', async () => {
