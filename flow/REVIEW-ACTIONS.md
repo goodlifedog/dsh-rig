@@ -67,13 +67,14 @@
 
 ## P2 · 打磨（按需，不阻塞发布）
 
-### 3.05 `service:status` 的「部署状态」只查游离进程，不查代码新旧
+### 3.05 `service:status` 的「部署状态」只查游离进程，不查代码新旧（**补丁已备**：`flow/patch-deploy-freshness.diff`）
 
 - 现在 `deploymentDrift({listenerPid, managedPid})` 只判断「端口是不是被 launchd 受管进程占着」
 - 容易误读成「部署的是最新代码」：实测此刻 `core/background.mjs`（02:53 改）比 daemon（02:42 启动）新，`service:status` 仍报 `ok`
 - 说明一下影响面：daemon 不 import background.mjs（任务子进程运行时才加载），所以这次没问题；但 `agentd.mjs` / `retry-policy` / `front-watch` 这些是 daemon 直接 import 的，改了不重启就会跑旧代码，而状态仍显示 ok
 - overlay 更明显：`server.js` / `recover.js` / `session-policy.js` 都是启动时 require 的
 - 建议加一列「代码新鲜度」：把每个进程的直接依赖文件 mtime 与其启动时间比，落后就提示 `npm run service:restart`（只提示，不自动重启）
+- **补丁已实现**：新增 `core/deploy-freshness.mjs`（纯函数 + 5 条测试）、接线到 `service.mjs status()`。实测：`touch core/agentd.mjs overlay/server.js` 后输出「落后 —— core/agentd.mjs 比进程新 14 分钟，建议 npm run service:restart」
 
 
 ### 3.1 `ensureAppWindow`（新加的组合动作，任务全靠它兜「进程在但没窗口」）没有单测（**补丁已备**：`flow/patch-ensure-app-window-test.diff`）
