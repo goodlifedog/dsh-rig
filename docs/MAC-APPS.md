@@ -1,0 +1,118 @@
+# macOS 应用适配手册（后台控制）
+
+> 目标：把应用在后台拉起来、读界面、点按钮、设值、抓画面，**全程不打扰前台**。
+> 本文只写实测过的东西；没实测的一律标「未验证」。数据来源：`reports/app-matrix-*.md`。
+
+## 一、先看结论：分门类怎么控
+
+| 门类 | 代表应用 | 后台读取 | 后台点击 | 后台输入 | 画面回显 | 关键注意点 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 原生 AppKit | 备忘录、计算器、系统设置、访达、文本编辑、预览、iMovie | 稳 | 稳 | 设值可用 | 通常 live | iMovie 首次读取会短暂抢前台，需 `settleFront` 兜住 |
+| Electron 聊天/协作 | QQ、微信、Gemini、ChatGPT、Steam | 稳 | 稳 | 设值可用 | 常见 offscreen | 有些应用 AX 操作后**异步**抢前台（QQ/微信/Gemini），读完要延迟复查 |
+| 自绘界面 | Telegram | 可读但元素少 | 0 个按钮，不可点 | 不可靠 | 一般 | 对方用自绘 canvas，AX 拿不到控件，只能靠坐标/快捷键，暂不接管 |
+| 浏览器 | Safari、Chrome | Safari 需已有窗口 | 可用 | 可用 | live | Chrome 会自己抢前台：用独立 headless 实例 + 专用 profile |
+| 终端 | Ghostty | 读取会把应用顶到前台 | — | 键入 + 回车可用 | live | 一律走 `readSafe`；写完必须读回校验 |
+| 菜单栏应用 | Clash Verge | 只读状态 | 不动 | 不动 | — | **永不退出、永不点**，用户在用代理 |
+| 首启引导弹窗 | Pages Creator Studio 这类新装应用 | AX 可读 | 白名单按钮可点 | — | live | app-modal 会卡住 Apple 事件，必须靠 System Events 探窗口 + 白名单点掉 |
+| 会自退的应用 | 抖音（App Store 版 8.1.1）、Antigravity | 否 | 否 | 否 | 否 | 进程启动后 <1s 自行退出（应用侧行为），不是控制层问题 |
+| 多桌面/最小化 | 任意 | 可读 | 可点 | 可用 | offscreen | 窗口在别的桌面时系统只给纯色帧，操作仍然有效 |
+
+## 二、通用适配流程（代码已内置）
+
+```js
+import { ensureAppRunning, waitForWindow, dismissOnboarding,
+         readSafe, findSafe, quitApp } from './core/background.mjs';
+
+const app = { name: 'Steam', bundle: 'com.valvesoftware.steam', process: 'steam_osx' };
+const launch = await ensureAppRunning(app);        // open -g，不激活前台
+await waitForWindow(app.name, { timeoutMs: 12000 }); // 等窗口真的建出来
+await dismissOnboarding(app.name);                 // 只点「继续/开始使用」这类白名单按钮
+const tree = await readSafe(app.name);             // 读前记前台、读后还原
+const btns = await findSafe(app.name, { role: 'AXButton' });
+await quitApp(app);                                // 只关自己拉起来的
+```
+
+矩阵任务（`core/tasks/app-matrix.mjs`）已经把这几步串好了，直接跑：
+
+```bash
+npm run matrix                                   # 默认 11 个门类
+MATRIX_APPS_JSON='[{"name":"Steam","bundle":"com.valvesoftware.steam","process":"steam_osx"}]' npm run matrix
+MATRIX_QUIT=0 npm run matrix                     # 探测完不关（默认会关自己开的）
+MATRIX_DISMISS=0 npm run matrix                  # 不点首启弹窗
+```
+
+## 三、每个坑的成因与对策
+
+**1. 窗口还没建好就采集 → 假「没有窗口」**
+Electron 应用 `open -g` 之后进程先起来，窗口要几百毫秒到十几秒。Steam 实测 677ms 就绪；
+抖音/Antigravity 等到 40s 也没有窗口（它们随后自行退出，属应用侧问题）。
+对策：`waitForWindow()` 轮询 System Events 的窗口数，拿不到再判失败。
+
+**2. 首启欢迎弹窗卡住 Apple 事件**
+Pages Creator Studio 首启弹窗期间，`tell application "Pages" to count documents` 直接超时（-1712），
+但 System Events 仍能读到窗口结构。
+对策：用 System Events 探窗口/弹窗；`dialogs()` 读弹窗文案，`dismissOnboarding()` 只点白名单按钮
+（继续/下一步/开始使用/知道了/OK…），遇到「存储/删除/取消」一律不点。
+
+**3. 操作后应用异步抢前台**
+QQ / 微信 / Gemini 是 AX 动作**完成之后**才激活的，立刻比对会漏判。
+对策：`settleFront(expect, {waitMs:250, retries:3})` 延迟复查 + 还原。
+
+**4. 读取本身就抢前台**
+Ghostty、ChatGPT 读界面树会把应用顶到前台（连不截图也发生）。
+对策：`readSafe()` / `findSafe()`，读前记前台、读后比对、变了立刻还原并如实标记。
+
+**5. 元素索引会过期**
+索引只活约两分钟，过期后工具返回 `isError:false` 但正文写着「expired」。
+对策：同一次 MCP 会话里先 `query` 再点；`withRetry()` / `clickByText()` 自动重查；
+`toolFailureText()` 扫正文识别假成功。
+
+**6. 输入写不进去 ≠ 读不出来**
+读回失败不能当「没写进去」，否则会降级重输、内容重复。
+对策：`smartType()` 读不出时停在当前方式并返回 `verified:null`。
+
+**7. 窗口在别的桌面**
+系统只给纯色帧，overlay 标 offscreen；AX 操作仍然有效，只是画面抓不到。
+
+**8. 退出也可能被弹窗卡住**
+文本编辑有两个未命名文稿时，退出会弹「要存储吗」，Apple 事件同样超时。
+对策：`quitApp()` 先优雅退出，退不掉再按进程 TERM；探测完自动收尾，不留窗口。
+
+## 四、实测记录（2026-11-07，同一台机器）
+
+| 应用 | 类别 | 读界面 | 按钮 | 画面 | 前台影响 | 备注 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 备忘录 Notes | AppKit | 125 节点级 | 有 | live | 无 | 菜单项不可查询 |
+| 文本编辑 TextEdit | AppKit | 有 | 有 | live | 无 | 未命名文稿退出会弹确认 |
+| 计算器 Calculator | AppKit | 有 | 40 个 | live | 无 | 后台键入可用 |
+| 访达 Finder | AppKit | 有 | 有 | live | 无 | 窗口按钮可用 |
+| 系统设置 | AppKit | 有 | 有 | live | 无 | — |
+| Clash Verge | 菜单栏 | 只读 | 不动 | — | 无 | **不退出、不点击** |
+| Ghostty | 终端 | 有 | — | live | 读取会抢，已还原 | 键入+回车实测通过 |
+| ChatGPT | Electron | 有 | 有 | live | 无 | 回车不提交，要点「发送」 |
+| Safari | 浏览器 | 需已有窗口 | 有 | live | 无 | 冷启动不留窗口 |
+| Chrome | 浏览器 | 有 | 有 | live | 会抢 | 用独立 headless 实例 |
+| WPS Office | 办公 | 有 | 有 | live | 无 | 只开首页时无文档 |
+| Pages Creator Studio | 第三方办公 | 16 节点 | 2 | live | 无 | 首启弹窗卡 Apple 事件 |
+| 微信 WeChat | Electron | 20 节点 | 7 | 抓不到窗口 | 异步抢，已还原 | — |
+| QQ | Electron | 125 节点 | 20 | offscreen | 异步抢，已还原 | 窗口在别的桌面 |
+| OrbStack | Electron | 57 节点 | 16 | live | 无 | — |
+| Gemini | Electron | 68 节点 | 46 | offscreen | 异步抢，已还原 | 2 个窗口按钮 |
+| iMovie | AppKit 重应用 | 有 | 有 | live | 首次读取短暂抢夺，已还原 | — |
+| Steam | Electron/Chromium | 9 节点 | 0 | live（10949B） | 无 | 窗口 677ms 就绪；退出需 TERM |
+| 抖音 | App Store 版 | 否 | 否 | 否 | 无 | 启动后 <1s 自退，应用侧限制 |
+| Antigravity | Electron IDE | 否 | 否 | 否 | 无 | 启动即退出（退出码 0），应用侧限制 |
+
+汇总口径：可读 = 界面树有内容；可点 = 至少一个 AXButton；live = 画面能直接回显；
+offscreen = 窗口在别的桌面，系统返回纯色帧。
+
+## 五、已知边界
+
+- **菜单栏命令**：备忘录这类应用菜单栏节点不可查询（AXMenuBarItem/AXMenuItem 均为 0），
+  后台点菜单走不通；⌘N 快捷键会把应用顶到前台，AppleScript 控制第三方应用会触发自动化权限弹窗。
+  两条替代方案都实测失败，别再试。
+- **自绘界面**（Telegram）：AX 拿不到控件，只能坐标/快捷键；坐标法会依赖窗口位置，暂不接管。
+- **需要登录/联网的应用**：抖音这类在未登录或受限环境会自退；Antigravity 同样。
+- **Windows 实机**：本机无硬件，未验证。
+- **锁屏**：锁屏下 AX 整体不可用，所有验收会标「环境跳过」，不能算通过。
+- **用户正在用的应用**：不要调用 `quitApp`；矩阵的自动收尾只关 `launch === 'launched'` 的应用。

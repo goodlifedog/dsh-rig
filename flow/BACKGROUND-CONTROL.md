@@ -28,6 +28,14 @@
 | isTransientAxError(message) | 判定是否瞬时错误（索引过期/超时等） |
 | capabilityFile() | 能力缓存文件路径（~/.desktop-agent/capabilities.json） |
 | toolFailureText(result) | 从工具返回正文里识别「isError=false 但实际失败」（如索引过期） |
+| settleFront(expect, {...}) | 延迟复查前台：兜住「操作完才异步激活」的应用，发现被抢就还原 |
+| windowCount(app, {...}) | 用 System Events 读窗口数（首启弹窗卡 Apple 事件时仍可用）；-1 表示查不到 |
+| waitForWindow(app, {...}) | 轮询等窗口真的建出来（Electron 应用启动后要几百毫秒到十几秒） |
+| parseDialogDump(text) | 把弹窗结构文本解析成 {index,title,texts,buttons} 列表（纯函数） |
+| dialogs(app, {...}) | 列出 app-modal 弹窗（首启欢迎页/更新说明） |
+| pickOnboardingButton(buttons, {...}) | 从按钮里挑一个能安全点掉的（白名单之外一律返回 null，纯函数） |
+| dismissOnboarding(app, {...}) | 只点白名单按钮关掉首启欢迎弹窗，点完复查前台 |
+| quitApp({appName, bundleId, processName}) | 收尾：先优雅退出，退不掉再按进程 TERM |
 
 ## 一、能力边界在哪
 
@@ -312,6 +320,28 @@ npm run user:active  # 你在用 A 时，后台控 B，A 的界面与前台都�
 **验证状态**：逻辑由 5 项单测覆盖（单次抢占还原 / 反复切换认账 / 还原失败不崩 / 停止后不再轮询）。
 真实抢占目前在测试机上无法稳定复现——DSH 处于全屏时其他应用顶不上来（`open -a` 不生效），
 所以只能等实际遇到抢占时再看 `frontSteals` 是否记录。
+
+### 窗口就绪、首启弹窗、收尾（2026-11-07 实测）
+
+这三个坑都不是「引擎不行」，而是时序和弹窗：
+
+**窗口还没建好就采集**。Electron 应用 `open -g` 之后进程先起来，窗口晚几百毫秒到十几秒。
+Steam 实测 677ms 就绪（等之前判「没有窗口」），抖音/Antigravity 等到 40s 也没窗口——它们随后自行退出，
+是应用侧行为。对策 `waitForWindow()`：轮询 System Events 的窗口数（`windowCount()`），
+不用 AX 全树，快且不怕弹窗卡住。
+
+**首启欢迎弹窗卡住 Apple 事件**。Pages Creator Studio 首启弹窗期间，
+`tell application "Pages" to count documents` 直接超时（-1712），退出也被卡住；
+但 System Events 仍能正常读窗口结构。对策：`dialogs()` 读弹窗文案，`dismissOnboarding()`
+只点白名单按钮（继续/下一步/开始使用/知道了/OK…），看到「存储/删除/取消」一律不点，
+挑不到安全按钮就返回 `dismissed:false`，宁可不点也不乱点。
+
+**收尾**。探测完不关会留一堆窗口在桌面上。`quitApp()` 先走 Apple 事件优雅退出，
+失败（弹窗卡住）再按进程 TERM，返回 `quit/term/already-stopped/still-running`；
+矩阵默认只关本轮 `launched` 的应用——用户本来就在跑的（如 Clash）绝不动。
+
+10 项单测覆盖：窗口迟到、一直没窗口、-1 不当成功、弹窗结构解析（含坏行）、
+白名单挑按钮（破坏性按钮一个都不挑）、没安全按钮时不点、点完复查前台。
 
 ## 五、风险与注意
 

@@ -247,6 +247,12 @@ npm run bg:verify   # 一条命令跑完全部验收，输出 reports/bg-verify-
 | 聊天 | Telegram | 是 | 只露壳（自绘窗口） | 是 | 是 |
 | 终端 | Ghostty | 是 | 键入命令 + 回车 | offscreen | 是 |
 | Electron 聊天 | ChatGPT | 是 | 点按钮 | 是 | 是 |
+| Chromium 应用 | Steam | 是 | 读界面（0 个 AX 按钮） | 是 | 是 |
+| 视频剪辑 | iMovie | 是 | 点按钮 | 是 | 是（读取瞬间会抢，自动还原） |
+| 第三方办公 | Pages Creator Studio | 是 | 点按钮 | 是 | 是（首启弹窗会卡 Apple 事件，脚本自动点掉） |
+| 限制项 | 抖音 / Antigravity | 否 | 否 | 否 | 应用自身启动即退出，不是控制层问题 |
+
+完整的分门类策略、每个坑的成因与对策、21 个应用的实测记录见 [docs/MAC-APPS.md](docs/MAC-APPS.md)。
 
 除上表列的操作外，还支持：元素自带次要动作（如笔记行的删除/置顶）、滚动列表、选中文本；
 > 每个应用吃哪种输入方式会被记在 `~/.desktop-agent/capabilities.json`，第二次直接走对的路。

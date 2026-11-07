@@ -369,10 +369,13 @@ export async function readSafe(app, options = {}) {
     error = String(e && e.message || e).slice(0, 120);
   }
   const after = await deps.frontName();
-  const frontStolen = Boolean(before && after && before !== after);
-  if (frontStolen && opts.restore !== false) {
-    await deps.restoreFront(before);
-  }
+  // 有些应用是在 AX 操作完成后才异步激活的：延迟再复查几轮
+  const settle = opts.restore === false
+    ? { stolen: false }
+    : await settleFront(before, { waitMs: 180, retries: 2, deps });
+  // 还原统一交给 settleFront 做（它还会兜住"操作完才异步激活"的情况），这里不再重复还原，
+  // 否则一次读取会触发两次前台还原，日志和统计都会失真。
+  const frontStolen = Boolean(before && after && before !== after) || settle.stolen;
   return { text, error, frontStolen, frontBefore: before, frontAfter: after };
 }
 
@@ -389,10 +392,11 @@ export async function findSafe(app, query, options = {}) {
     error = String(e && e.message || e).slice(0, 120);
   }
   const after = await deps.frontName();
-  const frontStolen = Boolean(before && after && before !== after);
-  if (frontStolen && opts.restore !== false) {
-    await deps.restoreFront(before);
-  }
+  const settle = opts.restore === false
+    ? { stolen: false }
+    : await settleFront(before, { waitMs: 180, retries: 2, deps });
+  // 同 readSafe：还原只由 settleFront 负责，避免重复还原
+  const frontStolen = Boolean(before && after && before !== after) || settle.stolen;
   return { matches, error, frontStolen, frontBefore: before, frontAfter: after };
 }
 /** 能力缓存文件位置 */
@@ -507,3 +511,242 @@ export function toolFailureText(result) {
   }
   return '';
 }
+
+/**
+ * 延迟复查前台并还原。
+ *
+ * 实测（2026-11-07）：QQ / Gemini 这类应用是在 AX 操作「完成之后」才异步激活的，
+ * 读完立刻比对会漏判。所以操作完先等一小会儿，再连续复查几轮，发现被抢就还原。
+ *
+ * @param {string} expect 期望的前台应用名
+ * @param {{waitMs?:number, retries?:number, deps?:object}} [options]
+ * @returns {{stolen:boolean, restores:number, finalFront:string}}
+ */
+export async function settleFront(expect, options = {}) {
+  const opts = options || {};
+  const deps = Object.assign({ frontName, restoreFront }, opts.deps || {});
+  const waitMs = Number.isFinite(opts.waitMs) ? opts.waitMs : 250;
+  const retries = Number.isFinite(opts.retries) ? opts.retries : 3;
+  let restores = 0;
+  let stolen = false;
+  let finalFront = expect;
+  for (let i = 0; i < retries; i += 1) {
+    await new Promise((r) => setTimeout(r, waitMs));
+    const seen = await deps.frontName();
+    finalFront = seen;
+    if (!expect || !seen || seen === expect) continue;
+    stolen = true;
+    await deps.restoreFront(expect);
+    restores += 1;
+  }
+  return { stolen, restores, finalFront };
+}
+
+
+/**
+ * 读某个应用的窗口数量（System Events，比 AX 全树快很多）。
+ *
+ * 为什么要单独一条通路：首启欢迎弹窗会让应用不响应 Apple 事件（Pages Creator Studio 实测
+ * 连 count documents 都超时），但 System Events 仍然能读到窗口结构，用它做"窗口好了没"的探测最稳。
+ *
+ * @returns {Promise<number>} 窗口数；-1 表示查不到（应用没起来 / 无辅助功能权限）
+ */
+export async function windowCount(app, options = {}) {
+  const timeout = Number.isFinite(options.timeoutMs) ? options.timeoutMs : 5000;
+  const script = 'tell application "System Events" to tell process ' + JSON.stringify(String(app)) + ' to count windows';
+  try {
+    const { stdout } = await exec('/usr/bin/osascript', ['-e', script], { timeout });
+    const n = Number.parseInt(String(stdout).trim(), 10);
+    return Number.isFinite(n) ? n : -1;
+  } catch {
+    return -1;
+  }
+}
+
+/**
+ * 等窗口出现。
+ *
+ * 实测（2026-11-07）：Steam / 抖音 / Antigravity 这类 Electron 应用 open -g 之后
+ * 进程先起来、窗口要几秒才建好，立刻采集只会得到"没有窗口"的假结论。
+ *
+ * @param {string} app 应用名
+ * @param {{timeoutMs?:number, intervalMs?:number, deps?:{count?:Function, sleep?:Function}}} [options]
+ * @returns {Promise<{ok:boolean, windows:number, waitedMs:number, attempts:number}>}
+ */
+export async function waitForWindow(app, options = {}) {
+  const opts = options || {};
+  const deps = Object.assign({ count: windowCount, sleep }, opts.deps || {});
+  const timeoutMs = Number.isFinite(opts.timeoutMs) ? opts.timeoutMs : 15000;
+  const intervalMs = Number.isFinite(opts.intervalMs) ? opts.intervalMs : 400;
+  const started = Date.now();
+  let attempts = 0;
+  for (;;) {
+    attempts += 1;
+    const count = await deps.count(app);
+    if (count > 0) return { ok: true, windows: count, waitedMs: Date.now() - started, attempts };
+    const waitedMs = Date.now() - started;
+    if (waitedMs >= timeoutMs) return { ok: false, windows: Math.max(count, 0), waitedMs, attempts };
+    await deps.sleep(Math.min(intervalMs, Math.max(0, timeoutMs - waitedMs)));
+  }
+}
+
+/**
+ * 把 System Events 导出的弹窗结构文本解析成对象。
+ *
+ * 文本格式（每行一条）：WIN|<标题> / IDX|<窗口序号> / TXT|<正文> / BTN|<按钮名>
+ *
+ * @param {string} text
+ * @returns {Array<{index:number, title:string, texts:string[], buttons:string[]}>}
+ */
+export function parseDialogDump(text) {
+  const out = [];
+  let cur = null;
+  for (const rawLine of String(text || '').split('\n')) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    const sep = line.indexOf('|');
+    if (sep < 0) continue;
+    const kind = line.slice(0, sep);
+    const value = line.slice(sep + 1).trim();
+    if (kind === 'WIN') {
+      cur = { index: 0, title: value, texts: [], buttons: [] };
+      out.push(cur);
+    } else if (kind === 'IDX') {
+      if (cur) cur.index = Number.parseInt(value, 10) || 0;
+    } else if (kind === 'TXT') {
+      if (cur && value) cur.texts.push(value);
+    } else if (kind === 'BTN') {
+      if (cur && value) cur.buttons.push(value);
+    }
+  }
+  return out;
+}
+
+/** 首启欢迎/引导弹窗的特征（只有命中它才去点，避免误点"删除并退出"这类危险按钮） */
+export const ONBOARDING_TEXT_RE = /欢迎|首次|开始使用|新功能|更新说明|引导|点亮|欢迎使用|Welcome|Get Started|What's New|Onboarding/i;
+
+/** 引导弹窗里可以安全点的按钮（默认不点"存储/删除/取消"这类有副作用的） */
+export const ONBOARDING_BUTTON_RE = /^(继续|下一步|开始使用|开始|知道了|我知道了|好的|好|关闭|稍后|跳过|Continue|Next|Get Started|Got it|OK|Start|Skip|Later|Done)$/i;
+
+/**
+ * 从按钮列表里挑一个"安全点掉引导"的按钮；挑不到就返回 null（宁可不点）。纯函数，便于单测。
+ * @param {string[]} buttons
+ * @param {{buttonRe?:RegExp}} [options]
+ * @returns {string|null}
+ */
+export function pickOnboardingButton(buttons, options = {}) {
+  const re = (options && options.buttonRe) || ONBOARDING_BUTTON_RE;
+  const list = Array.isArray(buttons) ? buttons : [];
+  for (const name of list) {
+    if (re.test(String(name).trim())) return String(name).trim();
+  }
+  return null;
+}
+
+/**
+ * 列出应用的 app-modal 弹窗（首启欢迎页、更新说明这类）。
+ * @param {string} app
+ * @param {{timeoutMs?:number}} [options]
+ * @returns {Promise<Array<{index:number,title:string,texts:string[],buttons:string[]}>>}
+ */
+export async function dialogs(app, options = {}) {
+  const timeout = Number.isFinite(options.timeoutMs) ? options.timeoutMs : 8000;
+  const script = [
+    'tell application "System Events" to tell process ' + JSON.stringify(String(app)),
+    'set out to ""',
+    'repeat with i from 1 to (count of windows)',
+    '  set w to window i',
+    '  try',
+    '    if (subrole of w) is "AXDialog" then',
+    '      set out to out & "WIN|" & (name of w) & linefeed',
+    '      set out to out & "IDX|" & i & linefeed',
+    '      repeat with t in (every static text of w)',
+    '        try',
+    '          set out to out & "TXT|" & (value of t) & linefeed',
+    '        end try',
+    '      end repeat',
+    '      repeat with b in (every button of w)',
+    '        try',
+    '          set out to out & "BTN|" & (name of b) & linefeed',
+    '        end try',
+    '      end repeat',
+    '    end if',
+    '  end try',
+    'end repeat',
+    'return out',
+    'end tell',
+  ].join('\n');
+  try {
+    const { stdout } = await exec('/usr/bin/osascript', ['-e', script], { timeout });
+    return parseDialogDump(stdout);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 点掉首启欢迎/引导弹窗（只认白名单按钮，宁可不点也不乱点）。
+ * @param {string} app
+ * @param {{timeoutMs?:number, buttonRe?:RegExp, deps?:object}} [options]
+ * @returns {Promise<{dismissed:boolean, button:string, dialog:string, frontUnchanged:boolean}>}
+ */
+export async function dismissOnboarding(app, options = {}) {
+  const opts = options || {};
+  const deps = Object.assign({ dialogs, frontName, settleFront, exec: exec }, opts.deps || {});
+  const before = await deps.frontName();
+  const list = await deps.dialogs(app, opts);
+  for (const d of list) {
+    const hay = [d.title, ...(d.texts || [])].join(' ');
+    if (!ONBOARDING_TEXT_RE.test(hay)) continue;
+    const button = pickOnboardingButton(d.buttons, opts);
+    if (!button) continue;
+    const clickScript = 'tell application "System Events" to tell process ' + JSON.stringify(String(app)) +
+      ' to click button ' + JSON.stringify(button) + ' of window ' + (d.index || 1);
+    try {
+      await deps.exec('/usr/bin/osascript', ['-e', clickScript], { timeout: 8000 });
+    } catch {
+      continue;
+    }
+    const settled = await deps.settleFront(before, { waitMs: 250, retries: 2 });
+    return { dismissed: true, button, dialog: String(d.title || d.texts[0] || '').slice(0, 80), frontUnchanged: settled.finalFront === before || !settled.stolen };
+  }
+  return { dismissed: false, button: '', dialog: '', frontUnchanged: true };
+}
+
+/**
+ * 关掉应用：先好好退（Apple 事件），退不掉再 TERM 进程。
+ *
+ * 只该用在我们自己为测试拉起来的应用上——用户正在用的应用不要调这个。
+ *
+ * @param {{appName?:string, bundleId?:string, processName?:string}} app
+ * @param {{graceMs?:number}} [options]
+ * @returns {Promise<{quit:boolean, mode:'already-stopped'|'quit'|'term'|'still-running'|'no-pid', detail:string}>}
+ */
+export async function quitApp(app, options = {}) {
+  const opts = options || {};
+  const graceMs = Number.isFinite(opts.graceMs) ? opts.graceMs : 4000;
+  const check = { bundleId: app.bundleId, appName: app.appName, processName: app.processName };
+  if (!(await isAppRunning(check))) return { quit: true, mode: 'already-stopped', detail: '' };
+  const target = app.bundleId ? 'id ' + JSON.stringify(app.bundleId) : JSON.stringify(String(app.appName || ''));
+  try {
+    await exec('/usr/bin/osascript', ['-e', 'with timeout of ' + Math.ceil(graceMs / 1000) + ' seconds\ntell application ' + target + ' to quit\nend timeout'], { timeout: graceMs + 2000 });
+  } catch {}
+  await sleep(600);
+  if (!(await isAppRunning(check))) return { quit: true, mode: 'quit', detail: '' };
+  // 弹窗卡住 Apple 事件时优雅退出会失败，按进程名 TERM；拿不到进程名就只能报仍然在跑
+  if (app.processName) {
+    try {
+      const { stdout } = await exec('/usr/bin/pgrep', ['-x', app.processName], { timeout: 3000 });
+      const pid = Number.parseInt(String(stdout).trim().split('\n')[0], 10);
+      if (Number.isFinite(pid) && pid > 0) {
+        await exec('/bin/kill', ['-TERM', String(pid)], { timeout: 3000 });
+        for (let i = 0; i < 10; i += 1) {
+          await sleep(300);
+          if (!(await isAppRunning(check))) return { quit: true, mode: 'term', detail: 'Apple 事件被弹窗卡住，按进程 TERM' };
+        }
+      }
+    } catch {}
+  }
+  return { quit: false, mode: 'still-running', detail: '优雅退出和 TERM 都没成功' };
+}
+

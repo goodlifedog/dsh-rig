@@ -2,6 +2,14 @@
 
 ## 未发布
 
+- 新增 `docs/MAC-APPS.md`：macOS 应用适配手册（9 类应用的控法、8 个坑与对策、21 个应用实测记录、已知边界），数据全部来自 reports 里的实测报告
+- 矩阵探测会自己收尾：默认只关掉本轮 `launched` 的应用（`MATRIX_QUIT=0` 可关掉），不再把所有测试窗口留在桌面上；用户本来就在跑的应用不碰
+- 新增 `waitForWindow()`：应用启动后窗口要几百毫秒到十几秒才建好，立刻采集会得到「没有窗口」的假结论；改为轮询 System Events 窗口数（Steam 实测 677ms 就绪）
+- 新增 `dialogs()` / `dismissOnboarding()`：首启欢迎弹窗是 app-modal，会把 Apple 事件整个卡住（Pages Creator Studio 连 count documents 都超时 -1712），但 System Events 仍能读到结构；只点「继续/开始使用/知道了」白名单按钮，见到「存储/删除/取消」一律不点
+- 新增 `quitApp()`：先优雅退出，退不掉（被弹窗卡住）再按进程 TERM，如实回报 quit/term/already-stopped
+- 新增 `windowCount()`、`parseDialogDump()`、`pickOnboardingButton()` 纯函数 + 10 项单测（窗口迟到、一直没窗口、-1 不当成功、坏行解析、破坏性按钮不点）
+- 实测补两个门类：Steam（Chromium 应用，窗口 677ms、9 节点、0 按钮、画面 live，退出需 TERM）、iMovie（读取瞬间会抢前台，settleFront 还原成功）
+- 如实记录应用侧限制：抖音（App Store 版 8.1.1）与 Antigravity 启动后自行退出（抖音存活 <1s，Antigravity 退出码 0），不是控制层能解决的问题
 - bg:verify 汇总里标注「锁屏：前台断言跳过」，避免把部分验证当成全部通过
 - 修封装层「假成功」：perform_secondary_action/scroll/select_text 失败时 isError=false、错误只写在正文（如索引过期），原封装会误判成功；新增 toolFailureText() 扫正文识别（3 项单测）
 - 清理备忘录里 4 条测试笔记（用次要动作删除，前台未变），记录两个实机坑：索引必须来自新鲜 query、首次删除有一次性提示

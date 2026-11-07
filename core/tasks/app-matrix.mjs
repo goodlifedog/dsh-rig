@@ -3,12 +3,17 @@
  * 应用能力矩阵：逐个真实应用探明后台能力，全程检查前台有没有被抢占。
  *
  *   node core/tasks/app-matrix.mjs
+ *
+ * 环境变量：
+ *   MATRIX_APPS_JSON   覆盖应用列表
+ *   MATRIX_QUIT=0      探测完不关自己拉起来的应用（默认会关，避免留一堆窗口）
+ *   MATRIX_DISMISS=0   不点首启欢迎弹窗（默认会点白名单按钮）
  */
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ensureAppRunning, frontName, state, find, windowControls, readSafe, findSafe } from '../background.mjs';
+import { ensureAppRunning, frontName, state, find, windowControls, readSafe, findSafe, settleFront, waitForWindow, dismissOnboarding, quitApp } from '../background.mjs';
 import { isScreenLocked } from '../platform.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
 
@@ -115,6 +120,22 @@ async function main() {
     steps.launch = await frontName();
     row.launch = launch.error ? 'error' : (launch.launched ? 'launched' : 'running');
     row.launchFrontUnchanged = launch.frontUnchanged !== false;
+    // 刚启动时窗口可能还没建好：等它出现再探测，否则会得到"没有窗口"的假结论
+    const ready = await waitForWindow(app.name, { timeoutMs: 12000 });
+    row.windowReady = ready.ok;
+    row.windowWaitMs = ready.waitedMs;
+    row.windowAttempts = ready.attempts;
+    if (!ready.ok) row.captureNote = '等了 ' + ready.waitedMs + 'ms 仍没有窗口';
+    // 首启欢迎弹窗会卡住 Apple 事件：点掉白名单按钮（默认开，MATRIX_DISMISS=0 关）
+    if (process.env.MATRIX_DISMISS !== '0') {
+      const dis = await dismissOnboarding(app.name, { timeoutMs: 6000 });
+      if (dis.dismissed) {
+        row.onboardingDismissed = true;
+        row.onboardingButton = dis.button;
+        row.onboardingDialog = dis.dialog;
+        await sleep(600);
+      }
+    }
     await sleep(1200);
 
     // 用带前台保护的读取：某些应用（Ghostty/ChatGPT 实测）一读就被顶到前台
@@ -144,6 +165,9 @@ async function main() {
 
     steps.elements = await frontName();
     const cap = await probeCapture(session, pattern, titleHint);
+    // 抓帧也可能触发应用异步激活（Gemini 实测）：延迟复查并还原
+    const capSettle = await settleFront(before, { waitMs: 250, retries: 2 });
+    row.captureStoleFront = capSettle.stolen;
     steps.capture = await frontName();
     row.capture = cap.state;
     row.captureBytes = cap.bytes;
@@ -157,6 +181,13 @@ async function main() {
     row.firstFocusSteal = Object.entries(steps).find(([k, v]) => v !== before) || null;
     // 探测过程中万一被抢了前台，立刻还给用户
     if (after !== before) await restoreFront(before);
+    // 只关自己拉起来的应用，用户本来就在用的不动（MATRIX_QUIT=0 可关掉这个行为）
+    if (row.launch === 'launched' && process.env.MATRIX_QUIT !== '0') {
+      const quit = await quitApp({ bundleId: app.bundle, appName: app.name, processName: app.process });
+      row.autoQuit = quit.mode;
+      row.autoQuitOk = quit.quit;
+      if (!quit.quit) row.autoQuitDetail = quit.detail;
+    }
     rows.push(row);
     console.log(JSON.stringify(row));
   }
@@ -175,6 +206,9 @@ async function main() {
     launchable: rows.filter((r) => r.launch !== 'error' && r.launchFrontUnchanged).length,
     clickable: rows.filter((r) => r.buttons > 0).length,
     liveCapture: rows.filter((r) => r.capture === 'live').length,
+    windowReady: rows.filter((r) => r.windowReady !== false).length,
+    onboardingDismissed: rows.filter((r) => r.onboardingDismissed).length,
+    autoQuit: rows.filter((r) => r.autoQuit && r.autoQuit !== 'already-stopped').length,
     total: rows.length,
     rows,
   };
@@ -192,22 +226,25 @@ async function main() {
     '- 汇总：' + summary.readable + '/' + summary.total + ' 可读界面，' + summary.clickable + '/' + summary.total +
       ' 有可点击元素，' + summary.liveCapture + '/' + summary.total + ' 画面可直接回显',
     '',
-    '| 应用 | 启动 | 读界面 | 节点 | 按钮 | 文本区 | 菜单项 | 窗口按钮 | 画面 | 前台未变 |',
-    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+    '| 应用 | 启动 | 窗口就绪 | 读界面 | 节点 | 按钮 | 文本区 | 菜单项 | 窗口按钮 | 画面 | 前台未变 | 收尾 |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
   ];
   for (const r of rows) {
     if (r.skipped) {
-      lines.push('| ' + r.app + ' | SKIP | - | - | - | - | - | - | - | - |');
+      lines.push('| ' + r.app + ' | SKIP | - | - | - | - | - | - | - | - | - | - |');
       continue;
     }
-    const stealNote = (r.readStoleFront || r.queryStoleFront) ? '读取会抢前台' : '';
-    lines.push('| ' + r.app + ' | ' + r.launch + ' | ' + (r.readable ? 'yes' : 'no') + ' | ' + r.nodes +
+    const stealNote = (r.readStoleFront || r.queryStoleFront || r.captureStoleFront) ? '操作中短暂抢前台，已还原' : '';
+    const readyNote = r.windowReady === false ? '等了 ' + r.windowWaitMs + 'ms 仍无窗口' : 'yes';
+    const quitNote = r.autoQuit ? r.autoQuit : '-';
+    lines.push('| ' + r.app + ' | ' + r.launch + ' | ' + readyNote + ' | ' + (r.readable ? 'yes' : 'no') + ' | ' + r.nodes +
       ' | ' + r.buttons + ' | ' + r.textAreas + ' | ' + (r.menuItems === undefined ? '-' : r.menuItems) +
       ' | ' + (r.windowControls === undefined ? '-' : r.windowControls) + ' | ' + r.capture + ' | ' +
-      (r.frontUnchanged ? 'yes' : 'NO') + (stealNote ? '（' + stealNote + '）' : '') + ' |');
+      (r.frontUnchanged ? 'yes' : 'NO') + (stealNote ? '（' + stealNote + '）' : '') + ' | ' + quitNote + ' |');
   }
   lines.push('');
   lines.push('offscreen = 窗口在别的桌面、系统返回纯色帧（仍可后台操作，只是画面抓不到）。');
+  lines.push('收尾：quit = 探测完已退出；term = 弹窗卡住 Apple 事件、按进程 TERM；already-stopped = 目标本来就在运行，没动它。');
   fs.writeFileSync(path.join(dir, 'app-matrix-' + stamp + '.md'), lines.join('\n'));
 
   console.log('\n汇总: ' + JSON.stringify({ ok: summary.ok, readable: summary.readable, clickable: summary.clickable, liveCapture: summary.liveCapture, total: summary.total }));
