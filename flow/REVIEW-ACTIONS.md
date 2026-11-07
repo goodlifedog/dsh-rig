@@ -2,7 +2,7 @@
 
 > 只列**还没做**的。已修好的沉到底部，不复述。
 > 详细理由见 [`REVIEW-2026-11-07.md`](REVIEW-2026-11-07.md)，发布流程见 [`PUBLISH-CHECKLIST.md`](PUBLISH-CHECKLIST.md)。
-> 更新：2026-11-08 15:20（**P1 全部由主会话自行实现并有测试，`patch-p1.diff` 已作废、不要再应用**；单测 381→398。下面 P1 段落保留为历史记录。）
+> 更新：2026-11-08 17:00（**P1 全部由主会话自行实现并有测试**；`patch-p1.diff`、`patch-classify.diff` 已删除——两处实现都已落地，补丁再 apply 会失败。单测 407）
 >
 > 旧记录：2026-11-08 15:00（`flow/patch-p1.diff` = **232 行 / 7 个文件**，新增 `core/runner.mjs`：日志写入从 `void fd.write()` 改为同步写，避免退出时末行丢失。**`docs/REVIEW.md` 那份 18 条旧审查，现在全部要么已验证修复、要么已进补丁。**）
   ① `node core/cli.mjs foo` → 退出码 2，用法输出到 stderr
@@ -10,6 +10,17 @@
   ③ `cli stop` 在 launchd 托管下 → 打印暂停/卸载/重启指引，**daemon 未被杀**（7789 仍 200）
   ④ `start-all` 在 daemon+overlay 都在跑时 → 打印「小窗已在运行，跳过」，不产生第二个窗口
   ⑤ daemon 未捕获异常处理：仅静态确认（难以在测试里稳定注入）
+
+## 当前有效补丁（可直接 `git apply`）
+
+```
+flow/patch-publish.diff              发布配置（包名/bin/files/repository/publishConfig/CI/徽章）
+flow/patch-electron-task-test.diff   5 条 electron-task 单测
+flow/patch-ensure-app-window-test.diff  6 条 ensureAppWindow 单测
+flow/patch-deploy-freshness.diff     代码新鲜度检查（service:status 能报「跑的是旧代码」）
+```
+
+其余补丁已作废删除（对应实现已在代码里）。
 
 ## P0 · 公开前必须处理（3 条）
 
