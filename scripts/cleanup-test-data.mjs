@@ -13,7 +13,7 @@ import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { ensureAppRunning, frontName, quitApp } from '../core/background.mjs';
 import { closeOcuMcp } from '../core/ocu-mcp.mjs';
-import { countNotes, deleteTopNotes, deleteMarkedTestNotes } from '../core/note-cleanup.mjs';
+import { countNotes, deleteTopNotes, deleteMarkedTestNotes, LEGACY_TEST_WORDS } from '../core/note-cleanup.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const dryRun = process.argv.includes('--dry-run');
@@ -35,14 +35,23 @@ async function purgeNotes(report) {
   report.push({ kind: 'note-count', count });
   if (count <= 0) return 0;
   if (!forceNotes) {
-    report.push({ kind: 'note-skip', note: '当前文件夹有 ' + count + ' 条笔记；清理需要 --force（只删带 [AGENT-TEST] 标记或历史测试词的笔记，不动用户笔记）' });
+    report.push({ kind: 'note-skip', note: '当前文件夹有 ' + count + ' 条笔记；清理需要 --force（只删带 [AGENT-TEST] 标记的笔记；历史测试词要 --force-all，不动用户笔记）' });
     return 0;
   }
-  // 第一层：按标题标记删（写测试数据时都会带 [AGENT-TEST]）
+  // 第一层：只删带显式标记 [AGENT-TEST] 的（写测试数据时都会带）
   const marked = await deleteMarkedTestNotes(count);
   if (marked.readable > 0) {
-    report.push({ kind: 'note-deleted', removed: marked.removed, readable: marked.readable });
-    return marked.removed;
+    let removed = marked.removed;
+    let legacyRemoved = 0;
+    // 历史测试词（后台控制验证等）可能和用户自建笔记同名，默认不参与删除；
+    // 只有显式 --force-all 才放开
+    if (forceAllNotes) {
+      const legacy = await deleteMarkedTestNotes(count, { words: LEGACY_TEST_WORDS });
+      legacyRemoved = legacy.readable > 0 ? legacy.removed : 0;
+      removed += legacyRemoved;
+    }
+    report.push({ kind: 'note-deleted', removed, readable: marked.readable, legacyRemoved });
+    return removed;
   }
   // 第二层：这个 Notes 版本列表完全读不到标题。按条数删有可能误伤，必须显式 --force-all
   if (forceAllNotes) {

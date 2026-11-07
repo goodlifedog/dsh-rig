@@ -15,7 +15,7 @@
 | 日常看状态 | `npm run status`、`npm run health`、`npm run monitor` |
 | 端到端验收 | `npm run accept`（你在用电脑时会被拒绝；`ACCEPT_FORCE=1` 强跑） |
 | 排查服务/部署 | `npm run service:status`、`npm run service:restart`、`npm run doctor` |
-| 清理与轮转 | `npm run cleanup:test`（默认只报告；`--force` 只删带 `[AGENT-TEST]` 标记/历史测试词的笔记；列表标题读不到时要用 `--force-all` 才肯按条数删）、`npm run prune` |
+| 清理与轮转 | `npm run cleanup:test`（默认只报告；`--force` 只删带 `[AGENT-TEST]` 标记的笔记；历史测试词（后台控制验证等）和「标题读不到时按条数删」都要显式 `--force-all`）、`npm run prune` |
 | 应用适配 | `npm run apps:inventory`、`npm run app:runtime -- <应用>`、`npm run app:resolve -- <应用>` |
 | 自家弹窗守卫 | `npm run dialogs:guard`（`--dry-run` 只报告） |
 | 其余都是内部/演示任务 | `package.json` 里的脚本，按需查 |

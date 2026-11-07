@@ -46,11 +46,13 @@ export function buildWordListLiteral(words) {
  */
 export function pickDeletableLabels(labels, options = {}) {
   const limit = Math.max(0, Number(options && options.limit) || 0);
+  // 默认只认显式标记；历史测试词要调用方显式传 words 才参与（避免误删同名用户笔记）
+  const words = (options && options.words) || [TEST_NOTE_MARKER];
   const hits = [];
   for (const label of labels || []) {
     const text = String(label || '');
     if (!text) continue;
-    if (!isTestNoteTitle(text)) continue;
+    if (!words.some((w) => text.includes(w))) continue;
     hits.push(text);
     if (limit && hits.length >= limit) break;
   }
@@ -229,11 +231,12 @@ const MARKED_DELETE_TEMPLATE = [
 /**
  * 生成「按标题标记删除」脚本（纯函数，便于单测注入安全）。
  * @param {number} limit 最多删几条
- * @param {string[]} [words] 命中词；默认新标记 + 历史测试词
+ * @param {string[]} [words] 命中词；默认只认显式标记 [AGENT-TEST]，
+ *   历史测试词要显式传入（清理脚本里对应 --force-all）
  */
 export function buildMarkedDeleteScript(limit, words) {
   const n = Math.max(0, Number(limit) || 0);
-  const list = words || [TEST_NOTE_MARKER, ...LEGACY_TEST_WORDS];
+  const list = words || [TEST_NOTE_MARKER];
   return MARKED_DELETE_TEMPLATE
     .replace('LIMIT_TOK', String(n))
     .replace('WORDS_TOK', buildWordListLiteral(list));
@@ -242,7 +245,7 @@ export function buildMarkedDeleteScript(limit, words) {
 /**
  * 只删标题带测试标记的笔记。
  * @param {number} limit
- * @param {{deps?:{exec?:Function}}} [options]
+ * @param {{deps?:{exec?:Function}, words?:string[]}} [options] words 可放宽到历史测试词
  * @returns {Promise<{removed:number, readable:number, attempted:boolean}>}
  */
 export async function deleteMarkedTestNotes(limit, options = {}) {
@@ -253,7 +256,7 @@ export async function deleteMarkedTestNotes(limit, options = {}) {
   const sleep = (opts.deps && opts.deps.sleep) || ((ms) => new Promise((r) => setTimeout(r, ms)));
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      const { stdout } = await run('/usr/bin/osascript', ['-e', buildMarkedDeleteScript(n)], { timeout: 150000 });
+      const { stdout } = await run('/usr/bin/osascript', ['-e', buildMarkedDeleteScript(n, opts.words)], { timeout: 150000 });
       const m = /removed=(\d+)\s+readable=(\d+)/.exec(String(stdout || ''));
       if (m) return { removed: Number(m[1]) || 0, readable: Number(m[2]) || 0, attempted: true };
     } catch {}
