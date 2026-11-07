@@ -156,6 +156,25 @@ test('安全边界：跨域预检直接拒绝', async () => {
   });
 });
 
+test('安全边界：Host 不是本机回环时拒绝（防 DNS rebinding），带对 token 也一样', async () => {
+  const http = await import('node:http');
+  await withTokenServer(async (base) => {
+    const port = new URL(base).port;
+    const status = await new Promise((resolve) => {
+      const req = http.request({
+        host: '127.0.0.1',
+        port,
+        path: '/health',
+        method: 'GET',
+        headers: Object.assign({ Host: 'evil.example:' + port }, { 'X-Agent-Token': 'test-token-123' }),
+      }, (res) => { res.resume(); resolve(res.statusCode); });
+      req.on('error', () => resolve(0));
+      req.end();
+    });
+    assert.equal(status, 403, 'evil.example 的 Host 必须拒绝，哪怕 token 正确');
+  });
+});
+
 test('安全边界：POST 必须是 JSON，表单式跨站提交进不来', async () => {
   await withServer(async (base) => {
     const res = await fetch(base + '/frame', {

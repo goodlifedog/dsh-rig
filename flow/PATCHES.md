@@ -1,7 +1,7 @@
 # 外部评审提供的补丁（按需应用）
 
 > 这些不是必须打的。每个都独立可应用、互不冲突，打过之后 `npm test` 全绿。
-> 最后更新：2026-11-08 03:10。当前共 2 个待打，均已 `git apply --check` 通过；第 4 个已应用。
+> 最后更新：2026-11-08 03:35。第 4/5/6/7 条均已应用（文件已删）；剩下 1–3 条待打（发布配置、死代码合并、代码新鲜度）。
 
 ## 顺序建议
 
@@ -105,7 +105,7 @@ ls -ld ~/.desktop-agent          # 跑过一次 daemon 后应为 drwx------
 `test/token-perm.test.mjs`）。实机重启服务后复核全部 `drwx------`、token `-rw-------`。
 补丁文件已删除，可从 git 历史查到。
 
-## 5. `patch-host-check.diff`（110 行 / 4 个文件）
+## 5. ✅ `patch-host-check.diff`（110 行 / 4 个文件）—— 已应用，补丁文件已删除
 
 **实测发现**：两个服务都不校验 `Host` 头。伪造 `Host: evil.example` 时 daemon 返回 200、overlay 返回 200/202，
 意味着网页可以通过 DNS rebinding（evil.com 解析到 127.0.0.1）读 daemon 的只读接口——
@@ -124,7 +124,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: evil.example' http://127.0.0.
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:7789/                          # 应 200
 ```
 
-## 6. `patch-dialog-i18n.diff`（79 行 / 2 个文件）
+## 6. ✅ `patch-dialog-i18n.diff`（79 行 / 2 个文件）—— 已由主会话实现（更严格），补丁作废删除
 
 **实测发现的风险**：`dialog-guard` 靠中文/英文关键词识别权限弹窗。德语「Bedienungshilfen」、
 法语「Accessibilité」、日语「アクセシビリティ」都匹配不到，会被判成普通弹窗；
@@ -140,7 +140,7 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:7789/                 
 node --test test/dialog-i18n.test.mjs
 ```
 
-## 7. `patch-retry-unify.diff`（32 行 / 1 个文件）
+## 7. ✅ `patch-retry-unify.diff`（32 行 / 1 个文件）—— 已应用，补丁文件已删除
 
 **发现的不一致**：`d49be81` 已从 `run-classify.mjs` 删掉「改成了指定关键词|已恢复原值」这条规则，
 但 `core/retry-policy.mjs` 的 `NO_RETRY` 里还留着同一份规则——两处规则开始分叉。
@@ -172,5 +172,10 @@ npm run health | grep '后台 daemon'   # 应为 队列=0
 `patch-token-permissions.diff`：权限校正已由主会话自行实现（`hardenDataDir`，更完整——连 chrome-profile 等敏感子目录一起收紧），
 该补丁已删除。
 
-`patch-p1.diff`、`patch-classify.diff`、`patch-electron-task-test.diff`、`patch-ensure-app-window-test.diff`
+`patch-p1.diff`、`patch-classify.diff`、`patch-electron-task-test.diff`、`patch-ensure-app-window-test.diff`、
+`patch-dialog-i18n.diff`（dialog-guard 已改成结构判定 + 多语言词表，比补丁更严格）
 对应实现都已在代码里，文件已删除；从 git 历史可查到。
+
+已应用并保留说明：`patch-token-permissions.diff`（hardenDataDir 覆盖更全）、
+`patch-host-check.diff`（Host/回环校验，叠在 daemon 全接口票据之上）、
+`patch-chromium-applescript.diff`、`patch-retry-unify.diff`。

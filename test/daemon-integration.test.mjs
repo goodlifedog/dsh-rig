@@ -3,6 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import http from 'node:http';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -103,6 +104,17 @@ test('daemon：队列串行、环境失败不重试、临时失败重试一次',
     body: JSON.stringify({ task: 'ok-task' }),
   });
   assert.equal(fromBrowser.status, 403, '带 Origin 的请求必须拒绝');
+
+  // 安全边界：Host 不是本机回环一律拒绝（挡 DNS rebinding：evil.com 解析到 127.0.0.1）
+  const spoofedHost = await new Promise((resolve) => {
+    const rq = http.request({ host: '127.0.0.1', port: PORT, path: '/', method: 'GET', headers: { Host: 'evil.example:' + PORT } }, (res) => {
+      res.resume();
+      resolve(res.statusCode);
+    });
+    rq.on('error', () => resolve(0));
+    rq.end();
+  });
+  assert.equal(spoofedHost, 403, '非本机 Host 必须拒绝');
 
   // 安全边界：非 JSON 的 POST（表单式跨站提交）一律拒绝
   const formPost = await fetch(BASE + '/run', {

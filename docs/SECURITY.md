@@ -8,6 +8,7 @@
 | 攻击面 | 后果 | 现在的处理 |
 | --- | --- | --- |
 | 浏览器页面调本地接口 | 任何网页能读窗口标题（隐私）、往浮窗塞图（钓鱼）、让守护进程跑任务（打字/退出应用） | overlay 7788 和 daemon 7789 都**拒绝带 Origin 的请求**（403），并拒掉跨域预检；POST 必须 `Content-Type: application/json`（415），表单式跨站提交进不来 |
+| DNS rebinding 打本地接口 | 网页把 evil.com 解析到 127.0.0.1，同源请求不带 Origin，绕过 Origin 检查直接打到服务 | 两个服务都校验 `Host` 必须是本机回环（127.0.0.1 / localhost / [::1]，含端口），否则 403；**带对 token 也照样拒**（实测两个服务 Host: evil.example 均 403） |
 | 本机任意进程驱动守护进程 / 小窗 | 任何本地进程都能 POST /run 让后台跑任务，或调 overlay 读窗口标题、往浮窗塞图 | **daemon 与 overlay 的全部接口都要 `X-Agent-Token`**（唯一例外是 daemon 的 `GET /` 存活探测：只回 ok/pid/uptime，不带任务列表）；token 启动时随机生成写到 `~/.desktop-agent/api-token`（文件 600、目录 700），客户端自动读取；实测两个服务无 token 均 401。默认只认请求头：`?token=` 会漏进 shell history/访问日志，必须显式 `AGENT_ALLOW_QUERY_TOKEN=1` 才认（实测默认下查询串 401） |
 | AppleScript 注入 | 应用名/进程名里塞引号或换行把脚本截断，执行任意命令 | 拼进脚本的名字走白名单校验（`isSafeIdentifier`），含引号/反斜杠/控制字符一律不执行；`isSafeScriptLiteral` 再做一层 |
 | AppleScript 授权弹窗 | 后台流程被系统弹框打断，或替用户点"允许" | 先用 `AEDeterminePermissionToAutomateTarget(askUserIfNeeded=false)` 静默查授权，没授权**不发 Apple 事件** |

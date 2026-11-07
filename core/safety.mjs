@@ -97,3 +97,23 @@ export function executableTrust({ fileUid, uid, mode, exists = true } = {}) {
   if ((m & 0o022) !== 0) return 'writable-by-others';
   return 'ok';
 }
+
+/**
+ * 判断请求的 Host 头是否指向本机回环（纯函数）。
+ *
+ * 为什么要查：服务只监听 127.0.0.1，但浏览器的 DNS rebinding 可以让 evil.com 解析到 127.0.0.1，
+ * 于是页面用 evil.com 的 URL 就能打到本地服务（Host 头会是 evil.com）。拒绝非本机 Host 可以堵死这条路。
+ * 端口不参与判断，允许 host:port 形式。
+ */
+export function isLoopbackHost(hostHeader) {
+  const raw = String(hostHeader || '').trim().toLowerCase();
+  if (!raw) return false;
+  // IPv6 形式：[::1]:7789
+  if (raw.startsWith('[')) {
+    const end = raw.indexOf(']');
+    if (end < 0) return false;
+    return raw.slice(1, end) === '::1';
+  }
+  const host = raw.split(':')[0];
+  return host === '127.0.0.1' || host === 'localhost' || host === '::1';
+}

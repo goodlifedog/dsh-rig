@@ -41,7 +41,24 @@ const SECURITY_HEADERS = {
  * 浏览器发起请求时一定带 Origin（同源也有，file:// 是 "null"）；命令行客户端不会带。
  * 放行浏览器的后果很实在：任何网页都能读 /windows 拿到窗口标题、POST /frame 往浮窗里塞图。
  */
+// 判断 Host 是否指向本机回环（与 core/safety.mjs 的 isLoopbackHost 同规则）。
+// overlay 是 CJS、safety 是 ESM，这里保留一份最小实现，避免为 5 行逻辑加构建步骤。
+function isLoopbackHost(hostHeader) {
+  const raw = String(hostHeader || '').trim().toLowerCase();
+  if (!raw) return false;
+  if (raw.startsWith('[')) {
+    const end = raw.indexOf(']');
+    return end > 0 && raw.slice(1, end) === '::1';
+  }
+  const host = raw.split(':')[0];
+  return host === '127.0.0.1' || host === 'localhost' || host === '::1';
+}
+
 function assertLocalClient(req, method) {
+  const host = req.headers && req.headers.host;
+  if (!isLoopbackHost(host)) {
+    throw httpError(403, '拒绝非本机 Host 的请求（Host: ' + String(host || '').slice(0, 80) + '）');
+  }
   const origin = req.headers && req.headers.origin;
   if (origin) {
     throw httpError(403, '拒绝浏览器来源的请求（Origin: ' + String(origin).slice(0, 80) + '）');

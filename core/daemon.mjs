@@ -15,6 +15,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { overlay } from './agentd.mjs';
+import { isLoopbackHost } from './safety.mjs';
 import { decideRetry } from './retry-policy.mjs';
 import { frontAppFast, startFrontWatch } from './front-watch.mjs';
 import { ensureToken, isAuthorized } from './local-token.mjs';
@@ -290,6 +291,13 @@ async function drain() {
  * 否则任何网页都能通过表单/预检直接让守护进程跑任务（任务里有打字、退出应用这类动作）。
  */
 function assertLocalClient(req) {
+  // 先看 Host：挡 DNS rebinding（页面用 evil.com 解析到 127.0.0.1 打本地服务）
+  const host = req.headers && req.headers.host;
+  if (!isLoopbackHost(host)) {
+    const error = new Error('拒绝非本机 Host 的请求（Host: ' + String(host || '').slice(0, 80) + '）');
+    error.statusCode = 403;
+    throw error;
+  }
   const origin = req.headers && req.headers.origin;
   if (origin) {
     const error = new Error('拒绝浏览器来源的请求（Origin: ' + String(origin).slice(0, 80) + '）');
