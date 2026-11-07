@@ -65,3 +65,20 @@ test('矩阵被抢前台要算真失败，不能当环境跳过', () => {
   assert.equal(v.failed, true);
   assert.equal(v.envSkip, false, '前台被抢是真问题，不能放行');
 });
+test('有 ❌ 的轮次不能被「环境跳过」整轮豁免', () => {
+  const text = [
+    end(1),
+    '  ❌ 后台点击计算器按钮  7 → 7',
+    '  SKIP 真实窗口回显  环境跳过：窗口状态=waiting',
+  ].join('\n');
+  const v = classifyRun(text);
+  assert.equal(v.failed, true);
+  assert.equal(v.envSkip, false, '有真实失败项时不该判成环境跳过');
+  assert.match(v.reason, /❌/);
+});
+
+test('整轮都只是跳过时仍然算环境跳过', () => {
+  const text = [end(1), '  SKIP 真实窗口回显  环境跳过：窗口状态=waiting'].join('\n');
+  const v = classifyRun(text);
+  assert.equal(v.envSkip, true);
+});

@@ -45,6 +45,10 @@ export function envSkipReason(text) {
 export function classifyRun(text) {
   const raw = String(text || '');
   if (!isFailedRun(raw)) return { failed: false, envSkip: false, reason: '' };
+  // 任务自己用 ❌ 标记了某一项检查失败：这轮就是真失败。
+  // 否则「部分项环境跳过 + 部分项真失败」会被整轮吞成跳过（实测踩过：
+  // background-control 里有 ❌ 后台点击计算器按钮，但因为同一份日志还有「环境跳过」，被判成环境跳过）。
+  if (/❌/.test(raw)) return { failed: true, envSkip: false, reason: '真实失败（任务标了 ❌）' };
   const reason = envSkipReason(raw);
   return reason
     ? { failed: true, envSkip: true, reason }
