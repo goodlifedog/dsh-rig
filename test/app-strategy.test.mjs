@@ -55,6 +55,12 @@ test('启动失败 / 窗口起不来 / 什么都拿不到：应用侧限制', ()
   assert.equal(recommendStrategy({ readable: false, capture: 'none', launch: 'launched', windowReady: true }).mode, 'blocked');
 });
 
+test('启动后自行退出：判定为应用侧限制，理由写清楚', () => {
+  const r = recommendStrategy({ readable: false, capture: 'none', launch: 'launched', windowReady: true, selfExited: true });
+  assert.equal(r.mode, 'blocked');
+  assert.ok(r.reasons[0].includes('自行退出'));
+});
+
 test('每个模式都有中文标签', () => {
   for (const mode of ['ax', 'ax-read', 'visual', 'dedicated', 'no-touch', 'blocked', 'unknown']) {
     assert.ok(STRATEGY_LABELS[mode], mode + ' 缺标签');

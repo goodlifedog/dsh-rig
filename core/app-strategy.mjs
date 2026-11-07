@@ -67,8 +67,12 @@ export function recommendStrategy(row, options = {}) {
     return { mode: 'visual', label: STRATEGY_LABELS.visual, reasons, canType: false };
   }
 
+  if (row.selfExited) {
+    reasons.push('启动成功但随后自行退出（应用侧行为），没法接管');
+    return { mode: 'blocked', label: STRATEGY_LABELS.blocked, reasons, canType: false };
+  }
   if (row.launch === 'error' || !windowReady) {
-    reasons.push('启动后窗口起不来，或应用自行退出（应用侧限制）');
+    reasons.push('启动后窗口起不来（应用侧限制）');
     return { mode: 'blocked', label: STRATEGY_LABELS.blocked, reasons, canType: false };
   }
   reasons.push('既读不到界面树也抓不到画面');

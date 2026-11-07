@@ -14,7 +14,7 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ensureAppRunning, frontName, state, find, windowControls, readSafe, findSafe, settleFront, waitForWindow, dismissOnboarding, quitApp } from '../background.mjs';
+import { ensureAppRunning, isAppRunning, frontName, state, find, windowControls, readSafe, findSafe, settleFront, waitForWindow, dismissOnboarding, quitApp } from '../background.mjs';
 import { isScreenLocked } from '../platform.mjs';
 import { presetApps } from '../app-presets.mjs';
 import { recommendStrategy } from '../app-strategy.mjs';
@@ -207,12 +207,18 @@ async function main() {
     row.stepFronts = steps;
     const strategy = recommendStrategy(row);
     row.strategy = strategy.mode;
+    row.strategyReason = strategy.reasons[0] || '';
     row.strategyLabel = strategy.label;
     row.strategyReasons = strategy.reasons;
     row.canType = strategy.canType;
     row.firstFocusSteal = Object.entries(steps).find(([k, v]) => v !== before) || null;
     // 探测过程中万一被抢了前台，立刻还给用户
     if (after !== before) await restoreFront(before);
+    // 启动"成功"但现在已经没进程了：应用自己退出的，要如实标出来（抖音/Antigravity 实测这样）
+    if (launch.launched) {
+      const stillRunning = await isAppRunning({ bundleId: app.bundle, appName: app.name, processName: app.process });
+      if (!stillRunning) row.selfExited = true;
+    }
     // 只关自己拉起来的应用，用户本来就在用的不动（MATRIX_QUIT=0 可关掉这个行为）
     if (row.launch === 'launched' && process.env.MATRIX_QUIT !== '0') {
       const quit = await quitApp({ bundleId: app.bundle, appName: app.name, processName: app.process });
@@ -267,7 +273,8 @@ async function main() {
       continue;
     }
     const stealNote = (r.readStoleFront || r.queryStoleFront || r.captureStoleFront) ? '操作中短暂抢前台，已还原' : '';
-    const readyNote = r.windowReady === false ? '等了 ' + r.windowWaitMs + 'ms 仍无窗口' : 'yes';
+    const readyNote = r.selfExited ? '自行退出'
+      : (r.windowReady === false ? '等了 ' + r.windowWaitMs + 'ms 仍无窗口' : 'yes');
     const quitNote = r.autoQuit ? r.autoQuit : '-';
     lines.push('| ' + r.app + ' | ' + r.launch + ' | ' + readyNote + ' | ' + (r.readable ? 'yes' : 'no') + ' | ' + r.nodes +
       ' | ' + r.buttons + ' | ' + r.textAreas + ' | ' + (r.menuItems === undefined ? '-' : r.menuItems) +
