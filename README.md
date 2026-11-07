@@ -4,7 +4,8 @@
 
 > 后台电脑控制 + 小窗回显。所有操作在你的真实应用里完成，但全程不抢焦点、不动你的鼠标、不切你的窗口。
 
-一个自用的 macOS 桌面自动化框架：**控制层**用 Accessibility 语义树驱动真实应用，**展示层**用一个贴在 DSH 窗口里的小窗实时回显它在干什么，**调度层**是常驻后台的 daemon 加任务运行器。
+一个**看得见、验得准**的后台控制层：**控制层**用 Accessibility 语义树驱动真实应用，**展示层**用一个贴在 DSH 窗口里的小窗实时回显它在干什么，**调度层**是常驻后台的 daemon 加任务运行器。
+多通道（AX / CDP / AppleScript / 画面）和运行时归类是**实现手段**；项目真正的卖点是小窗回显、后台调度和可验证的结论，不是"又一个自动化框架"。
 
 ## 它解决什么问题
 
@@ -49,7 +50,7 @@ npm run doctor
 # 1. 装依赖（根目录与 overlay 一起）
 npm run setup
 
-# 2. 装成开机自启（macOS launchd / Windows 计划任务）
+# 2. 装成开机自启（macOS launchd；Windows 计划任务未实机验证）
 npm run service:install
 
 # 或者只临时启一下
@@ -123,7 +124,7 @@ await mcp.callTool('get_app_state', { app: 'Google Chrome' });
 
 1. **可验证执行**：任务的成功判据不靠脚本自证，而是读外部事实（消息列表差集）。这条抓出过一次 8 连假报。
 2. **多会话小窗**：会话标题门控、点击穿透、按画面比例放大、空闲自愈隐藏规则。
-3. **平台抽象**：同一套代码在 macOS（ocu/Accessibility）和 Windows（UIA 兜底）间切换，随包运行时与全局安装自动适配。
+3. **平台抽象**：同一套代码按平台切换（macOS 已实机验证；Windows 分支照 Win32 API 写好但未实机验证），随包运行时与全局安装自动适配。
 4. **调度与护栏**：应用级文件锁、前台守卫、连续失败自动停。
 
 底层「能操作应用」的能力来自 open-computer-use（MIT），**没有被修改，通过 MCP 协议调用**。详见 [THIRD-PARTY.md](THIRD-PARTY.md) 与 [flow/OCU-INTEGRATION.md](flow/OCU-INTEGRATION.md)。
@@ -165,13 +166,13 @@ await mcp.callTool('get_app_state', { app: 'Google Chrome' });
 
 目标是一套代码同时支持 macOS 和 Windows。当前进度：
 
-| 层 | macOS | Windows |
+| 层 | macOS（已实机验证） | Windows（**未实机验证**，照 Win32 API 写好） |
 | --- | --- | --- |
-| 小窗展示 | ✅ screencapture | ✅ PrintWindow（未实机验证） |
-| 前台/窗口信息 | ✅ osascript | ✅ PowerShell + User32（未实机验证） |
-| 控制（点击/读界面） | ✅ ocu | ✅ ocu（官方支持 Windows） |
-| 后台输入 | ✅ sky_key（私有 SkyLight） | ✅ ocu 窗口消息投递 |
-| 浏览器 | ✅ 离屏 Chrome + CDP | ✅ 逻辑通用 |
+| 小窗展示 | ✅ screencapture | ⚠️ PrintWindow |
+| 前台/窗口信息 | ✅ osascript | ⚠️ PowerShell + User32 |
+| 控制（点击/读界面） | ✅ ocu | ⚠️ ocu（上游声称支持） |
+| 后台输入 | ✅ sky_key（私有 SkyLight） | ⚠️ ocu 窗口消息投递 |
+| 浏览器 | ✅ 离屏 Chrome + CDP | ⚠️ 逻辑通用 |
 
 平台差异都收在 `overlay/platform.js`（渲染侧）和 `core/platform.mjs`（逻辑侧），业务代码不再直接调 osascript。
 详细缺口和移植路线见 [flow/CROSS-PLATFORM.md](flow/CROSS-PLATFORM.md)。

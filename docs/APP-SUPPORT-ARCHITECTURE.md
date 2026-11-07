@@ -81,7 +81,7 @@ npm run app:resolve -- --all-user      # 把 /Applications 里的应用逐个协
 | AX（Accessibility） | 进程有可读的界面树 | 部分应用动作后会异步抢前台，需要延迟复查还原 | 树为空或窗口数为 0（自绘界面） |
 | CDP（调试端口） | 进程真的开着调试端口 | Electron/Chromium 得允许开；不是所有应用都行 | 端口连不上、`/json/version` 无响应 | 已实现：`core/cdp-driver.mjs` + `npm run cdp:channel`（自建 Chromium 实例 4/4 通过：连端口读页面、按文字点、往输入框写） |
 | AppleScript 字典 | 包内有 `.sdef` 且系统已授权自动化 | 第三方应用首次会弹自动化授权框，不能自动点 | 授权被拒、Apple 事件超时。已实现：`core/applescript-driver.mjs` + `npm run as:channel`（权限静默查询，Finder/Chrome 实测通过） |
-| 画面 + 坐标 | 能抓到目标窗口画面 | 坐标依赖窗口位置，窗口一动就失效 | 窗口在别的桌面时只有纯色帧 |
+| 画面 + 坐标 | 能抓到目标窗口画面 | 坐标依赖窗口位置，窗口一动就失效 | 窗口在别的桌面时只有纯色帧。**本仓库里这条只做诊断/兜底判断，没有实现自动坐标点击**：能抓到画面 ≠ 能安全地自动点 |
 
 **通道链就是按上表顺序尝试、失败降级**，不是写死用哪条。降级链体现在运行时类型上：
 
