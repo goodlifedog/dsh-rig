@@ -67,6 +67,13 @@
 
 ## P2 · 打磨（按需，不阻塞发布）
 
+### 3.2 `core/electron-task.mjs`（500+ 行，overlay 的关键依赖）没有任何单测（**补丁已备**：`flow/patch-electron-task-test.diff`）
+
+- 全仓 41 个 core 模块，38 个被测试引用；没被引用的三个是 `platform-smoke`（脚本）、`permissions`（读 TCC，纯 IO）、`electron-task`
+- `electron-task` 里至少两个函数不启动 Electron 就能测：`readDevToolsActivePort()`（解析 `DevToolsActivePort` 文件：正常、缺失、端口非法）和 `resolveElectronBinary()`（显式路径优先 / 退到随包 / 都找不到时报可读错误）
+- 补丁：`git apply flow/patch-electron-task-test.diff`（新增 5 条测试，69 行）。注意最后一条要写成环境无关——开发机装了 overlay 依赖时会静默退到随包 Electron，只有没装时才抛错
+
+
 ### 3.3 `app-profile.mjs` 抽离后两条异常路径没有测试
 
 - 抽离本身是对的（依赖注入 + 4 条分类测试），我实测 `npm run app:runtime -- --all` 结果正常：199 native / 5 electron / 3 chromium / 1 qt，Chrome 仍归 chromium、Antigravity 仍归 electron
