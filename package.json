@@ -54,6 +54,8 @@
     "apps:inventory": "node scripts/app-inventory.mjs",
     "apps:probe": "node scripts/apps-probe.mjs",
     "app:runtime": "node scripts/app-runtime.mjs",
+    "cdp:apps": "node core/tasks/cdp-driver.mjs",
+    "cdp:channel": "node core/tasks/cdp-channel.mjs",
     "stability": "node core/tasks/background-stability.mjs",
     "browser:bg": "node core/tasks/browser-background.mjs",
     "cold:launch": "node core/tasks/cold-launch.mjs",

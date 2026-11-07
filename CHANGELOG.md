@@ -2,6 +2,10 @@
 
 ## 未发布
 
+- CDP 通道落地：新增 `core/cdp-driver.mjs`（稳定端口分配、带调试端口后台启动、页面 target 打分挑选、读页面/按文字点/往输入框写）与 `npm run cdp:channel` 自检；自建 Chromium 实例 4/4 通过
+- 新增 `npm run cdp:apps`：实测本机 Electron 应用能否走 CDP——ChatGPT 端口开放、连上后约 1.2 秒被应用主动断开（1006），OpenCode/抖音 不认调试开关；已如实写进架构文档，这类情况下按设计降级到 AX/画面，不改代码
+- 页面 target 打分：优先主界面（index.html），把 detached 空窗口、devtools、扩展页排在后面；连上就断的目标自动换下一个
+- 收尾 TERM 等待从 3 秒放宽到 6 秒（ChatGPT 实测 TERM 后 3 秒还没退完，会误报 still-running）
 - 支持方式改为按运行时族设计：新增 `core/app-runtime.mjs`（识别 electron/chromium/qt/flutter/java/native + 通道定义 + 驱动链，13 项单测）和 `core/app-runtime.mjs` 命令行 `npm run app:runtime`（不启动应用即可画像，支持 --all/--user/--json）
 - 修两处运行时误判：链接系统 WebKit 不等于 Web 应用（GarageBand 被误判过）；微信/QQ 这类自研 Chromium 壳（mojo、Renderer Helper）原先被当成原生，现归入 chromium 族并优先走 CDP
 - 修扫描漏掉符号链接应用：`/Applications/Safari.app` 指向 Cryptex，原来清点与探测都扫不到 Safari；`core/app-scan.mjs` 现把符号链接也当候选

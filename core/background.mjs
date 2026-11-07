@@ -797,7 +797,8 @@ export async function quitApp(app, options = {}) {
       const pid = Number.parseInt(String(stdout).trim().split('\n')[0], 10);
       if (Number.isFinite(pid) && pid > 0) {
         await deps.exec('/bin/kill', ['-TERM', String(pid)], { timeout: 3000 });
-        for (let i = 0; i < 10; i += 1) {
+        // 退出可能要好几秒（ChatGPT/大应用实测 TERM 后 3 秒还没走），给到 6 秒再判失败
+        for (let i = 0; i < 20; i += 1) {
           await deps.sleep(300);
           if (!(await deps.isAppRunning(check))) return { quit: true, mode: 'term', detail: 'Apple 事件被弹窗卡住，按进程 TERM' };
         }
