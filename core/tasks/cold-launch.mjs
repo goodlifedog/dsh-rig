@@ -39,10 +39,9 @@ async function quitApp(app) {
 }
 
 async function main() {
-  if (await isScreenLocked()) {
-    console.log('环境跳过：屏幕已锁，锁屏下无法验证前台是否跳转，等解锁后再跑 npm run cold:launch');
-    return;
-  }
+  // 锁屏时前台断言没意义，但"能不能后台启动"本身仍可验证：照跑并标注前台断言跳过
+  const locked = await isScreenLocked();
+  if (locked) console.log('提示：屏幕已锁 —— 前台断言跳过，只验证后台启动是否成功');
   const rows = [];
   const frontStart = await frontName();
   console.log('起点前台:', frontStart);
@@ -53,13 +52,13 @@ async function main() {
     row.quit = await quitApp(app);
     await sleep(600);
     row.frontAfterQuit = await frontName();
-    row.quitOk = row.frontAfterQuit === row.frontBeforeQuit;
+    row.quitOk = locked ? true : row.frontAfterQuit === row.frontBeforeQuit;
 
     const launch = await ensureAppRunning({ bundleId: app.bundle, appName: app.name, processName: app.process });
     await sleep(800);
     row.launched = Boolean(launch.launched || launch.running);
     row.frontAfterLaunch = await frontName();
-    row.launchFrontUnchanged = row.frontAfterLaunch === row.frontAfterQuit;
+    row.launchFrontUnchanged = locked ? true : row.frontAfterLaunch === row.frontAfterQuit;
     row.running = await isAppRunning({ appName: app.name, processName: app.process });
 
     rows.push(row);
@@ -67,8 +66,8 @@ async function main() {
   }
 
   const frontEnd = await frontName();
-  const ok = rows.every((r) => r.quit && r.quitOk && r.launched && r.running && r.launchFrontUnchanged) && frontStart === frontEnd;
-  const summary = { ok, frontStart, frontEnd, rows };
+  const ok = rows.every((r) => r.quit && r.quitOk && r.launched && r.running && r.launchFrontUnchanged) && (locked || frontStart === frontEnd);
+  const summary = { ok, locked, frontChecksSkipped: locked, frontStart, frontEnd, rows };
   console.log('\n' + JSON.stringify(summary, null, 2));
   if (!ok) process.exitCode = 1;
 }
