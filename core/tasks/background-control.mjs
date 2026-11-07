@@ -6,7 +6,7 @@
  *
  * 结论以 JSON 输出：每个动作都带「操作前后前台是否一致」的证据。
  */
-import { ensureAppRunning, frontName, state, find, click, setValue } from '../background.mjs';
+import { ensureAppRunning, frontName, state, find, click, setValue, smartType } from '../background.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
 
 const OVERLAY = process.env.OVERLAY_URL || 'http://127.0.0.1:7788';
@@ -82,13 +82,18 @@ async function main() {
   const area = areas[0];
   const text = '后台控制验证：' + new Date().toLocaleTimeString('zh-CN');
   if (area) {
-    const w = await setValue('备忘录', area.index, text);
-    record('后台写入正文（AX set_value）', w.ok && w.frontUnchanged, { frontUnchanged: w.frontUnchanged, detail: w.error || '' });
-    await sleep(500);
+    // 智能输入：先 AX 设值，读回不通过再降级到后台键入
+    const w = await smartType('备忘录', { elementIndex: area.index, text });
+    const frontOk = (w.attempts || []).every((a) => a.frontUnchanged !== false);
+    record('后台写入正文（自动选择输入方式）', w.ok && frontOk, {
+      frontUnchanged: frontOk,
+      detail: '方式=' + w.method + (w.attempts.length > 1 ? '，尝试 ' + w.attempts.map((a) => a.method).join('→') : ''),
+    });
+    await sleep(400);
     const tree = await state('备忘录');
     record('读回正文校验', tree.includes('后台控制验证'), { detail: tree.includes(text) ? '内容一致' : '内容不完全一致' });
   } else {
-    record('后台写入正文（AX set_value）', false, { detail: '找不到文本区' });
+    record('后台写入正文', false, { detail: '找不到文本区' });
   }
 
   // 5. 计算器：后台点击按钮

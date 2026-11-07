@@ -147,3 +147,57 @@ function firstText(r) {
   const hit = c.find((x) => x && x.type === 'text' && x.text);
   return hit ? String(hit.text).slice(0, 160) : '未知错误';
 }
+
+/**
+ * 智能输入：不同应用接受的输入方式不一样（计算器吃键盘、文档类吃 AX 设值，
+ * 还有的两种都能用）。这里按可靠性顺序尝试，并用「读回来能不能看到」做最终判定，
+ * 避免"接口返回成功但其实没写进去"。
+ *
+ * @param {string} app
+ * @param {{elementIndex?: number|string, text: string, verify?: boolean, deps?: object}} options
+ * @returns {{ok:boolean, method:string, verified:boolean, attempts:Array}}
+ */
+export async function smartType(app, options = {}) {
+  const opts = options || {};
+  const text = String(opts.text == null ? '' : opts.text);
+  const deps = Object.assign({ state, setValue, typeText }, opts.deps || {});
+  const verify = opts.verify !== false;
+  const attempts = [];
+
+  const check = async () => {
+    try {
+      const tree = await deps.state(app);
+      return String(tree || '').includes(text);
+    } catch {
+      return false;
+    }
+  };
+
+  // 1) AX 直接设值：不依赖键盘焦点，最不容易打扰用户
+  if (opts.elementIndex != null) {
+    try {
+      const r = await deps.setValue(app, opts.elementIndex, text);
+      attempts.push({ method: 'set_value', ok: Boolean(r && r.ok), frontUnchanged: r ? r.frontUnchanged !== false : true });
+      if (r && r.ok) {
+        const seen = verify ? await check() : true;
+        if (seen) return { ok: true, method: 'set_value', verified: true, attempts };
+      }
+    } catch (error) {
+      attempts.push({ method: 'set_value', ok: false, error: String(error && error.message || error).slice(0, 80) });
+    }
+  }
+
+  // 2) 后台键入：适用于计算器这类按键式应用
+  try {
+    const r = await deps.typeText(app, text);
+    attempts.push({ method: 'type_text', ok: Boolean(r && r.ok), frontUnchanged: r ? r.frontUnchanged !== false : true });
+    if (r && r.ok) {
+      const seen = verify ? await check() : true;
+      if (seen) return { ok: true, method: 'type_text', verified: true, attempts };
+    }
+  } catch (error) {
+    attempts.push({ method: 'type_text', ok: false, error: String(error && error.message || error).slice(0, 80) });
+  }
+
+  return { ok: false, method: 'none', verified: false, attempts };
+}
