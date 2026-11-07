@@ -63,6 +63,11 @@ export function requireOcu() {
  * 支持文本格式（"CGSSessionScreenIsLocked" = Yes）和 plist 格式（<key>…</key><true/>）；
  * 键不存在时视为未锁屏。
  */
+/** 锁屏跳过的统一提示（任务入口用；文案里必须含「环境跳过」和「锁屏」，出口分类才认） */
+export function lockedSkipNotice(taskName = '') {
+  return '环境跳过：屏幕已锁，锁屏下 AX/抓图都不可用' + (taskName ? '（' + taskName + '）' : '');
+}
+
 export function parseScreenLocked(output) {
   const text = String(output || '');
   if (/<key>CGSSessionScreenIsLocked<\/key>\s*<true\s*\/?>/i.test(text)) return true;
@@ -128,4 +133,4 @@ export function runPowerShell(script, timeout = 15000) {
   });
 }
 
-export default { isMac, isWindows, platform, controlBackend, resolveOcu, requireOcu, dataDir, runPowerShell, readFrontmostApp, isScreenLocked, parseScreenLocked };
+export default { isMac, isWindows, platform, controlBackend, resolveOcu, requireOcu, dataDir, runPowerShell, readFrontmostApp, isScreenLocked, parseScreenLocked, lockedSkipNotice };

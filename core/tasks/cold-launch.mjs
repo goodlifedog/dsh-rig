@@ -10,7 +10,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { ensureAppRunning, frontName, isAppRunning } from '../background.mjs';
-import { isScreenLocked } from '../platform.mjs';
+import { isScreenLocked, lockedSkipNotice } from '../platform.mjs';
 
 const exec = promisify(execFile);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -43,6 +43,7 @@ async function quitApp(app) {
 }
 
 async function main() {
+  if (await isScreenLocked()) { console.log(lockedSkipNotice('cold-launch.mjs')); return; }
   // 锁屏时前台断言没意义，但"能不能后台启动"本身仍可验证：照跑并标注前台断言跳过
   const locked = await isScreenLocked();
   if (locked) console.log('提示：屏幕已锁 —— 前台断言跳过，只验证后台启动是否成功');

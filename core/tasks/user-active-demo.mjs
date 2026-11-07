@@ -11,7 +11,7 @@
  *   4. 顺带记录 F 的界面树有没有被我们改动（如果读得到）
  */
 import { frontName, state, find, click } from '../background.mjs';
-import { isScreenLocked } from '../platform.mjs';
+import { isScreenLocked, lockedSkipNotice } from '../platform.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -23,6 +23,7 @@ function displayValue(tree) {
 }
 
 async function main() {
+  if (await isScreenLocked()) { console.log(lockedSkipNotice('user-active-demo.mjs')); return; }
   if (await isScreenLocked()) {
     console.log('环境跳过：屏幕已锁，无法验证「用户在用 A 时后台控 B」，等解锁后再跑');
     return;

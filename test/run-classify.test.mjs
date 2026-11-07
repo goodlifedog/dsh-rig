@@ -93,3 +93,10 @@ test('envSkipReason（验收用的那个）也要挡住 ❌ 轮次', () => {
 test('envSkipReason 仍然认纯跳过的轮次', () => {
   assert.equal(envSkipReason('  SKIP 真实窗口回显  环境跳过：锁屏'), '任务自报环境跳过');
 });
+test('锁屏统一提示必须被出口分类认成「任务自报环境跳过」', async () => {
+  const { lockedSkipNotice } = await import('../core/platform.mjs');
+  const notice = lockedSkipNotice('background-control');
+  assert.match(notice, /环境跳过/);
+  assert.match(notice, /锁屏/);
+  assert.equal(envSkipReason(notice), '任务自报环境跳过');
+});

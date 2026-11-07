@@ -2,6 +2,7 @@
 
 ## 未发布
 
+- 锁屏跳过统一化：新增 `lockedSkipNotice()`，background-stability / cold-launch / terminal-control / user-active-demo 四个依赖 AX 的任务入口都加锁屏检查（锁屏直接标环境跳过、退出码 0）；实测四个任务锁屏下都正确跳过，出口分类认得出
 - 修后台控制任务锁屏时误报失败：任务入口加锁屏检查，锁屏直接标「环境跳过」并退出（之前会继续跑、所有 AX 调用报 NSPOSIXErrorDomain Code=2 被当失败）；实测排查确认锁屏下 ocu 报错属环境限制，不是工具损坏
 - ocu 客户端两处韧性改进：spawn 时统一用系统临时目录（避免 DSH 会话 TMPDIR 与 launchd agent 的 socket 路径不一致）、AX 调用遇到 NSPOSIX/No such file 瞬时错误自动重试（4 次，间隔 700ms）
 - 笔记清理改安全策略（重要）：不再"删除列表里所有可删行"，改为测试前记录笔记数量、只删测试新增的那几条（新笔记在顶部）；清理脚本默认只报告，删笔记需显式 `--force`；新增 5 项数据安全单测

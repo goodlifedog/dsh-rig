@@ -8,7 +8,7 @@
  */
 import { frontName, state, find, typeText } from '../background.mjs';
 import { restoreFront } from '../front-watch.mjs';
-import { isScreenLocked } from '../platform.mjs';
+import { isScreenLocked, lockedSkipNotice } from '../platform.mjs';
 import { getOcuMcp, closeOcuMcp } from '../ocu-mcp.mjs';
 
 const APP = process.env.TERM_APP || 'Ghostty';
@@ -30,6 +30,7 @@ async function pressEnter(app) {
 }
 
 async function main() {
+  if (await isScreenLocked()) { console.log(lockedSkipNotice('terminal-control.mjs')); return; }
   if (await isScreenLocked()) {
     console.log('环境跳过：屏幕已锁，键盘与 AX 通路不可用，等解锁后再跑');
     return;
