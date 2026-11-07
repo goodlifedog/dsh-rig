@@ -36,6 +36,9 @@ export function envSkipReason(text) {
   const raw = String(text || '');
   // 「未送达」是明确失败：即使日志里同时出现「已联系」也不能判成环境跳过
   if (/未送达/.test(raw)) return '';
+  // 任务标了 ❌ 就是真失败：验收走的是这个函数（不是 classifyRun），
+  // 不加这条的话「部分项跳过 + 部分项真失败」的轮次仍会被整轮判成跳过。
+  if (/❌/.test(raw)) return '';
   for (const [re, reason] of ENV_RULES) {
     if (re.test(raw)) return reason;
   }

@@ -82,3 +82,14 @@ test('整轮都只是跳过时仍然算环境跳过', () => {
   const v = classifyRun(text);
   assert.equal(v.envSkip, true);
 });
+test('envSkipReason（验收用的那个）也要挡住 ❌ 轮次', () => {
+  const text = [
+    '  ❌ 后台点击计算器按钮  7 → 7',
+    '  SKIP 真实窗口回显  环境跳过：窗口状态=waiting',
+  ].join('\n');
+  assert.equal(envSkipReason(text), '', '有 ❌ 时不能返回跳过原因，否则验收会判 PASS');
+});
+
+test('envSkipReason 仍然认纯跳过的轮次', () => {
+  assert.equal(envSkipReason('  SKIP 真实窗口回显  环境跳过：锁屏'), '任务自报环境跳过');
+});
