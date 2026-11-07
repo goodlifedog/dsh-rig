@@ -31,6 +31,7 @@
 
 import { execFile, spawn } from 'node:child_process';
 import { readFrontmostApp } from './platform.mjs';
+import { attachSpawnError } from './safety.mjs';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
@@ -353,11 +354,20 @@ export async function launch(options) {
   if (child.stderr) child.stderr.on('data', (chunk) => log.push('stderr', chunk));
 
   let exitInfo = null;
+  let resolveExit = () => {};
   const exited = new Promise((resolve) => {
+    resolveExit = resolve;
     child.once('exit', (code, signal) => {
       exitInfo = { code: code, signal: signal };
       resolve(exitInfo);
     });
+  });
+  // spawn 失败不会有 'exit'：不接住会一直等到超时，且错误原因丢失。
+  // 记进日志缓冲并把「退出」立即结算，让调用方拿到可读失败原因。
+  attachSpawnError(child, (error) => {
+    exitInfo = { code: null, signal: '', spawnError: String((error && error.message) || error) };
+    log.push('spawn-error', exitInfo.spawnError);
+    resolveExit(exitInfo);
   });
   const checkExit = () => exitInfo;
 

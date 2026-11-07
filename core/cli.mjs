@@ -10,6 +10,7 @@
 import { spawn, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import { readToken, withTokenHeaders } from './local-token.mjs';
+import { attachSpawnError } from './safety.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -41,12 +42,16 @@ async function start() {
   const out = fs.openSync(path.join(ROOT, 'logs', 'daemon.out'), 'a');
   const child = spawn(process.execPath, [DAEMON], { cwd: ROOT, detached: true, stdio: ['ignore', out, out] });
   child.unref();
+  let spawnError = '';
+  attachSpawnError(child, (error) => { spawnError = String((error && error.message) || error); });
   fs.writeFileSync(PID_FILE, String(child.pid));
   for (let i = 0; i < 30; i++) {
     await sleep(300);
     if (await alive()) { console.log('已启动，pid=' + child.pid); return; }
+    if (spawnError) break;
   }
-  console.log('启动超时，检查 logs/daemon.out');
+  console.error('启动失败' + (spawnError ? '：' + spawnError : '（超时，检查 logs/daemon.out）'));
+  process.exitCode = 1;
 }
 
 function launchdManaged() {

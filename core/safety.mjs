@@ -85,6 +85,32 @@ export function debugPortTrust({ ownerPid, appPid } = {}) {
 }
 
 /**
+ * 给 child_process.spawn 出来的子进程挂「启动失败」监听。
+ *
+ * 为什么需要统一收口：spawn 失败（ENOENT、权限不足、资源不够）不会走 'close'，
+ * 而是发一个 'error' 事件；没人监听就是未捕获异常，把整个进程带走，
+ * 表现是「任务/服务突然消失且日志里没有原因」。之前 ocu-mcp、runner、supervisor
+ * 都是这么踩过的。
+ *
+ * @param {object} child spawn 返回值
+ * @param {(error: Error) => void} onError 记录/转换错误（自己不要再抛）
+ * @returns {() => void} 取消监听
+ */
+export function attachSpawnError(child, onError) {
+  if (!child || typeof child.on !== 'function') return () => {};
+  let handled = false;
+  const handler = (error) => {
+    // 只把第一次启动失败交给调用方处理；但监听要一直留着——
+    // 用 once 的话，之后再冒出一个 error 就真的没人接，直接以未捕获异常把进程带走。
+    if (handled) return;
+    handled = true;
+    try { onError(error); } catch {}
+  };
+  child.on('error', handler);
+  return () => { try { child.removeListener('error', handler); } catch {} };
+}
+
+/**
  * 判断可执行文件是否可信（纯函数）：必须是当前用户所有，且不能被组/其他人写。
  * @param {{fileUid:number, uid:number, mode:number, exists?:boolean}} input mode 用 stat 的十进制 mode
  * @returns {'ok'|'missing'|'foreign-owner'|'writable-by-others'}
