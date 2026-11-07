@@ -143,6 +143,15 @@ npm run user:active  # 你在用 A 时，后台控 B，A 的界面与前台都�
 - `clickMenuItem(app, {menu, item})`：**两步**——先点开菜单栏项，再点菜单项
 - `windowControls(app)`：识别关闭/最小化/缩放类按钮
 
+**快捷键替代方案也不行（2026-11-07 实测）**：想用 ⌘N 这类快捷键绕过"菜单点不到"，
+结果 `press_key(key='cmd+n', key_method='sky_key')` 虽然执行成功，但**备忘录被顶到前台**
+（前台从 DSH 变成 Notes），并新建了空笔记。结论：带修饰键的快捷键会触发应用激活，
+不能当作后台菜单替代方案。
+
+**另一个坑**：试图用 AppleScript（`tell application "Notes" to delete ...`）清理测试笔记时，
+系统弹出「自动化」权限请求并把「系统设置」窗口带到屏幕上——**这本身就打扰了用户**。
+所以第三方应用的 AppleScript 自动化不能用在后台流程里，只能走 System Events 的 AX 通路。
+
 **实测限制（2026-11-07）**：备忘录实测 `AXMenuBarItem` / `AXMenuItem` / `AXMenuBar` 查询结果全为 0，
 按文字查「文件」只返回文件夹按钮。界面树文本里能看到「菜单栏 → 文件 → 编辑 …」，
 但这些节点不进入可查询集合。结论：**当前工具链下，后台点菜单栏命令走不通**，
