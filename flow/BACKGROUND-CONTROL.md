@@ -27,6 +27,7 @@
 | withRetry(fn, {...}) | 只对瞬时错误重试 |
 | isTransientAxError(message) | 判定是否瞬时错误（索引过期/超时等） |
 | capabilityFile() | 能力缓存文件路径（~/.desktop-agent/capabilities.json） |
+| toolFailureText(result) | 从工具返回正文里识别「isError=false 但实际失败」（如索引过期） |
 
 ## 一、能力边界在哪
 

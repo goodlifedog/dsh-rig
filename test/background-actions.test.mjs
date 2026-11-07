@@ -59,3 +59,26 @@ test('底层抛错时不崩溃，返回错误', async () => {
   assert.equal(r.ok, false);
   assert.ok(/AX down/.test(r.error));
 });
+test('工具返回 isError=false 但正文写着索引过期：必须判失败', async () => {
+  const call = async () => ({
+    isError: false,
+    raw: { content: [{ type: 'text', text: 'Query index 1000014 has expired or is no longer available; run query again in this session' }] },
+  });
+  const r = await secondaryAction('备忘录', 1000014, '删除', { call });
+  assert.equal(r.ok, false, '不能把"索引过期"当成功');
+  assert.ok(/expired/i.test(r.error));
+});
+
+test('滚动与选中文本同样处理正文里的失败信息', async () => {
+  const call = async () => ({ isError: false, raw: { content: [{ type: 'text', text: 'unsupportedTool("scroll")' }] } });
+  const a = await scrollElement('某应用', { call });
+  assert.equal(a.ok, false);
+  const b = await selectTextIn('某应用', { elementIndex: 1, text: 'x', call });
+  assert.equal(b.ok, false);
+});
+
+test('正常返回不被误判为失败', async () => {
+  const call = async () => ({ isError: false, raw: { content: [{ type: 'text', text: 'Deleted note successfully' }] } });
+  const r = await secondaryAction('备忘录', 1, '删除', { call });
+  assert.equal(r.ok, true);
+});

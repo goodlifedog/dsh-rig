@@ -430,7 +430,8 @@ export async function secondaryAction(app, elementIndex, action, options = {}) {
   let result = { ok: false, error: '' };
   try {
     const r = await call('perform_secondary_action', { app, element_index: String(elementIndex), action: String(action) });
-    result = { ok: !r.isError, error: r.isError ? firstText(r) : '' };
+    const failure = r.isError ? firstText(r) : toolFailureText(r);
+    result = { ok: !failure, error: failure };
   } catch (error) {
     result = { ok: false, error: String(error && error.message || error).slice(0, 120) };
   }
@@ -452,7 +453,8 @@ export async function scrollElement(app, options = {}) {
     const args = { app, direction: opts.direction || 'down', pages: String(opts.pages || 1) };
     if (opts.elementIndex != null) args.element_index = String(opts.elementIndex);
     const r = await call('scroll', args);
-    result = { ok: !r.isError, error: r.isError ? firstText(r) : '' };
+    const failure = r.isError ? firstText(r) : toolFailureText(r);
+    result = { ok: !failure, error: failure };
   } catch (error) {
     result = { ok: false, error: String(error && error.message || error).slice(0, 120) };
   }
@@ -477,7 +479,8 @@ export async function selectTextIn(app, options = {}) {
     if (opts.suffix) args.suffix = String(opts.suffix);
     if (opts.selection) args.selection = String(opts.selection);
     const r = await call('select_text', args);
-    result = { ok: !r.isError, error: r.isError ? firstText(r) : '' };
+    const failure = r.isError ? firstText(r) : toolFailureText(r);
+    result = { ok: !failure, error: failure };
   } catch (error) {
     result = { ok: false, error: String(error && error.message || error).slice(0, 120) };
   }
@@ -485,4 +488,22 @@ export async function selectTextIn(app, options = {}) {
   const stolen = before !== after;
   if (stolen) await restoreFront(before);
   return Object.assign(result, { frontUnchanged: !stolen });
+}
+
+/**
+ * 从工具返回里提取"实际是失败"的信息。
+ *
+ * 实测（2026-11-07）：perform_secondary_action 在索引过期时返回 isError=false，
+ * 但正文里写着 "Query index ... has expired or is no longer available"。
+ * 只看 isError 会把失败当成功，所以统一再扫一遍正文里的错误特征。
+ */
+export function toolFailureText(result) {
+  if (!result) return '';
+  const content = (result.raw && result.raw.content) || result.content || [];
+  const text = content.filter((x) => x && x.type === 'text' && x.text).map((x) => String(x.text)).join('\n');
+  const firstLine = text.split('\n').map((s) => s.trim()).filter(Boolean)[0] || '';
+  if (/expired or is no longer available|no longer available|not supported|unsupportedTool|is not allowed|failed to|error:/i.test(firstLine)) {
+    return firstLine.slice(0, 160);
+  }
+  return '';
 }
