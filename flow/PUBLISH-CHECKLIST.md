@@ -70,6 +70,13 @@ node core/cli.mjs foo; echo $? # 应为 2（P1 已实现，无需打补丁）
   - 方案 B（我更推荐）：保留三平台 + `continue-on-error: ${{ matrix.os != 'macos-latest' }}` —— 徽章不红，同时收集非 mac 的早期信号
   - 验证：推上去看徽章；本地至少跑 `node core/platform-smoke.mjs` 确认 macOS 全过
 
+## B.9 版本号与 CHANGELOG（发布前必做）
+
+- [ ] **改版本号**：现在 `package.json` 是 `0.7.0`，但 CHANGELOG 里 `## 0.7.0 (2026-11-06)` 已经存在——也就是说这轮所有工作都堆在「未发布」里，发布前必须 bump（建议 `0.8.0`）并同步 `overlay/package.json`（`repo:check` 会校验一致性）
+- [ ] **给 CHANGELOG 新版本段落**：把 `## 未发布` 改成 `## 0.8.0 (日期)`
+- [ ] **补漏**：`Helper (Renderer)` 这条不在 CHANGELOG 里，但它修的是用户可见问题——`npm run app:runtime` 之前会把 Google Chrome 判成 native，导致选错控制通道
+- [ ] **Release notes 要另写**：未发布段现在 **199 行 / 189 条**，直接贴到 GitHub Release 没人看。建议只挑 10-15 条「用户能感知」的作为 Release 正文（小窗自恢复、不抢前台、会话泄漏修复、Chrome 识别、锁屏行为、`npm stop/start` 修正），完整列表留在 CHANGELOG
+
 ## C. 文档与素材
 
 - [ ] **C1. README 顶部要有演示 GIF**（15 秒内）：你在打字，AI 在后台点另一个窗口，小窗实时显示它在干什么
