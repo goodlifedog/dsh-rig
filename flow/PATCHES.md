@@ -1,11 +1,12 @@
 # 外部评审提供的补丁
 
-> 最后更新：2026-11-08 04:05。**只剩 1 个待应用补丁**，其余都已被主会话实现并删除。
+> 最后更新：2026-11-08 04:10。**2 个待应用补丁**，其余都已被主会话实现并删除。
 
 ## 待应用
 
 ```bash
-git apply flow/patch-publish.diff   # 发布配置（发布前必打）
+git apply flow/patch-publish.diff        # 发布配置（发布前必打）
+git apply flow/patch-repocheck-zip.diff  # repo:check 在非 git 目录（下载 ZIP）不再报红
 ```
 
 ### `patch-publish.diff`（78 行 / 3 个文件）
@@ -23,6 +24,19 @@ git apply flow/patch-publish.diff   # 发布配置（发布前必打）
 ```bash
 npm publish --dry-run   # 必须显示 Publishing to https://registry.npmjs.org ... public access
 npm pack --dry-run      # 约 138 files / 1.1 MB
+```
+
+### `patch-repocheck-zip.diff`（59 行 / 1 个文件）
+
+**问题**：从 GitHub 下载 ZIP 的用户（没有 .git）跑 `npm run repo:check` 会看到
+`❌ git 仓库可用 / git ls-files 失败`，一共「1 项未通过」——这条红跟代码质量无关。
+
+补丁：git 不可用时把三项依赖 git 的检查（依赖产物、孤儿图、大文件）标成「跳过」而不是失败，
+汇总里用 ⏭️ 显示且不计入未通过。实测：无 .git 目录下输出「全部通过」，三项显示跳过。
+
+验证：
+```bash
+rsync -a --exclude .git ./ /tmp/zipcheck/ && cd /tmp/zipcheck && node scripts/repo-check.mjs
 ```
 
 ## 已采纳并删除的补丁
