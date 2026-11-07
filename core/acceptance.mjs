@@ -27,6 +27,20 @@ function run(cmd, args, opts = {}) {
  * 之前分母是「总项数 - 跳过数」，13 项里 2 项跳过会显示「11/11」，读报告的人以为只跑了 11 项。
  * @param {Array<{ok:boolean, skipped?:boolean}>} results
  */
+/**
+ * 跑到一半要不要停（纯函数）：用户回来了、或有别的验收插进来，就停止后续任务。
+ * 只做一次入口检查不够——验收本身要跑好几分钟，中途状态会变（评审指出）。
+ * @param {{userActive?:boolean, foreignCount?:number}} input
+ * @returns {string} 空串=继续；否则是跳过原因
+ */
+export function midRunAbortReason(input = {}) {
+  const data = input || {};
+  const foreignCount = Number(data.foreignCount) || 0;
+  if (foreignCount > 0) return '另一个验收中途插入（' + foreignCount + ' 个前台类任务）';
+  if (data.userActive) return '用户回到电脑前（键鼠空闲 < 90 秒）';
+  return '';
+}
+
 export function summarizeResults(results) {
   const list = Array.isArray(results) ? results : [];
   const passed = list.filter((r) => r && r.ok && !r.skipped).length;
@@ -185,8 +199,8 @@ function releaseAcceptanceLock() {
   releaseLock(LOCK_FILE);
 }
 
-/** 用户最近有没有在用电脑：HID 空闲时间小于 180 秒就算在用；验收会切窗口，不该这时候跑 */
-function userRecentlyActive() {
+/** 用户最近有没有在用电脑：HID 空闲时间小于阈值就算在用；验收会切窗口，不该这时候跑 */
+function userRecentlyActive(maxIdleSec = 180) {
   if (process.env.ACCEPT_FORCE === '1') return false;
   if (process.platform !== 'darwin') return false;
   try {
@@ -194,10 +208,11 @@ function userRecentlyActive() {
     const m = out.match(/"HIDIdleTime" = (\d+)/);
     if (!m) return false;
     const idleSec = Number(m[1]) / 1e9;
-    if (idleSec < 180) {
+    if (idleSec < maxIdleSec) {
       console.error('检测到你正在使用电脑（空闲 ' + idleSec.toFixed(0) + ' 秒），验收会切窗口，先不跑。');
       console.error('确实要跑：ACCEPT_FORCE=1 npm run accept');
       return true;
+      // 注意：这里的 return true 分两条路径共用（启动门槛与中途复查）
     }
     return false;
   } catch {
@@ -242,23 +257,42 @@ async function main() {
   const h = await checkOverlay();
   if (h.ok) await checkIdleHide();
 
-  const scanOk = await runTask('boss-scan');
-  const multiOk = await runTask('multi-app');
-  const writeOk = await runTask('form-fill');
-  const platformOk = await runTask('platform-demo');
-  const browserOk = await runTask('browser-demo');
-  const electronOk = await runTask('electron-demo');
-  // 新通道也要过验收闸门：否则等于"写完就算完成"（外部评审 P0）
-  const cdpOk = await runTask('cdp-channel', 120000);
-  const asOk = await runTask('applescript-channel', 120000);
-  const bgOk = await runTask('background-control', 150000);
-  const matrixOk = await runTask('app-matrix', 420000, {
-    // 样本挑"不抢前台"的两个：Steam 会短暂抢前台（矩阵能兜住，但它不该当验收样本）
-    MATRIX_APPS_JSON: JSON.stringify([
-      { name: 'FastZip', bundle: 'cn.better365.FastZip', process: 'FastZip' },
-      { name: 'iRightMouse', bundle: 'cn.better365.iRightMouse', process: 'iRightMouse' },
-    ]),
-  });
+  // 任务按顺序跑；每跑完一个都复查一次「用户是否回来 / 有没有别的验收插入」，
+  // 一旦不满足就停掉后续任务、如实标环境跳过，而不是硬跑出假失败（评审指出入口只查一次不够）。
+  const TASK_PLAN = [
+    { name: 'boss-scan' },
+    { name: 'multi-app' },
+    { name: 'form-fill' },
+    { name: 'platform-demo' },
+    { name: 'browser-demo' },
+    { name: 'electron-demo' },
+    { name: 'cdp-channel', timeoutMs: 120000 },
+    { name: 'applescript-channel', timeoutMs: 120000 },
+    { name: 'background-control', timeoutMs: 150000 },
+    {
+      name: 'app-matrix',
+      timeoutMs: 420000,
+      // 样本挑"不抢前台"的两个：Steam 会短暂抢前台（矩阵能兜住，但它不该当验收样本）
+      env: {
+        MATRIX_APPS_JSON: JSON.stringify([
+          { name: 'FastZip', bundle: 'cn.better365.FastZip', process: 'FastZip' },
+          { name: 'iRightMouse', bundle: 'cn.better365.iRightMouse', process: 'iRightMouse' },
+        ]),
+      },
+    },
+  ];
+  let abortReason = '';
+  for (const task of TASK_PLAN) {
+    if (!abortReason) {
+      const foreignRuns = await findForeignUiRunsNow({ selfPids: [process.pid, process.ppid] });
+      abortReason = midRunAbortReason({ userActive: userRecentlyActive(90), foreignCount: foreignRuns.length });
+    }
+    if (abortReason) {
+      record('任务 ' + task.name, true, '环境跳过（' + abortReason + '），本轮不再继续', true);
+      continue;
+    }
+    await runTask(task.name, task.timeoutMs, task.env);
+  }
 
   // 收尾再还原一次（正常情况下每个任务之后已经还过了）
   restoreUserFront();
