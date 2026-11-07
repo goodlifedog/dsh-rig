@@ -67,12 +67,17 @@
 
 ## P2 · 打磨（按需，不阻塞发布）
 
-### 3.4 「并发抢锁」测试是顺序模拟，不是真并发（**补丁已备**：`flow/patch-lock-race-test.diff`）
+### 3.3 `app-profile.mjs` 抽离后两条异常路径没有测试
 
-- `test/acceptance-lock.test.mjs` 里那条「并发抢锁：两个进程同时抢只有一个成功」，实际是**同一个进程里连续调两次** `acquireLock`，传不同的假 pid
-- 它能验证「后来者看到活锁会退让」，但验证不到 `link(2)` 的原子性——真正的竞态是两个进程同时 link，只有一个收到 EEXIST
-- 我写了一个真并发的版本：spawn 两个 node 子进程同时抢同一把锁，断言恰好一个成功。对着当前实现跑，**通过**（说明实现是对的，只是测试没覆盖到）
-- 补丁：`git apply flow/patch-lock-race-test.diff`（新增 `test/acceptance-lock-race.test.mjs`，49 行）
+- 抽离本身是对的（依赖注入 + 4 条分类测试），我实测 `npm run app:runtime -- --all` 结果正常：199 native / 5 electron / 3 chromium / 1 qt，Chrome 仍归 chromium、Antigravity 仍归 electron
+- 缺的是两条失败路径：① `otool` 不可用或超时 → `linkedFrameworks` 返回空（会把 electron 误判成 native）；② `hasJvm` 的正则 `libjvm|jdk|jre` 命中任意含这些字样的资源文件就会误判
+- 建议各补一条：`otool` 抛错时分类结果退化但不崩；`hasJvm` 对「文件名里只有 jdk 字样、没有 libjvm 二进制」的目录返回 false
+
+
+### 3.4 ✅ 真并发抢锁测试（已采纳，且被改进）
+
+- 主会话采纳了我给的 `patch-lock-race-test.diff`，并**修掉了它的一个缺陷**：抢到锁的子进程如果立刻退出，另一个进程重试时会把已退出的持有者判成死锁并回收——那是正确行为，但会让测试偶发失败。他们让胜者多占 1.2 秒，问题消失
+- 我对着改进版连跑 8 次，全过
 
 ### 3.45 抢锁 fail-open 没有测试
 
