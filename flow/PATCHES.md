@@ -107,5 +107,8 @@ ls -ld ~/.desktop-agent          # 跑过一次 daemon 后应为 drwx------
 
 ## 已作废（不要再应用）
 
+`patch-token-permissions.diff`：权限校正已由主会话自行实现（`hardenDataDir`，更完整——连 chrome-profile 等敏感子目录一起收紧），
+该补丁已删除。
+
 `patch-p1.diff`、`patch-classify.diff`、`patch-electron-task-test.diff`、`patch-ensure-app-window-test.diff`
 对应实现都已在代码里，文件已删除；从 git 历史可查到。
