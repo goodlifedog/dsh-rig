@@ -206,7 +206,29 @@ overlay 的系统窗口列表（CGWindowList）。只信 AX 会把菜单栏工�
 
 整个过程不激活目标应用；探测完自动关掉自己拉起的实例，用户正在用的应用不会被动。
 
-## 八、已知边界
+## 八、当前进度与解锁后的待办（2026-11-07 22:20）
+
+机器锁屏时 AX 与抓图整体不可用（`CGSSessionScreenIsLocked`），矩阵会直接标「环境跳过」，
+不会产出假结论。当前卡在这里，已经做完的部分：
+
+- 已实测 22 个应用：19 个元素级可读、2 个只能画面+坐标（Keynote/Numbers Creator Studio）、
+  3 个应用侧限制（腾讯会议 AX 不稳定、抖音/Antigravity 启动即退）
+- Clash Verge / 奇游加速器：明确不接管，只读状态
+- Chrome：走独立 headless 实例
+
+**解锁后按顺序做三件事：**
+
+```bash
+npm run apps:probe -- GarageBand,iRightMouse,UURemote   # 三个还没测的
+npm run apps:inventory                                   # 刷新清点，看状态从「未测」变成什么
+# 复验「启动后自行退出」的两个：连开两次看是否稳定自退
+npm run apps:probe -- 抖音,Antigravity --keep
+```
+
+如果复验仍然是自退，就把结论写进本文「实测记录」表，状态保持「应用侧限制」；
+如果这次能起来，就按「建议控法」补全它的能力数据。
+
+## 九、已知边界
 
 - **菜单栏命令**：备忘录这类应用菜单栏节点不可查询（AXMenuBarItem/AXMenuItem 均为 0），
   后台点菜单走不通；⌘N 快捷键会把应用顶到前台，AppleScript 控制第三方应用会触发自动化权限弹窗。
