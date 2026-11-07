@@ -430,6 +430,9 @@ curl -s http://127.0.0.1:7788/health | head -c 400   # 小窗自己怎么说
 | `npm run scope:check` | `node scripts/session-scope-check.mjs` | 会话隔离检查（只在本会话出现、切走多久消失、切回多久出现） |
 | `npm run soak` | `node scripts/soak.mjs` | 稳定性巡检：连跑 6 轮任务，看耗时、内存增长、有没有有效帧 |
 | `npm run bg:verify` | `node scripts/bg-verify.mjs` | 一条命令跑完后端控制全部验收（矩阵/冷启动/稳定性/浏览器/用户在用A时控B），输出 reports/bg-verify-*.md |
+| `npm run agent:drive` | `node core/tasks/drive-agent.mjs` | 驱动桌面 agent 应用（ChatGPT 等）：写提示词→点发送→读回复，不抢前台 |
+| `npm run agent:cli` | `node core/tasks/drive-agent-cli.mjs` | 驱动 agent CLI（opencode 等）：后台键入命令→等执行→读输出 |
+| `npm run terminal:bg` | `node core/tasks/terminal-control.mjs` | 终端后台控制验收：敲命令+回车+读输出，前台不变 |
 | `npm run trends` | `node scripts/trends.mjs` | 把最近 10 次巡检报告拉成趋势表（帧率/单帧/任务/内存/切走切回），看有没有漂移 |
 | `npm run monitor` | `node scripts/monitor.mjs` | 一键巡检：健康+小窗回归、会话隔离、帧率，汇总成 reports/monitor-*.md（`MONITOR_FAST=1` 跳过回归约 30 秒） |
 | `npm run fps:check` | `node scripts/fps-check.mjs` | 帧率压测：持续推帧 20 秒，量实际帧率/单帧体积/推帧耗时（`FPS_CHECK_EXPANDED=1` 测放大态） |

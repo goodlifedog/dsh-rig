@@ -56,6 +56,8 @@
     "cold:launch": "node core/tasks/cold-launch.mjs",
     "user:active": "node core/tasks/user-active-demo.mjs",
     "terminal:bg": "node core/tasks/terminal-control.mjs",
+    "agent:drive": "node core/tasks/drive-agent.mjs",
+    "agent:cli": "node core/tasks/drive-agent-cli.mjs",
     "bg:verify": "node scripts/bg-verify.mjs",
     "ui:check": "node scripts/ui-check.mjs",
     "health": "node scripts/health.mjs"
