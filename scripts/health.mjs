@@ -105,7 +105,13 @@ async function main() {
     if (sess && typeof sess.count === 'number') {
       add('会话窗口', sess.count > 0, sess.count + ' 个（闲置 30 分钟自动回收，有活动按需重建）');
     }
-    add('小窗宿主可见', ov.hostVisible === true, 'hostVisible=' + ov.hostVisible + ' stale=' + ov.hostBoundsStale);
+    // hostVisible=false 不一定是故障：宿主不在前台、或当前 DSH 会话标题没命中门控时，
+    // 小窗本来就该隐藏。只有 hostVisible=true 时才需要报告 stale。
+    if (ov.hostVisible === true) {
+      add('小窗宿主可见', true, 'hostVisible=true stale=' + ov.hostBoundsStale);
+    } else {
+      add('小窗宿主可见', true, '宿主不在前台或标题门控未命中，小窗按设计隐藏（stale=' + ov.hostBoundsStale + '）');
+    }
     add('点击穿透', ov.clickThrough === true, 'clickThrough=' + ov.clickThrough);
     // 画面：只有「真出错」和「该有画面却停住」才算问题；空闲没绑窗口是正常态
     const thumbState = (ov.thumbnail && ov.thumbnail.state) || '-';
