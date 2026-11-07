@@ -1,7 +1,7 @@
 # 外部评审提供的补丁（按需应用）
 
 > 这些不是必须打的。每个都独立可应用、互不冲突，打过之后 `npm test` 全绿。
-> 最后更新：2026-11-08 03:40。**当前只剩 3 个**，其余都已被主会话自行实现并删除。
+> 最后更新：2026-11-08 03:45。**当前剩 4 个**，其余都已被主会话自行实现并删除。
 
 ## 应用程序
 
@@ -9,6 +9,7 @@
 git apply flow/patch-publish.diff            # 发布配置（发布前必打）
 git apply flow/patch-prune-consolidate.diff  # prune 死代码合并（建议打）
 git apply flow/patch-deploy-freshness.diff   # 代码新鲜度检查（建议打）
+git apply flow/patch-watchdog-hid.diff       # 看门狗改用 HID 空闲判定用户意图（建议打）
 npm test && npm run repo:check
 ```
 
@@ -40,6 +41,20 @@ npm pack --dry-run      # 约 138 files / 1.1 MB
 落后就提示 `npm run service:restart`（只提示，不自动重启）。
 
 验证：`touch core/agentd.mjs && npm run service:status` 应出现「落后 —— core/agentd.mjs 比进程新 N 分钟」。
+
+## 4. `patch-watchdog-hid.diff`（103 行 / 2 个文件）
+
+**问题**：`front-watch` 判断「用户自己在切」只看次数——同一应用在 1.5 秒内抢 3 次就认账、不再还原。
+但「应用自己反复 activate」与「用户手动切」在代码里长得一样，前者会导致该还原时不还原。
+
+补丁：`hidIdleMs()` 读 `ioreg -c IOHIDSystem` 的 `HIDIdleTime`（纳秒→毫秒），
+**最近 1.5 秒内有键鼠输入才算用户意图**；读不到 HID 时才退回旧的「反复切」启发式。
+配 2 条新测试：用户刚动过（idle 120ms）→ 一次就认账、不还原；用户一分钟没动 → 应用反复自激活也继续还原。
+
+验证：
+```bash
+node --test test/front-watch.test.mjs   # 7 项全过
+```
 
 ## 已采纳并删除的补丁（留档，不要再找）
 
