@@ -42,6 +42,31 @@ export async function restoreFront(name) {
  * 启动看门狗：期望前台是 expect，一旦变了就还原并回调。
  * @returns {{stop:Function, stats:Function}}
  */
+
+// 看门狗每 300ms 问一次「用户多久没动键鼠」；每次都 spawn 一次 ioreg 太浪费，
+// 但也不能缓存太久（用户 0.5 秒内的切换要能抓到）。250ms 是折中。
+let hidCache = { at: 0, value: -1 };
+
+/**
+ * 距离上次键鼠输入的毫秒数（ioreg 的 HIDIdleTime 是纳秒）；读不到返回 -1。
+ * @param {{cacheMs?:number}} [options]
+ */
+export async function hidIdleMs(options = {}) {
+  const ttl = Number.isFinite(options && options.cacheMs) ? options.cacheMs : 250;
+  const now = Date.now();
+  if (hidCache.at && now - hidCache.at < ttl) return hidCache.value;
+  let value = -1;
+  try {
+    const { stdout } = await exec('/usr/sbin/ioreg', ['-c', 'IOHIDSystem'], { timeout: 3000 });
+    const m = /"HIDIdleTime" = (\d+)/.exec(String(stdout || ''));
+    if (m) value = Math.round(Number(m[1]) / 1e6);
+  } catch {
+    value = -1;
+  }
+  hidCache = { at: Date.now(), value };
+  return value;
+}
+
 export function startFrontWatch({
   expect,
   intervalMs = 300,
@@ -51,6 +76,7 @@ export function startFrontWatch({
   // 便于测试时注入假实现；生产环境用真实实现
   getFront = frontAppFast,
   restore = restoreFront,
+  idleMs = hidIdleMs,
 } = {}) {
   let stopped = false;
   let timer = null;
@@ -71,7 +97,15 @@ export function startFrontWatch({
       recentSteals.push({ app: seen, at: now });
       while (recentSteals.length && now - recentSteals[0].at > userIntentMs) recentSteals.shift();
       const sameAppRepeated = recentSteals.filter((s) => s.app === seen).length >= 3;
-      if (sameAppRepeated) {
+      // 真用的人一定刚动过鼠标/键盘：HID 空闲时间很短就说明是用户自己切的，
+      // 只有「应用自己反复跳」才会在用户没输入的情况下切走（评审提的那条）。
+      let idle = -1;
+      try { idle = await idleMs(); } catch { idle = -1; }
+      const idleKnown = idle >= 0;
+      const userActive = idleKnown && idle <= userIntentMs;
+      // 有 HID 信息时只认「用户真的刚动过」；读不到时才退回旧的「反复切=用户意图」启发式。
+      const repeatedLooksLikeUser = sameAppRepeated && !idleKnown;
+      if (userActive || repeatedLooksLikeUser) {
         if (onSteal) {
           try { onSteal({ from: current, to: seen, restored: restores, userSwitched: true, at: now }); } catch {}
         }

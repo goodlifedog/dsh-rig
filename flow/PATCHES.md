@@ -9,7 +9,7 @@
 git apply flow/patch-publish.diff            # 发布配置（发布前必打）
 git apply flow/patch-prune-consolidate.diff  # prune 死代码合并（建议打）
 git apply flow/patch-deploy-freshness.diff   # 代码新鲜度检查（建议打）
-git apply flow/patch-watchdog-hid.diff       # 看门狗改用 HID 空闲判定用户意图（建议打）
+# patch-watchdog-hid 已应用（看门狗 HID 判据），文件已删
 npm test && npm run repo:check
 ```
 
@@ -42,7 +42,7 @@ npm pack --dry-run      # 约 138 files / 1.1 MB
 
 验证：`touch core/agentd.mjs && npm run service:status` 应出现「落后 —— core/agentd.mjs 比进程新 N 分钟」。
 
-## 4. `patch-watchdog-hid.diff`（103 行 / 2 个文件）
+## 4. ✅ `patch-watchdog-hid.diff`（103 行 / 2 个文件）—— 已应用，补丁文件已删除
 
 **问题**：`front-watch` 判断「用户自己在切」只看次数——同一应用在 1.5 秒内抢 3 次就认账、不再还原。
 但「应用自己反复 activate」与「用户手动切」在代码里长得一样，前者会导致该还原时不还原。

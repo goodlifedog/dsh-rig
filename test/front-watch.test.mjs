@@ -32,6 +32,7 @@ test('用户反复切同一个应用：放弃还原，认账为用户意图', as
     userIntentMs: 300,
     getFront: async () => front,
     restore: async (name) => { restores += 1; front = name; return true; },
+    idleMs: async () => 100,   // 用户正在操作（HID 空闲 100ms）
   });
   await sleep(30);
   // 连续把它切走（模拟用户不停点 Calculator）
@@ -87,4 +88,50 @@ test('看门狗停止后不再轮询', async () => {
   const seen = calls;
   await sleep(80);
   assert.equal(calls, seen, 'stop 之后不应该继续轮询');
+});
+
+
+test('hidIdleMs：能读到非负毫秒，读不到给 -1（不抛错）', async () => {
+  const { hidIdleMs } = await import('../core/front-watch.mjs');
+  const idle = await hidIdleMs({ cacheMs: 0 });
+  assert.ok(idle === -1 || idle >= 0, '应是 -1 或非负毫秒数，实际 ' + idle);
+  const cached = await hidIdleMs({ cacheMs: 60000 });
+  assert.equal(typeof cached, 'number');
+});
+
+test('用户真在操作（HID 空闲很短）：一次就认账，不跟用户抢', async () => {
+  let front = 'DSH';
+  let restores = 0;
+  const w = startFrontWatch({
+    expect: 'DSH',
+    intervalMs: 20,
+    getFront: async () => front,
+    restore: async (name) => { restores += 1; front = name; return true; },
+    idleMs: async () => 120,
+  });
+  await sleep(30);
+  front = 'Calculator';
+  await sleep(80);
+  const stats = w.stats();
+  w.stop();
+  assert.equal(stats.expect, 'Calculator', '用户刚动过鼠标，应认账');
+  assert.equal(restores, 0, '不应该跟用户抢');
+});
+
+test('用户很久没输入：应用反复自我激活也继续还原（不再误判为用户意图）', async () => {
+  let front = 'DSH';
+  let restores = 0;
+  const w = startFrontWatch({
+    expect: 'DSH',
+    intervalMs: 20,
+    getFront: async () => front,
+    restore: async (name) => { restores += 1; front = name; return true; },
+    idleMs: async () => 60_000,   // 一分钟没动过
+  });
+  await sleep(30);
+  for (let i = 0; i < 5; i += 1) { front = 'Telegram'; await sleep(30); }
+  const stats = w.stats();
+  w.stop();
+  assert.equal(stats.expect, 'DSH', '用户没动手，就不该认账');
+  assert.ok(restores >= 2, '应持续尝试还原，实际 ' + restores);
 });
