@@ -23,9 +23,14 @@
   - 应用后把 `@goodlifedog/desktop-agent` 和 `github.com/tester/desktop-agent` 换成真实值
   - 验证：`python3 -c "import json;d=json.load(open('package.json'));print(d['name'],bool(d['bin']),bool(d['files']),bool(d['repository']))"`
 
-- [ ] **B2. 打包体积**：`npm pack --dry-run` 看文件数（应用补丁前是 227 个 / 4.2MB，应用后应降到几十）
+- [ ] **B2. 打包体积**：应用补丁后跑 `npm pack --dry-run`，实测应为 **143 个文件 / 1.1 MB tarball（1.9 MB 解开）**
+  - 我在临时 checkout 里验过：不加 whitelist 是 249 文件 / 4.3 MB，加了之后 1.1 MB（省掉的是 `overlay/docs/` 里 3.8MB 的 UI 开发截图）
+  - 只保留 README 实际引用的 4 张：`multi-session.png` / `ui-live-expanded.jpg` / `ui-live-small.png` / `ui-live2-*.png`
 
-- [ ] **B3. CI 真跑一遍**：矩阵收窄后，推上去看徽章是否绿；`node core/platform-smoke.mjs` 在 macOS 上应全过
+- [ ] **B3. CI 矩阵二选一**（第 73 轮更正：**测试套件其实是 hermetic 的**，49 个测试里只有 1 个真 spawn 进程且跑的是 node；引用 osascript/launchctl 的都是字符串断言。所以「必红」是我没验证的判断）：
+  - 方案 A（补丁现状）：`os: [macos-latest]` —— 确定性最高
+  - 方案 B（我更推荐）：保留三平台 + `continue-on-error: ${{ matrix.os != 'macos-latest' }}` —— 徽章不红，同时收集非 mac 的早期信号
+  - 验证：推上去看徽章；本地至少跑 `node core/platform-smoke.mjs` 确认 macOS 全过
 
 ## C. 文档与素材
 
@@ -58,7 +63,8 @@ npm run prune               # 看日志/报告要不要清（dry-run）
 git status                  # 工作区应干净
 ```
 
-- [ ] **E1. 密钥扫描**：`git log -p --all | grep -E "sk-|ghp_|AKIA|PRIVATE KEY"` 应为空（第 52 轮扫过，干净）
+- [ ] **E1. 密钥扫描**：`git log -p --all -- ':!flow' ':!docs' | grep -E "sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{12,}|PRIVATE KEY"` 应为空
+  - 注意：**必须排除 flow/ 和 docs/**，否则评审文档里引用的这些模式词会自己命中（第 71 轮踩过）
 - [ ] **E2. 历史整理**：仓库里有 20 个 `goodlifedog@users.noreply.github.com` 的自动检查点提交，公开前建议 squash 成初始提交
 - [ ] **E3. 许可证**：`LICENSE`（MIT，真名）与 `third_party/open-computer-use/` 的 LICENSE/NOTICE 都在，`scripts/bundle-ocu.mjs` 会带上
 

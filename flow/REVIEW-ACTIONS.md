@@ -4,7 +4,7 @@
 
 
 > 每次复查后更新，**只看这一页就够**。详细理由见 `REVIEW-2026-11-07.md`。
-> 更新：2026-11-08 09:30
+> 更新：2026-11-08 10:15
 >
 > 注：复查时机器处于锁屏状态（ioreg `CGSSessionScreenIsLocked = true`），GUI 类任务一律没跑。
 
@@ -38,6 +38,12 @@
 1. **发布配置不合格（补丁 `flow/patch-publish.diff` 我刚复验过，仍可干净应用）**：包名 `desktop-agent` 已被 npm 占用（发布必然 403）；缺 `bin`/`files`/`repository`；CI 矩阵跑三平台但项目只支持 macOS；README 徽章还是 `USER` 占位。补丁已备：`git apply flow/patch-publish.diff`。
 
 ## 下一批
+
+17. **两个常驻进程都没有兜底异常处理**：`core/daemon.mjs`、`core/runner.mjs` 无 `uncaughtException`/`unhandledRejection`；`overlay/main.js` 无 `render-process-gone`/`child-process-gone`。daemon 里任何一处漏 catch 的 rejection 在 Node 20 会直接终止进程；overlay 渲染进程崩了会白屏但进程还活着。日志里已经有 `Network service crashed or was terminated` 的痕迹，代码里没人知道。建议：① daemon 注册两个 handler，记日志后继续服务（单次任务异常不该拖垮守护进程）；② overlay 监听 `render-process-gone` 重载一次并写进 `/health`；③ 健康面板加「最近崩溃/恢复次数」。
+
+16. **`overlay/main.js` 1969 行、71 个函数、5 类职责，建议拆**：抓帧/缩略图 137 处引用、会话管理 74 处、窗口几何 69 处、宿主检测 50 处、HTTP/IPC 16 处。纯函数已经拆得不错（`capture-policy`/`frame-target`/`host-select`/`layout`/`recover`/`window-id`），剩下的是有状态的编排。建议拆 `overlay/thumb.js`（抓帧循环 + 失败恢复 + 自适应帧率）和 `overlay/sessions.js`（会话创建/TTL/上限/状态机），`main.js` 只留装配。理由不是好看：**抓帧是最常改的、窗口会话是最怕改坏的，放在同一个文件里，每次改抓帧都在赌**。
+
+15. **「画面自动恢复」这个用户可见行为没有文档**：现在只有 CHANGELOG 提过——绑定的窗口被关掉后小窗会在 0.5 秒内解绑（状态回 `no-window`，不是错误），同一应用又开新窗口时约 1 秒内自动重绑。不写文档的话，用户第一次遇到会以为坏了。建议在 overlay 文档补一小节，顺带写上自检开关 `OVERLAY_CAPTURE_WHILE_HIDDEN=1`（默认关）。
 
 14. **「还原前台」缺失败信号**：`settleFront()` 会返回 `finalFront`，但**没有任何调用方看它**（app-matrix / cdp-driver / applescript-channel 都只取 `stolen`）。所以「尝试还原了但没成功」和「还原成功」在报告里长得一模一样。建议：① 返回值加 `restored: finalFront === expect`；② 报告加一列「前台还原 ok/失败」，失败时日志写明「还原失败，当前前台是 X」；③ README 那句改成「会尝试立刻还原；还原失败会在报告里标出来」——承诺的强度应该由「最终状态」决定，不是由「尝试过」决定。
 
