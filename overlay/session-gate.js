@@ -24,7 +24,13 @@ function matchesTitle(titleHint, hostTitle, suffix) {
   const host = normalizeHostTitle(hostTitle, suffix);
   const hint = normalizeHostTitle(titleHint, suffix);
   if (!hint) return true;
-  return host.indexOf(hint) !== -1;
+  if (host === hint) return true;
+  // 不能用裸子串：会话「规划布局探讨」会匹配到「规划布局探讨（二）」，两个会话互相点亮小窗。
+  // 但宿主标题可能带装饰（状态点、未读标记），所以允许「去掉 hint 后只剩标点/符号/空白」。
+  const at = host.indexOf(hint);
+  if (at < 0) return false;
+  const rest = host.slice(0, at) + host.slice(at + hint.length);
+  return /^[\s\p{P}\p{S}]*$/u.test(rest);
 }
 
 module.exports = { normalizeHostTitle, normalizeDshTitle, matchesTitle, DEFAULT_SUFFIX };
