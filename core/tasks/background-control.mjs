@@ -7,6 +7,7 @@
  * 结论以 JSON 输出：每个动作都带「操作前后前台是否一致」的证据。
  */
 import { ensureAppRunning, frontName, state, find, click, setValue, smartType, smartTypeWithCache, clickByText } from '../background.mjs';
+import { checkTextEditWritable } from '../text-edit-guard.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
 import { countNotes, deleteTopNotes } from '../note-cleanup.mjs';
 import { isScreenLocked } from '../platform.mjs';
@@ -137,8 +138,15 @@ async function main() {
   // 6. 文本编辑：后台设值
   const textAreas = await find('文本编辑', { role: 'AXTextArea', limit: 5 });
   if (textAreas[0]) {
-    const w = await setValue('文本编辑', textAreas[0].index, '后台写入：' + new Date().toLocaleTimeString('zh-CN'));
-    record('后台写入文本编辑（AX set_value）', w.ok && w.frontUnchanged, { frontUnchanged: w.frontUnchanged, detail: w.error || '' });
+    // set_value 是覆盖语义：用户开着有内容的文稿时，写进去就等于把人家内容盖掉。
+    // 只允许写「未命名且内容为空」的文稿，否则跳过（评审 P0）。
+    const guard = await checkTextEditWritable();
+    if (!guard.ok) {
+      recordSkipped('后台写入文本编辑（AX set_value）', '文本编辑里有用户内容，跳过写入以免覆盖：' + guard.reason);
+    } else {
+      const w = await setValue('文本编辑', textAreas[0].index, '后台写入：' + new Date().toLocaleTimeString('zh-CN'));
+      record('后台写入文本编辑（AX set_value）', w.ok && w.frontUnchanged, { frontUnchanged: w.frontUnchanged, detail: w.error || '' });
+    }
   } else {
     recordSkipped('后台写入文本编辑（AX set_value）', '文本编辑冷启动是打开面板，没有文稿窗口');
   }

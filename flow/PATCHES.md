@@ -56,7 +56,7 @@ npm pack --dry-run      # 约 138 files / 1.1 MB
 node --test test/front-watch.test.mjs   # 7 项全过
 ```
 
-## 5. `patch-textedit-guard.diff`（146 行 / 3 个文件）
+## 5. ✅ `patch-textedit-guard.diff`（146 行 / 3 个文件）—— 已应用，补丁文件已删除
 
 **数据安全问题**：`background-control` 第 6 步直接 `setValue('文本编辑', textAreas[0].index, '后台写入：…')`，
 而 `set_value` 是**覆盖**语义——用户开着有内容的文稿时跑验收，内容直接被盖掉，清理脚本也救不回。
