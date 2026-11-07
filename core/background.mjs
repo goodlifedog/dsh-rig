@@ -12,6 +12,9 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { getOcuMcp } from './ocu-mcp.mjs';
 import { restoreFront } from './front-watch.mjs';
+import { loadCache, saveCache, methodOrder, recordMethod } from './capabilities.mjs';
+import os from 'node:os';
+import path from 'node:path';
 
 const exec = promisify(execFile);
 
@@ -164,6 +167,10 @@ export async function smartType(app, options = {}) {
   const deps = Object.assign({ state, setValue, typeText }, opts.deps || {});
   const verify = opts.verify !== false;
   const attempts = [];
+  // 尝试顺序：调用方给的 order > 有元素索引时默认 AX 设值优先 > 直接键入
+  const order = Array.isArray(opts.order) && opts.order.length
+    ? opts.order.slice()
+    : (opts.elementIndex != null ? ['set_value', 'type_text'] : ['type_text']);
 
   const check = async () => {
     try {
@@ -174,30 +181,33 @@ export async function smartType(app, options = {}) {
     }
   };
 
-  // 1) AX 直接设值：不依赖键盘焦点，最不容易打扰用户
-  if (opts.elementIndex != null) {
-    try {
-      const r = await deps.setValue(app, opts.elementIndex, text);
-      attempts.push({ method: 'set_value', ok: Boolean(r && r.ok), frontUnchanged: r ? r.frontUnchanged !== false : true });
-      if (r && r.ok) {
-        const seen = verify ? await check() : true;
-        if (seen) return { ok: true, method: 'set_value', verified: true, attempts };
+  for (const method of order) {
+    if (method === 'set_value') {
+      if (opts.elementIndex == null) continue;
+      try {
+        const r = await deps.setValue(app, opts.elementIndex, text);
+        attempts.push({ method: 'set_value', ok: Boolean(r && r.ok), frontUnchanged: r ? r.frontUnchanged !== false : true });
+        if (r && r.ok) {
+          const seen = verify ? await check() : true;
+          if (seen) return { ok: true, method: 'set_value', verified: true, attempts };
+        }
+      } catch (error) {
+        attempts.push({ method: 'set_value', ok: false, error: String(error && error.message || error).slice(0, 80) });
       }
-    } catch (error) {
-      attempts.push({ method: 'set_value', ok: false, error: String(error && error.message || error).slice(0, 80) });
+      continue;
     }
-  }
-
-  // 2) 后台键入：适用于计算器这类按键式应用
-  try {
-    const r = await deps.typeText(app, text);
-    attempts.push({ method: 'type_text', ok: Boolean(r && r.ok), frontUnchanged: r ? r.frontUnchanged !== false : true });
-    if (r && r.ok) {
-      const seen = verify ? await check() : true;
-      if (seen) return { ok: true, method: 'type_text', verified: true, attempts };
+    if (method === 'type_text') {
+      try {
+        const r = await deps.typeText(app, text);
+        attempts.push({ method: 'type_text', ok: Boolean(r && r.ok), frontUnchanged: r ? r.frontUnchanged !== false : true });
+        if (r && r.ok) {
+          const seen = verify ? await check() : true;
+          if (seen) return { ok: true, method: 'type_text', verified: true, attempts };
+        }
+      } catch (error) {
+        attempts.push({ method: 'type_text', ok: false, error: String(error && error.message || error).slice(0, 80) });
+      }
     }
-  } catch (error) {
-    attempts.push({ method: 'type_text', ok: false, error: String(error && error.message || error).slice(0, 80) });
   }
 
   return { ok: false, method: 'none', verified: false, attempts };
@@ -386,4 +396,24 @@ export async function findSafe(app, query, options = {}) {
     await deps.restoreFront(before);
   }
   return { matches, error, frontStolen, frontBefore: before, frontAfter: after };
+}
+/** 能力缓存文件位置 */
+export function capabilityFile() {
+  return path.join(os.homedir(), '.desktop-agent', 'capabilities.json');
+}
+
+/**
+ * 带能力缓存的智能输入：按上次成功的方式优先尝试，并把结果写回缓存。
+ * 这样同一个应用第二次就不需要盲目试错。
+ */
+export async function smartTypeWithCache(app, options = {}) {
+  const opts = options || {};
+  const file = opts.cacheFile || capabilityFile();
+  const cache = loadCache(file);
+  const order = methodOrder(cache, app, 'type') || (opts.elementIndex != null ? ['set_value', 'type_text'] : ['type_text']);
+  const result = await smartType(app, Object.assign({}, opts, { order }));
+  if (result.method && result.method !== 'none') {
+    saveCache(file, recordMethod(cache, app, 'type', result.method, result.ok));
+  }
+  return result;
 }

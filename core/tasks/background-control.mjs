@@ -6,7 +6,7 @@
  *
  * 结论以 JSON 输出：每个动作都带「操作前后前台是否一致」的证据。
  */
-import { ensureAppRunning, frontName, state, find, click, setValue, smartType, clickByText } from '../background.mjs';
+import { ensureAppRunning, frontName, state, find, click, setValue, smartType, smartTypeWithCache, clickByText } from '../background.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
 
 const OVERLAY = process.env.OVERLAY_URL || 'http://127.0.0.1:7788';
@@ -81,7 +81,7 @@ async function main() {
   const text = '后台控制验证：' + new Date().toLocaleTimeString('zh-CN');
   if (area) {
     // 智能输入：先 AX 设值，读回不通过再降级到后台键入
-    const w = await smartType('备忘录', { elementIndex: area.index, text });
+    const w = await smartTypeWithCache('备忘录', { elementIndex: area.index, text });
     const frontOk = (w.attempts || []).every((a) => a.frontUnchanged !== false);
     record('后台写入正文（自动选择输入方式）', w.ok && frontOk, {
       frontUnchanged: frontOk,

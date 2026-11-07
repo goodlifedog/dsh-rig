@@ -124,6 +124,18 @@ npm run user:active  # 你在用 A 时，后台控 B，A 的界面与前台都�
    走 AX 语义通路，不抢前台（矩阵已验证）
 2. **浏览器**：用独立实例（headless 或独立 profile），不碰用户正在用的窗口
 
+### 应用能力缓存（2026-11-07）
+
+同一个应用每次都试错很浪费：计算器吃键盘、备忘录吃设值、文本编辑会忽略后台键入。
+所以把「哪个应用吃哪种输入」记下来：
+
+- `core/capabilities.mjs`：`methodOrder()` 读顺序、`recordMethod()` 成功提前/失败押后、读写 JSON
+- `smartTypeWithCache()`：按缓存顺序尝试，把本次成功的方式写回 `~/.desktop-agent/capabilities.json`
+- 没记录过的应用走默认顺序，不影响首次使用
+
+7 项单测覆盖：未记录返回空、成功提前、失败押后、去重、点击与输入分开记、文件读写、坏文件不崩；
+另外 2 项覆盖 order 覆盖顺序与缓存写回。
+
 ### 终端类：后台可控制（2026-11-07 实测）
 
 `npm run terminal:bg` 在 Ghostty 里敲 `echo dsh-bg-xxx` + 回车，5 项检查全过：

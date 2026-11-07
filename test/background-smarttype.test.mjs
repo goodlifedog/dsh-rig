@@ -2,7 +2,10 @@
 // 智能输入降级链：接口说成功但内容没进去时不能算成功
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { smartType } from '../core/background.mjs';
+import { smartType, smartTypeWithCache } from '../core/background.mjs';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 function deps({ tree, setValueOk = true, typeOk = true, afterSetValue, afterType } = {}) {
   let current = tree || '';
@@ -87,4 +90,26 @@ test('每次尝试都记录前台是否未变（供上报用）', async () => {
   assert.equal(r.ok, false);
   assert.equal(r.attempts[0].frontUnchanged, true);
   assert.equal(r.attempts[1].frontUnchanged, false);
+});
+test('order 指定顺序时按顺序尝试（只给 type_text 就不碰设值）', async () => {
+  const d = deps({ tree: '', afterType: '内容Z' });
+  const r = await smartType('某应用', { elementIndex: 5, text: '内容Z', order: ['type_text'], deps: d.deps });
+  assert.equal(r.method, 'type_text');
+  assert.equal(d.calls.setValue, 0, '指定了只走键入就不该调设值');
+});
+
+test('带缓存：成功方式写回缓存，下次优先用它', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'smart-cache-'));
+  const cacheFile = path.join(dir, 'cap.json');
+  let tree = '';
+  const makeDeps = () => ({
+    state: async () => tree,
+    setValue: async () => ({ ok: false, frontUnchanged: true }),
+    typeText: async () => { tree = '缓存测试内容'; return { ok: true, frontUnchanged: true }; },
+  });
+  const first = await smartTypeWithCache('应用C', { elementIndex: 9, text: '缓存测试内容', cacheFile, deps: makeDeps() });
+  assert.equal(first.method, 'type_text');
+  const saved = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+  assert.deepEqual(saved['应用C'].type[0], 'type_text', '成功方式应排在缓存最前');
+  fs.rmSync(dir, { recursive: true, force: true });
 });
