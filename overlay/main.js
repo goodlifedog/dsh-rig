@@ -69,6 +69,8 @@ const THUMB_JPEG_QUALITY = 92;
 const CAPTURE_TIMEOUT_MS = 4000;
 // 连续抓帧失败多少次才对外报错：真实窗口刚绑定时偶尔会连续失败 2–3 次
 const CAPTURE_FAIL_TOLERANCE = Math.max(1, Math.round(toNumber(process.env.OVERLAY_CAPTURE_FAIL_TOLERANCE, 4)));
+// 自检开关：隐藏会话也抓帧（默认关；只用于验证失效恢复，不影响正常省 CPU 行为）
+const CAPTURE_WHILE_HIDDEN = String(process.env.OVERLAY_CAPTURE_WHILE_HIDDEN || '') === '1';
 // 小于这个体积的 JPEG 基本就是一整块纯色（正常窗口帧 40KB 左右）
 const BLANK_JPEG_BYTES = Math.max(1000, Math.round(toNumber(process.env.OVERLAY_BLANK_JPEG_BYTES, 8000)));
 const FADE_MS = 180;
@@ -1089,8 +1091,10 @@ const jpegSize = imageMeta.jpegSize;
 async function captureThumbnail(s) {
   const win = s.win;
   if (!win || win.isDestroyed() || !s.flags.ready) return;
-  // 窗口隐藏时暂停抓帧，显示后补一帧即可
-  if (!s.state.visible) return;
+  // 窗口隐藏时暂停抓帧，显示后补一帧即可。
+  // OVERLAY_CAPTURE_WHILE_HIDDEN=1 仅用于自检：隐藏会话也抓帧，这样验证"窗口失效→恢复/解绑"
+  // 不用把测试小窗弹到用户屏幕上。
+  if (!s.state.visible && !CAPTURE_WHILE_HIDDEN) return;
   // 外部画面接管中（3 秒内有推送）就不再做窗口截图
   if (Date.now() - s.externalFrameAt < 3000) return;
   if (!s.state.windowId || s.flags.capturing || !tempDir) return;
