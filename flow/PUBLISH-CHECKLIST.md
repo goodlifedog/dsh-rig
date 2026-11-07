@@ -75,7 +75,7 @@ node core/cli.mjs foo; echo $? # 应为 2（P1 已实现，无需打补丁）
 - [ ] **改版本号**：现在 `package.json` 是 `0.7.0`，但 CHANGELOG 里 `## 0.7.0 (2026-11-06)` 已经存在——也就是说这轮所有工作都堆在「未发布」里，发布前必须 bump（建议 `0.8.0`）并同步 `overlay/package.json`（`repo:check` 会校验一致性）
 - [ ] **给 CHANGELOG 新版本段落**：把 `## 未发布` 改成 `## 0.8.0 (日期)`
 - [ ] **补漏**：`Helper (Renderer)` 这条不在 CHANGELOG 里，但它修的是用户可见问题——`npm run app:runtime` 之前会把 Google Chrome 判成 native，导致选错控制通道
-- [ ] **Release notes 要另写**：未发布段现在 **199 行 / 189 条**，直接贴到 GitHub Release 没人看。建议只挑 10-15 条「用户能感知」的作为 Release 正文（小窗自恢复、不抢前台、会话泄漏修复、Chrome 识别、锁屏行为、`npm stop/start` 修正），完整列表留在 CHANGELOG
+- [ ] **Release notes 已起草**：[`RELEASE-NOTES-DRAFT.md`](RELEASE-NOTES-DRAFT.md)（用户可感知的 10 来条 + 已知限制 + 升级提示，发版前微调即可）；原始要点：**Release notes 要另写**：未发布段现在 **199 行 / 189 条**，直接贴到 GitHub Release 没人看。建议只挑 10-15 条「用户能感知」的作为 Release 正文（小窗自恢复、不抢前台、会话泄漏修复、Chrome 识别、锁屏行为、`npm stop/start` 修正），完整列表留在 CHANGELOG
 
 ## C. 文档与素材
 
