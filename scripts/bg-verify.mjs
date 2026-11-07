@@ -15,27 +15,41 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
 
+// 每项一个合理的上限：既不一刀切误杀，也不让卡死的检查拖住整轮
 const CHECKS = [
-  { name: '应用能力矩阵', script: 'core/tasks/app-matrix.mjs' },
-  { name: '冷启动不跳前台', script: 'core/tasks/cold-launch.mjs' },
-  { name: '后台操作稳定性', script: 'core/tasks/background-stability.mjs' },
-  { name: '后台浏览器', script: 'core/tasks/browser-background.mjs' },
-  { name: '用户在用A时控B', script: 'core/tasks/user-active-demo.mjs' },
-  { name: '终端后台控制', script: 'core/tasks/terminal-control.mjs' },
+  { name: '应用能力矩阵', script: 'core/tasks/app-matrix.mjs', timeoutMs: 240000 },
+  { name: '冷启动不跳前台', script: 'core/tasks/cold-launch.mjs', timeoutMs: 90000 },
+  { name: '后台操作稳定性', script: 'core/tasks/background-stability.mjs', timeoutMs: 90000 },
+  { name: '后台浏览器', script: 'core/tasks/browser-background.mjs', timeoutMs: 120000 },
+  { name: '用户在用A时控B', script: 'core/tasks/user-active-demo.mjs', timeoutMs: 90000 },
+  { name: '终端后台控制', script: 'core/tasks/terminal-control.mjs', timeoutMs: 60000 },
 ];
 
-function run(script) {
+// 单项超时：某个检查卡住时不能把整轮验收拖死
+const DEFAULT_TIMEOUT_MS = Math.max(10000, Number(process.env.BG_VERIFY_TIMEOUT_MS) || 300000);
+
+function run(script, timeoutMs) {
+  const limit = Math.max(5000, Number(timeoutMs) || DEFAULT_TIMEOUT_MS);
   return new Promise((resolve) => {
     const started = Date.now();
     const child = spawn(process.execPath, [path.join(ROOT, script)], { cwd: ROOT, env: { ...process.env } });
     let out = '';
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      try { child.kill('SIGKILL'); } catch {}
+    }, limit);
     child.stdout.on('data', (b) => { out += b; });
     child.stderr.on('data', (b) => { out += b; });
-    child.on('close', (code) => resolve({ code: code === null ? 1 : code, ms: Date.now() - started, out }));
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      resolve({ code: timedOut ? 124 : (code === null ? 1 : code), ms: Date.now() - started, out, timedOut, limit });
+    });
   });
 }
 
 function classify(result, name) {
+  if (result.timedOut) return { status: 'FAIL', detail: '超时（超过 ' + Math.round((result.limit || 0) / 1000) + 's 未结束，已终止）' };
   const skipped = /环境跳过/.test(result.out);
   if (skipped) return { status: 'SKIP', detail: '环境跳过（' + (result.out.match(/环境跳过[：:]([^\n]{0,40})/) || [])[1] + '）' };
   if (result.code === 0) {
@@ -54,7 +68,7 @@ async function main() {
   const rows = [];
   for (const check of CHECKS) {
     process.stdout.write('跑 ' + check.name + ' … ');
-    const result = await run(check.script);
+    const result = await run(check.script, check.timeoutMs);
     const verdict = classify(result, check.name);
     rows.push({ name: check.name, status: verdict.status, detail: verdict.detail, ms: result.ms });
     console.log(verdict.status + '  ' + (verdict.detail || '') + '  ' + (result.ms / 1000).toFixed(1) + 's');

@@ -1044,6 +1044,8 @@ const sanitizeCursor = imageMeta.sanitizeCursor;
 // 本地 screencapture 在最后一次外部帧后 3 秒才恢复，期间不会和外部位图抢画面。
 function pushExternalFrame(s, dataUrl, note, cursor, width, height) {
   s.externalFrameAt = Date.now();
+  // 外部帧接管期间本地抓帧是暂停的；恢复时不要沿用旧的"连续不变"计数，否则一上来就降频
+  s.unchangedFrames = 0;
   const prev = s.state.thumbnail || {};
 
   // 尺寸优先级：调用方显式给 > 上一帧 > 解析图片头 > 未知
