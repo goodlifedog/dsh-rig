@@ -50,6 +50,57 @@ const post = (base, path, body) => fetch(base + path, {
 }).then(async (r) => ({ status: r.status, json: await r.json() }));
 const get = (base, path) => fetch(base + path).then(async (r) => ({ status: r.status, json: await r.json() }));
 
+test('其余路由：/ /sessions /windows /log /visible /expand /close /frame 都通', async () => {
+  const seen = [];
+  const { handlers } = stubHandlers({
+    sessions: () => [{ id: 'default', visible: false }],
+    windows: () => [{ windowId: 1, title: 'demo' }],
+    onLog: (session, text) => { seen.push(['log', session, text]); return { text }; },
+    onVisible: (session, visible) => { seen.push(['visible', session, visible]); return { visible }; },
+    onExpand: (session) => { seen.push(['expand', session]); return { expanded: true }; },
+    close: (session) => { seen.push(['close', session]); return session === 'default'; },
+    onFrame: (session, dataUrl) => { seen.push(['frame', session, String(dataUrl).slice(0, 22)]); return { ok: true }; },
+  });
+  const srv = createOverlayServer({ host: '127.0.0.1', port: 0, handlers });
+  const addr = await srv.listen();
+  const base = 'http://' + addr.address + ':' + addr.port;
+  try {
+    assert.equal((await get(base, '/')).status, 200);
+    const sessions = await get(base, '/sessions');
+    assert.equal(sessions.status, 200);
+    assert.equal(sessions.json.sessions.length, 1);
+    const windows = await get(base, '/windows');
+    assert.equal(windows.status, 200);
+    assert.equal(windows.json.windows[0].windowId, 1);
+
+    const log = await post(base, '/log', { session: 'alpha', text: '动作' });
+    assert.equal(log.status, 200);
+    assert.deepEqual(seen[0], ['log', 'alpha', '动作'], 'query/body 里的 session 要透传');
+
+    const visible = await post(base, '/visible', { visible: true });
+    assert.equal(visible.status, 200);
+    assert.equal((await post(base, '/visible', { visible: 'true' })).status, 400, 'visible 必须是布尔');
+
+    const expand = await post(base, '/expand', {});
+    assert.equal(expand.status, 200);
+    assert.equal(expand.json.expanded, true);
+
+    const closed = await post(base, '/close', { session: 'default' });
+    assert.equal(closed.status, 200);
+    const missing = await post(base, '/close', { session: 'nope' });
+    assert.equal(missing.status, 404, '不存在的会话 close 要 404');
+
+    const frame = await post(base, '/frame', { dataUrl: 'data:image/png;base64,AAAA' });
+    assert.equal(frame.status, 200);
+    assert.equal(frame.json.ok, true);
+
+    const wrong = await get(base, '/log');
+    assert.equal(wrong.status, 405, '已知路由用了错方法要 405');
+  } finally {
+    await srv.close();
+  }
+});
+
 test('状态接口：普通写入、空文字拒绝、clear 复位', async () => {
   await withServer(async (base) => {
     const ok = await post(base, '/status', { text: '后台任务：x' });

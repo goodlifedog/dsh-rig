@@ -55,6 +55,7 @@ test('daemon：队列串行、环境失败不重试、临时失败重试一次',
     'flaky-task': 'console.error("FAIL: 等待 Chrome 调试端口超时"); process.exit(1);\n',
     'hard-fail': 'console.error("FAIL: 断言不成立：标题不对"); process.exit(1);\n',
     'env-skip-task': 'console.log("环境跳过：锁屏测试"); process.exit(0);\n',
+    'long-task': 'setTimeout(function () {}, 30000);\n',
   };
   for (const [name, body] of Object.entries(tasks)) {
     await fs.writeFile(path.join(dir, name + '.mjs'), body);
@@ -227,4 +228,32 @@ test('daemon：队列串行、环境失败不重试、临时失败重试一次',
   assert.equal(stats2.runs, 5);
   assert.equal(stats2.envSkips, 1, '统计里要单列环境跳过次数');
   assert.equal(stats2.okRate, 25, '成功率分母要排除环境跳过（1 成功 / 4 次真跑）');
+
+  // /stop：清队列 + 停当前任务，历史要标 cancelled（不能当失败、也不该触发重试）
+  await fetch(BASE + '/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...TOKEN_HEADERS },
+    body: JSON.stringify({ tasks: ['long-task', 'long-task'] }),
+  });
+  const running = await waitFor(async () => {
+    const st = await (await gets('/status')).json();
+    return st.current && st.current.name === 'long-task' ? st : null;
+  }, 15000);
+  assert.ok(running, '长任务应当开始运行');
+  assert.equal((running.queue || []).length, 1, '第二个长任务应在队列里');
+  const stopped = await (await fetch(BASE + '/stop', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...TOKEN_HEADERS },
+    body: '{}',
+  })).json();
+  assert.equal(stopped.ok, true);
+  assert.equal(stopped.stopped, true, '/stop 应报告停掉了任务');
+  const afterStop = await waitFor(async () => {
+    const st = await (await gets('/status')).json();
+    const hit = (st.history || []).find((h) => h.name === 'long-task');
+    return !st.current && hit ? { st, hit } : null;
+  }, 15000);
+  assert.ok(afterStop, '/stop 后任务应退出');
+  assert.equal(afterStop.hit.cancelled, true, '主动停止要标 cancelled');
+  assert.equal((afterStop.st.queue || []).length, 0, '/stop 要清空队列');
 });
