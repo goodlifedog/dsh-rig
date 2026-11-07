@@ -18,7 +18,7 @@ test('解析 lsof -t 的 pid', () => {
 });
 
 test('只认本项目的 daemon 命令行，别的一概不当自己人', () => {
-  const root = '/Users/tester/Desktop/desktop-agent';
+  const root = '/repo/desktop-agent';
   assert.equal(isOurDaemonCommand(root + '/core/daemon.mjs', { rootDir: root }), true);
   assert.equal(isOurDaemonCommand('/usr/local/bin/node /x/desktop-agent/core/daemon.mjs'), true);
   assert.equal(isOurDaemonCommand('/usr/bin/python3 -m http.server 7789'), false);

@@ -302,6 +302,19 @@ MATRIX_PRESET=im npm run matrix   # 按门类批量探测：office / im / dev / 
 - 小窗 HTTP 只监听 127.0.0.1，session 字段做白名单校验；Windows 侧反查窗口时，
   外部传入的窗口标题一律按 PowerShell 单引号字符串转义（`overlay/ps-quote.js`，带 7 项单测），
   防止标题里藏 `$(...)` 造成命令注入
+- **浏览器页面调不动本地接口**：overlay(7788) 和 daemon(7789) 拒绝带 Origin 的请求与跨域预检，
+  POST 强制 JSON（表单式跨站提交进不来）
+- **危险接口要票据**：daemon 的 `/run`、`/stop`、`/selftest` 必须带 `X-Agent-Token`，
+  token 启动时随机生成写到 `~/.desktop-agent/api-token`（权限 600），命令行客户端自动读取
+- **杀进程前核对身份**：先 `ps` 确认 pid 还是那个进程（防 pid 复用误杀），
+  只在命令行确认是本项目 `daemon.mjs` 时才结束端口监听者
+
+服务部署出问题时（改了代码却像没生效）先看这个：
+
+```bash
+npm run service:status    # 端口监听者 pid / launchd 受管 pid / 是否漂移（stray = 改动没生效）
+npm run service:restart   # 结束确认属于本项目的旧实例，再让 launchd 拉起并验证新 pid
+```
 
 ## 案例：BOSS 直聘投递
 

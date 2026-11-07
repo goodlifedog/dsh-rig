@@ -14,8 +14,12 @@ const ENV_RULES = [
   [/没有 BOSS 职位页标签|无法切回 BOSS 职位页|"attempts":\["no-tab"\]/, '用户 Chrome 里没开 BOSS 职位页'],
   [/锁屏/, '锁屏'],
   [/还有 null 个窗口|屏幕无窗口验收未过/, '读不到窗口数（缺辅助功能权限）'],
-  [/env: node: No such file|No such file or directory/, '环境缺少可执行文件'],
-  [/已联系|未送达/, '投递未送达或已联系'],
+  // 只认"环境里没有 node"这一种；不能把任意 ENOENT 都当环境问题——
+  // 否则脚本路径写错、依赖缺失这种真失败会被当成环境跳过，验收就假通过了。
+  [/env: node: No such file/, '环境缺少可执行文件'],
+  // 「已联系」是业务状态（目标岗位之前联系过），不是失败；
+  // 「未送达」是真失败，绝不能算环境跳过。
+  [/已联系/, '目标岗位已联系过'],
 ];
 
 /** 运行日志里是否记录为失败（runner 的 jsonl 结束行 code 非 0） */
@@ -30,6 +34,8 @@ export function isFailedRun(text) {
  */
 export function envSkipReason(text) {
   const raw = String(text || '');
+  // 「未送达」是明确失败：即使日志里同时出现「已联系」也不能判成环境跳过
+  if (/未送达/.test(raw)) return '';
   for (const [re, reason] of ENV_RULES) {
     if (re.test(raw)) return reason;
   }

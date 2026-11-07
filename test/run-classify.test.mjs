@@ -34,7 +34,7 @@ test('常见环境原因都能识别', () => {
     ['FAIL: 锁屏中，跳过前台与窗口数校验', '锁屏'],
     ['FAIL: headless Chrome 还有 null 个窗口', '读不到窗口数（缺辅助功能权限）'],
     ['env: node: No such file or directory', '环境缺少可执行文件'],
-    ['FAIL: 投递未送达', '投递未送达或已联系'],
+    ['FAIL: 该岗位已联系过，跳过', '目标岗位已联系过'],
   ];
   for (const [text, expected] of cases) {
     assert.equal(envSkipReason(end(1) + '\n' + text), expected, text);
@@ -45,4 +45,17 @@ test('成功运行里出现环境字样也不算失败', () => {
   const v = classifyRun(end(0) + '\n环境跳过：这次没做任何操作');
   assert.equal(v.failed, false);
   assert.equal(v.envSkip, false);
+});
+test('真失败不能被当成环境跳过（负向用例）', () => {
+  const cases = [
+    'spawn /wrong/path/ocu ENOENT No such file or directory',
+    'FAIL: 投递未送达 3 条，已发送 3 条',
+    'FAIL: 已联系再次投递，未送达',
+    'FAIL: 依赖缺失 Cannot find module core/nope.mjs',
+  ];
+  for (const line of cases) {
+    const v = classifyRun(end(1) + '\n' + line);
+    assert.equal(v.failed, true, line + ' 应判为失败');
+    assert.equal(v.envSkip, false, line + ' 不该算环境跳过');
+  }
 });

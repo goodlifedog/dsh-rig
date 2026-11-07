@@ -11,12 +11,14 @@
 import { execFile, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { overlay } from './agentd.mjs';
 import { decideRetry } from './retry-policy.mjs';
 import { frontAppFast, startFrontWatch } from './front-watch.mjs';
 import { ensureToken, isAuthorized } from './local-token.mjs';
+import { parseProcessTable, findOrphanedAgents } from './orphan-cleanup.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -171,7 +173,8 @@ function runTask(name, attempt = 0) {
     const out = fs.createWriteStream(logFile);
 
     const startedAt = Date.now();
-    const child = spawn(process.execPath, [file], { cwd: ROOT, env: { ...process.env, AGENTD_DAEMON: '1' } });
+    // 任务自成进程组：daemon 退出或取消时按组收，避免 ocu/Chrome 孙进程变孤儿
+    const child = spawn(process.execPath, [file], { detached: true, cwd: ROOT, env: { ...process.env, AGENTD_DAEMON: '1' } });
     state.current = { name, attempt, startedAt: new Date().toISOString(), pid: child.pid, logFile };
     // 备注：看门狗在下面启动，状态里只暴露"有没有在守"
     state.pendingRetry = null;
@@ -396,10 +399,66 @@ server.on('error', (error) => {
   process.exit(1);
 });
 
+
+/** 启动时清一次孤儿 app-agent：只清 ppid=1、当前用户、且命令是本项目依赖名的进程 */
+async function cleanOrphanAgents() {
+  try {
+    const table = await new Promise((resolve) => {
+      execFile('/bin/ps', ['-axo', 'pid=,ppid=,user=,command='], (err, stdout) => resolve(err ? '' : stdout));
+    });
+    const rows = parseProcessTable(table);
+    const pids = findOrphanedAgents(rows, { user: os.userInfo().username, selfPid: process.pid });
+    if (!pids.length) return 0;
+    for (const pid of pids) { try { process.kill(pid, 'SIGTERM'); } catch {} }
+    await new Promise((r) => setTimeout(r, 1200));
+    for (const pid of pids) { try { process.kill(pid, 'SIGKILL'); } catch {} }
+    console.log('[daemon] 清理孤儿 app-agent：' + pids.join(', '));
+    return pids.length;
+  } catch {
+    return 0;
+  }
+}
+
 server.listen(PORT, '127.0.0.1', () => {
   console.log('[daemon] listening on 127.0.0.1:' + PORT + ' pid=' + state.pid);
+  cleanOrphanAgents().catch(() => {});
   overlay.status('后台服务已启动').catch(() => {});
   overlay.log('守护进程启动，端口 ' + PORT).catch(() => {});
 });
 
-process.on('SIGTERM', () => { server.close(); process.exit(0); });
+/** 按进程组结束正在跑的任务：先 TERM，5 秒不退再 KILL，然后退出 daemon */
+function shutdownWithRunningTask() {
+  const current = state.current;
+  const pid = current && current.pid;
+  const killGroup = (signal) => {
+    if (!pid) return;
+    try { process.kill(-pid, signal); } catch { try { process.kill(pid, signal); } catch {} }
+  };
+  killGroup('SIGTERM');
+  const deadline = Date.now() + 5000;
+  const tick = () => {
+    let alive = false;
+    if (pid) {
+      try { process.kill(pid, 0); alive = true; } catch {}
+    }
+    if (alive && Date.now() < deadline) {
+      setTimeout(tick, 200);
+      return;
+    }
+    if (alive) killGroup('SIGKILL');
+    try { server.close(); } catch {}
+    process.exit(0);
+  };
+  tick();
+}
+
+process.on('SIGTERM', () => {
+  // 有任务在跑时不能直接 exit：那会把正在操作应用的进程留成孤儿
+  if (state.current && state.current.pid) {
+    console.log('[daemon] 收到 SIGTERM，先结束当前任务进程组 pid=' + state.current.pid);
+    shutdownWithRunningTask();
+    return;
+  }
+  server.close();
+  process.exit(0);
+});

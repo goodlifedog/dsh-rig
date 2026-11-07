@@ -2,6 +2,9 @@
 
 ## 未发布
 
+- 修进程收尾三个缺口（外部评审实锤：一个孤儿 app-agent 活了 26 小时）：runner 任务改为独立进程组、超时先 TERM 整组 5 秒后补 KILL；daemon 收到 SIGTERM 先结束当前任务进程组再退出；daemon 启动时清理孤儿 app-agent（只清 ppid=1、当前用户、命令属于本项目依赖的），实测清掉 37097/48216 两个残留、保留父进程还活着的那个
+- 修失败归类放水（外部评审）：从环境跳过规则里移除过宽的 `No such file or directory` 和 `未送达`，只保留 `env: node: No such file` 与业务状态 `已联系`；补负向测试确保「投递未送达」「依赖缺失」这类真失败不会再被当成环境跳过（验收假通过的根源）
+- README 安全边界补：浏览器来源拦截、控制面 token、pid 复核、service:status/restart 用法
 - 服务部署守卫：daemon 端口被占时打印占用者 pid 并以退出码 78 结束（原来静默崩溃、launchd 一直重试）；新增 `npm run service:status`（监听者 pid / launchd 受管 pid / 漂移判定）与 `npm run service:restart`（只杀确认是本项目 daemon.mjs 的监听者，再 kickstart 并验证新 pid）；launchd plist 加 ThrottleInterval 10；5 项单测
 - 实测 `service:restart`：旧 pid 49698 → launchd 拉起 50606，漂移状态 ok，token 闸门复验 401 生效
 - 收尾清理：退出验收留下的计算器与备忘录窗口

@@ -45,7 +45,9 @@ async function runOnce(task, { timeoutMs }) {
   record({ event: 'start', pid: process.pid });
 
   return await new Promise((resolve) => {
+    // detached 让任务自成进程组：超时/取消时按组杀，避免任务脚本拉起的 ocu/Chrome 变成孤儿
     const child = spawn(process.execPath, [task.file], {
+      detached: true,
       cwd: path.join(__dirname, '..'),
       env: { ...process.env, AGENTD_RUNNER: '1' },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -72,7 +74,16 @@ async function runOnce(task, { timeoutMs }) {
 
     const timer = setTimeout(() => {
       record({ event: 'timeout', afterMs: timeoutMs });
-      child.kill('SIGTERM');
+      // 先礼后兵：TERM 整组，5 秒后还在就 KILL 整组（卡在系统调用里的任务不理 TERM）
+      const killGroup = (signal) => {
+        try { process.kill(-child.pid, signal); } catch { try { child.kill(signal); } catch {} }
+      };
+      killGroup('SIGTERM');
+      const hardTimer = setTimeout(() => {
+        record({ event: 'timeout-kill', afterMs: timeoutMs + 5000 });
+        killGroup('SIGKILL');
+      }, 5000);
+      hardTimer.unref();
     }, timeoutMs);
 
     child.on('close', async (code, signal) => {
