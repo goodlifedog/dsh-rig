@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { envSkipReason } from './run-classify.mjs';
+import { acquireLock, releaseLock } from './acceptance-lock.mjs';
 import { overlay } from './agentd.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -126,30 +127,18 @@ const LOCK_FILE = path.join(ROOT, 'reports', '.acceptance.lock');
 
 /** 验收会切窗口、启动应用：同一时刻只允许一个，避免外部会话反复跑把用户屏幕切成幻灯片 */
 function acquireAcceptanceLock() {
-  try {
-    if (fs.existsSync(LOCK_FILE)) {
-      const info = String(fs.readFileSync(LOCK_FILE, 'utf8')).trim().split(' ');
-      const pid = Number(info[0]) || 0;
-      let alive = false;
-      if (pid) { try { process.kill(pid, 0); alive = true; } catch {} }
-      if (alive) {
-        console.error('另一个验收正在进行（pid ' + pid + '），本次退出（避免重复切窗口）。');
-        return false;
-      }
-    }
-    fs.mkdirSync(path.dirname(LOCK_FILE), { recursive: true });
-    fs.writeFileSync(LOCK_FILE, process.pid + ' ' + new Date().toISOString());
-    return true;
-  } catch {
-    return true;
+  const result = acquireLock(LOCK_FILE);
+  if (!result.ok) {
+    if (result.pid) console.error('另一个验收正在进行（pid ' + result.pid + '），本次退出（避免重复切窗口）。');
+    else console.error('验收锁刚被另一个进程创建，本次退出（避免重复切窗口）。');
+    return false;
   }
+  if (result.warning) console.warn(result.warning);
+  return true;
 }
 
 function releaseAcceptanceLock() {
-  try {
-    const pid = Number(String(fs.readFileSync(LOCK_FILE, 'utf8')).trim().split(' ')[0]);
-    if (pid === process.pid) fs.unlinkSync(LOCK_FILE);
-  } catch {}
+  releaseLock(LOCK_FILE);
 }
 
 /** 用户最近有没有在用电脑：HID 空闲时间小于 180 秒就算在用；验收会切窗口，不该这时候跑 */
@@ -178,10 +167,20 @@ async function cleanupAfterAcceptance() {
     // 清理脚本现在是安全模式：笔记默认只报告（要 --force 才删）、TextEdit 只关带测试标记的文稿、
     // 只会退出测试应用，所以验收后可以直接真跑，把环境收拾干净。
     await run('node', ['scripts/cleanup-test-data.mjs'], { timeout: 240000 });
-  } catch {}
+  } catch (error) {
+    console.warn('清理失败：' + ((error && error.message) || error));
+  }
 }
 
 let FRONT_AT_START = '';
+
+// Ctrl-C / SIGTERM 也要释放锁，否则下一次会误判「另一个验收正在进行」（pid 被复用时尤其）
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, () => {
+    releaseAcceptanceLock();
+    process.exit(signal === 'SIGINT' ? 130 : 143);
+  });
+}
 
 async function main() {
   if (!acquireAcceptanceLock()) return;

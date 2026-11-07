@@ -15,10 +15,20 @@
 | Windows 上跑（未实机验证） | [WINDOWS-TESTING.md](WINDOWS-TESTING.md) + [CROSS-PLATFORM.md](CROSS-PLATFORM.md) |
 | 写入/投递类任务的规则 | [WRITE.md](WRITE.md) + [BOSS-RULES.md](BOSS-RULES.md) |
 
+## 发布与协作（新加的，放这里免得找不到）
+
+| 我想… | 看这份 |
+| --- | --- |
+| 现在到底能不能发（Go/No-Go + 实测证据） | [PUBLISH-VERDICT.md](PUBLISH-VERDICT.md) |
+| 把它公开出去（GitHub / npm）的步骤 | [PUBLISH-CHECKLIST.md](PUBLISH-CHECKLIST.md) |
+| 把 BOSS 那部分从公开面摘掉 | [BOSS-EXTRACT.md](BOSS-EXTRACT.md) |
+| 多会话 / 多 agent 一起用这个仓库 | [AGENT-COORDINATION.md](AGENT-COORDINATION.md) |
+| 看外部评审提过什么、还剩什么 | [REVIEW-ACTIONS.md](REVIEW-ACTIONS.md) + [REVIEW-RETRO.md](REVIEW-RETRO.md) |
+
 ## 常用命令
 
 ```bash
-npm run verify        # 语法检查 + 单测 + 仓库体检（一条命令看能不能发版）
+npm run verify        # 语法检查 + 单测 + 仓库体检（提交前跑；不含端到端验收和打包检查）
 npm run accept        # 端到端验收（含新通道；你在用电脑时会被拒绝，加 ACCEPT_FORCE=1 可强跑）
 npm run apps:inventory   # 本机装的应用里哪些已适配、哪些没测
 npm run app:resolve -- Finder   # 某个应用现在能用哪条通道

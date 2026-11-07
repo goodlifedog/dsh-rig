@@ -1,14 +1,17 @@
 --- a/package.json
 +++ b/package.json
-@@ -1,10 +1,27 @@
+@@ -1,5 +1,5 @@
  {
 -  "name": "desktop-agent",
 +  "name": "@goodlifedog/desktop-agent",
    "version": "0.7.0",
    "private": false,
    "type": "module",
-   "description": "后台电脑控制 + 小窗回显：用 Accessibility 语义树驱动真实 macOS 应用，全程不抢焦点",
-   "license": "MIT",
+@@ -73,5 +73,32 @@
+     "bg:verify": "node scripts/bg-verify.mjs",
+     "ui:check": "node scripts/ui-check.mjs",
+     "health": "node scripts/health.mjs"
++  },
 +  "repository": {
 +    "type": "git",
 +    "url": "git+https://github.com/tester/desktop-agent.git"
@@ -21,14 +24,24 @@
 +    "overlay/",
 +    "flow/",
 +    "docs/",
++    "!overlay/docs/**",
++    "!overlay/package-lock.json",
++    "overlay/docs/multi-session.png",
++    "overlay/docs/ui-live-expanded.jpg",
++    "overlay/docs/ui-live-small.png",
++    "overlay/docs/ui-live2-*.png",
 +    "README.md",
 +    "LICENSE",
 +    "THIRD-PARTY.md",
 +    "CHANGELOG.md"
 +  ],
-   "author": "goodlifedog",
-   "engines": {
-     "node": ">=20"
++  "publishConfig": {
++    "registry": "https://registry.npmjs.org",
++    "access": "public"
+   }
+-}
+\ No newline at end of file
++}
 --- a/.github/workflows/ci.yml
 +++ b/.github/workflows/ci.yml
 @@ -10,7 +10,7 @@
@@ -48,5 +61,5 @@
 -[![CI](https://github.com/USER/desktop-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/USER/desktop-agent/actions/workflows/ci.yml)
 +[![CI](https://github.com/tester/desktop-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/tester/desktop-agent/actions/workflows/ci.yml)
  
- > 后台电脑控制 + 小窗回显。所有操作在你的真实应用里完成，但全程不抢焦点、不动你的鼠标、不切你的窗口。
- 
+ > 后台电脑控制 + 小窗回显。所有操作在你的真实应用里完成，不动你的鼠标、不切你的窗口。
+ > **焦点是"尽量不抢"而不是"绝对不抢"**：绝大多数操作在后台完成；个别应用（Telegram、部分 Electron）在被读取时会被短暂顶到前台，

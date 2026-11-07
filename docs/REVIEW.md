@@ -310,3 +310,40 @@ README 写「只有右上角 ⤢/✕ 和顶部 8px 拖拽条接管鼠标」，�
 - 审查期间屏幕处于锁屏状态，无法对比「未锁屏」时的实际输出；2.2 的误判是用字符串模拟证明的，不是解锁实测。
 - 1.1 的 kill(-0) 没有实机触发（需要 Chrome 启动超过 8 秒且 8 秒内进程表匹配不到），是按 Node 文档 + 代码路径推演，建议修复时加一条单测或日志断言。
 - 只读了 .github/workflows/ci.yml 的内容，没有查 CI 的实际运行结果。
+---
+
+## 7. 复审结论（2026-11-08，外部评审 agent）
+
+> 本文 18 条在 2026-11-08 逐条回代码核对过。下表是当前状态，**看这一节即可，上面正文保留为历史记录**。
+
+| 条目 | 状态 | 证据 / 说明 |
+| --- | --- | --- |
+| 1.1 pid 为 0 时 SIGTERM 自己进程组 | ✅ 已修 | `core/browser.mjs` 有 pid 有效性判断 |
+| 1.2 daemon 日志流不 end / spawn 无 error | ✅ 已修 | `daemon.mjs` 有 `end()` 与 `on('error')` |
+| 1.3 runner 结构化日志写入未 await | 🩹 已进补丁 | `patch-p1.diff`：改为同步 `fs.writeSync`，实测末行不再丢 |
+| 1.4 ocu-mcp spawn 无 error 监听 | 🩹 已进补丁 | `patch-p1.diff`：实测未打补丁时 `UNCAUGHT: spawn ... ENOENT`，打上后是友好报错 |
+| 1.5 cdp socket 未捕获异常 | ✅ 已修 | `core/cdp.mjs` 11 处 error/catch 处理 |
+| 2.1 health「最近任务失败数」永远 0 | ✅ 已修 | 现在区分「近 1h 真失败 / 24h 真失败 / 已知环境失败」 |
+| 2.2 isScreenLocked 只看键不看值 | ✅ 已修 | `parseScreenLocked` 同时匹配 `<true/>` 与 `<false/>` |
+| 2.3 overlay 版本 0.5.0 ≠ 0.7.0 | ✅ 已修 | 两边都是 0.7.0 |
+| 2.4 有环境跳过时退出码仍为 1 | ✅ 已修 | `process.exit(passed === total - skipped ? 0 : 1)` |
+| 2.5 USAGE 说 service.mjs 没补 PATH | ✅ 已修 | `service.mjs` 早已写 PATH；本轮更正了 USAGE 的过时说法 |
+| 2.6 数值类文档与代码不符 | ✅ 已修 | 本轮更新 README 行数表（18900 行代码 / 10250 行文档 / 31 个任务） |
+| 2.7 CAPABILITIES 内容过时 | ⚠️ 部分 | 内容基本仍成立（5 秒空闲隐藏、10/10 验收），但头部日期仍是 2026-11-05 |
+| 2.8 README 行数表过时 | ✅ 已修 | 见 2.6 |
+| 2.9 ARCHITECTURE 版本行 | ✅ 已修 | 已更新为 2026-11-07（v0.7） |
+| 2.10 死代码 frames.mjs / permissions.mjs | ✅ 已修 | `frames.mjs` 已删除；`permissions.mjs` 实际被 `health.mjs` 动态 import，不是死代码 |
+| 2.11 health「已知环境失败」正则过宽 | ✅ 已修 | 现在按真失败/环境失败分开统计 |
+| 2.12 写死 bundle id | 🩹 已修 + 进补丁 | 主体已改为 `OVERLAY_HOST_*` 环境变量；剩下「折叠路径写死 `com.deepseek.dsh`」在 `patch-p1.diff` 里 |
+| 2.13 点击热区描述不完整 | ❔ 未核实 | 现有文档已改用「悬停/点击胶囊」表述，是否完整需作者确认 |
+
+### 小结
+
+```
+已修             13 条
+已进 patch-p1    3 条（1.3 / 1.4 / 2.12 的第二处）
+部分 / 未核实    2 条（2.7 日期、2.13 描述）
+```
+
+1.3、1.4 这两条在本文写完后挂了三天没人动，是这次复审才捞出来的——
+**旧文档里的待办必须定期回收，否则会跟着文档一起沉底。**

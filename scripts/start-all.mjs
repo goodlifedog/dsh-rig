@@ -29,6 +29,13 @@ function shutdown(code = 0) {
 process.on('SIGINT', () => shutdown(0));
 process.on('SIGTERM', () => shutdown(0));
 
+async function overlayAlive() {
+  try {
+    await fetch('http://127.0.0.1:7788/health', { signal: AbortSignal.timeout(1200) });
+    return true;   // 能拿到响应就说明在跑（401 也算：服务活着，只是要 token）
+  } catch { return false; }
+}
+
 async function main() {
   if (!fs.existsSync(OVERLAY_START)) {
     console.error('overlay 依赖未安装，先执行：npm run setup');
@@ -49,6 +56,11 @@ async function main() {
     }
     if (!ok) { console.error('[start] daemon 启动失败，看 logs/daemon.out'); shutdown(1); return; }
     console.log('[start] daemon 就绪 7789');
+  }
+
+  if (await overlayAlive()) {
+    console.log('[start] 小窗已在运行，跳过（要重启用 npm run service:restart）');
+    return;
   }
 
   console.log('[start] 启动小窗…');

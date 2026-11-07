@@ -55,6 +55,15 @@ export class OcuMcp {
     if (sysTmp) env.TMPDIR = sysTmp;
     if (isNodeScript) env.ELECTRON_RUN_AS_NODE = '1';
     this.child = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'], env });
+    // spawn 失败（ENOENT / 权限不足）会以 'error' 事件抛在主进程上，不处理就是未捕获异常。
+    // 这里接住并转成一条能看懂的错误，交给上面的 start() 去 reject。
+    this.child.on('error', (error) => {
+      this.closed = true;
+      const hint = 'ocu 可执行文件无法启动（' + this.bin + '）：' + ((error && error.message) || error);
+      for (const [, p] of this.pending) p.reject(new Error(hint));
+      this.pending.clear();
+      this.spawnError = hint;
+    });
     this.child.stdout.setEncoding('utf8');
     this.child.stdout.on('data', (chunk) => this._onData(chunk));
     this.child.stderr.setEncoding('utf8');
@@ -96,6 +105,7 @@ export class OcuMcp {
   }
 
   _request(method, params, timeoutMs = 30000) {
+    if (this.spawnError) return Promise.reject(new Error(this.spawnError));
     if (!this.child || this.closed) return Promise.reject(new Error('ocu MCP 未启动'));
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
@@ -154,9 +164,22 @@ let shared = null;
 /** 进程内共享一个常驻连接 */
 export async function getOcuMcp(options) {
   if (shared && !shared.closed) return shared;
+  installExitHook();
   shared = new OcuMcp(options);
   await shared.start();
   return shared;
+}
+
+// 兜底：进程退出时带走子进程。任务的 finally 会漏（9 个任务里 0 个用 finally 收 MCP），
+// 而 SIGTERM/process.exit 又会跳过普通清理——把收尾放在模块自己身上最可靠。
+let exitHookInstalled = false;
+function installExitHook() {
+  if (exitHookInstalled) return;
+  exitHookInstalled = true;
+  const killChild = () => { try { if (shared && shared.child) shared.child.kill(); } catch {} };
+  process.on('exit', killChild);
+  process.on('SIGTERM', () => { killChild(); process.exit(143); });
+  process.on('SIGINT', () => { killChild(); process.exit(130); });
 }
 
 export async function closeOcuMcp() {

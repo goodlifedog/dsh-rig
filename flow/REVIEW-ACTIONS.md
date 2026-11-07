@@ -1,107 +1,125 @@
 # 评审待办（外部检查者维护）
 
-> 📋 **要发布的话直接看 [`flow/PUBLISH-CHECKLIST.md`](PUBLISH-CHECKLIST.md)**——把所有遗留项整理成了可勾选的清单（A 决策项 / B 发布配置 / C 文档素材 / D 数据安全 / E 最后检查 / F 发布）。
+> 只列**还没做**的。已修好的沉到底部，不复述。
+> 详细理由见 [`REVIEW-2026-11-07.md`](REVIEW-2026-11-07.md)，发布流程见 [`PUBLISH-CHECKLIST.md`](PUBLISH-CHECKLIST.md)。
+> 更新：2026-11-08 15:00（`flow/patch-p1.diff` = **232 行 / 7 个文件**，新增 `core/runner.mjs`：日志写入从 `void fd.write()` 改为同步写，避免退出时末行丢失。**`docs/REVIEW.md` 那份 18 条旧审查，现在全部要么已验证修复、要么已进补丁。**）
+  ① `node core/cli.mjs foo` → 退出码 2，用法输出到 stderr
+  ② 死进程旧锁 → 抢锁成功且内容改写成本进程；活进程旧锁 → 拒绝抢
+  ③ `cli stop` 在 launchd 托管下 → 打印暂停/卸载/重启指引，**daemon 未被杀**（7789 仍 200）
+  ④ `start-all` 在 daemon+overlay 都在跑时 → 打印「小窗已在运行，跳过」，不产生第二个窗口
+  ⑤ daemon 未捕获异常处理：仅静态确认（难以在测试里稳定注入）
 
+## P0 · 公开前必须处理（3 条）
 
-> 每次复查后更新，**只看这一页就够**。详细理由见 `REVIEW-2026-11-07.md`。
-> 更新：2026-11-08 10:15
->
-> 注：复查时机器处于锁屏状态（ioreg `CGSSessionScreenIsLocked = true`），GUI 类任务一律没跑。
+### 1. BOSS 直聘内容不该出现在公开仓库
 
-## 本轮我直接改的（请审 diff 再提交）
+- 现状：4 个 `boss-*` 任务、1 个 `greet-inner`、3 份 BOSS 文档（582 行）、README 首页有案例、**npm 包里也带着**
+- 执行方案已写好：[`BOSS-EXTRACT.md`](BOSS-EXTRACT.md)（要删哪些、验收怎么补、怎么复查包）
+- 需要你决定：**摘出去** / 保留但不上首页、加免责声明、删风控章节
 
-- `core/run-classify.mjs`：**有 ❌ 的轮次不再被「环境跳过」整轮豁免**（这就是上轮那个 10/10 假绿的根因）
-  - 改完实测：`background-control` 那份日志从 `envSkip=true` 变成 `真实失败`
-  - 新增 2 项单测；全量 355 项全绿
-  - ⚠️ 副作用：`npm run accept` 现在会把 `background-control` 判红（这是对的），
-    要么修那一项（`后台点击计算器按钮`），要么在任务里明确标成 SKIP 并写清原因
+### 2. 发布配置（补丁已备，`git apply flow/patch-publish.diff`）
 
-- `core/agentd.mjs`：应用锁加「持锁 pid 存活性判断」+「持锁期间 mtime 心跳续期」
-  - 修复前：持锁超过 staleMs(180s) 的任务会被后来者抢锁，两个任务同时控制同一个应用
-  - 修复后实测：死进程的旧锁 1ms 接管；活进程的旧锁不抢（等超时）
-  - 配 `test/app-lock.test.mjs` 两项回归；全量 346 项全绿
-- `core/platform-smoke.mjs`：补 `localHeaders()`，`npm run doctor` 不再误报小窗红叉（实测 ✅）
-- `core/dialog-guard.mjs` + `test/dialog-guard.test.mjs`：软件自身弹窗守卫（权限类只提醒不代点）
+- 一次解决：包名 scoped、`bin`、`files` 白名单（1.1MB / 143 文件）、`repository`、`publishConfig`（绕开淘宝镜像）、CI 矩阵、README 徽章
+- 应用后替换两处占位：`@goodlifedog/desktop-agent`、`github.com/tester/desktop-agent`
+- 验证：`npm publish --dry-run` 必须显示 `Publishing to https://registry.npmjs.org ... public access`
 
-## 现在就做
+### 3. 笔记删除缺最后一层标记
 
-0. **【公开前必须处理】BOSS 直聘相关内容不该出现在公开仓库**
-   - 现状：`core/tasks/` 里 4 个 boss-* 任务、`flow/` 里 3 份 BOSS 文档（共 582 行）、README 首页还有「案例：BOSS 直聘投递」
-   - 三个风险：① 自动投递违反平台用户协议，公开等于把教程写在首页；② `flow/BOSS-RULES.md` 有「哪些行为会触发风控」「单日限额 3/60/150」这类内容，配上真实姓名署名，观感像规避检测指南；③ 你希望这个项目成为面试加分项，三年后 HR 搜到「自动群发招聘消息」未必是好事
-   - 建议：把 4 个 boss 任务 + 3 份 BOSS 文档移到私有仓库/本地分支；README 那条方法论（「弹窗说已发送 ≠ 真送达，用差集验收」）换成中性例子（表单提交/文件下载）来讲，不必点名平台
+- 现状：`core/note-cleanup.mjs` 删除行时不看标题（靠「只删顶部 N 条 + `--force`」挡着）
+- 建议：删除前读 `name of rr`，只删 `[AGENT-TEST]` 前缀；写入时统一加该前缀
 
-0. **✅【出口关卡已补上，但请审一处我可能过时的描述】**
-   - 第 56 轮我在 `envSkipReason()` 里加了 `if (/❌/.test(raw)) return '';`，验收现在会把带 ❌ 的轮次判成真实失败
-   - **更正**：我之前写「验收清理走 dry-run 安全阀」，现在代码里已经没有 `--dry-run` 了——你们改成了清理脚本内部默认不删（要 `--force` 才动手），这个更彻底，我的描述作废
+## P1 · 影响正确性 / 用户信任（5 条）
 
+### 4. overlay 会话回收缺「最近活动」保护（**补丁已备：`flow/patch-p1.diff`**）
 
-1. **发布配置不合格（补丁 `flow/patch-publish.diff` 我刚复验过，仍可干净应用）**：包名 `desktop-agent` 已被 npm 占用（发布必然 403）；缺 `bin`/`files`/`repository`；CI 矩阵跑三平台但项目只支持 macOS；README 徽章还是 `USER` 占位。补丁已备：`git apply flow/patch-publish.diff`。
+- 现状：到上限 12 时回收「不可见 + 最久没活动」的会话；但 **DSH 不在前台时所有会话都不可见**
+- 正在被任务使用的会话可能被误回收。建议：`Date.now() - at < 60_000` 的不回收
 
-## 下一批
+### 5. 资源清理外包给调用方（**复查后降级**，见下）
 
-17. **两个常驻进程都没有兜底异常处理**：`core/daemon.mjs`、`core/runner.mjs` 无 `uncaughtException`/`unhandledRejection`；`overlay/main.js` 无 `render-process-gone`/`child-process-gone`。daemon 里任何一处漏 catch 的 rejection 在 Node 20 会直接终止进程；overlay 渲染进程崩了会白屏但进程还活着。日志里已经有 `Network service crashed or was terminated` 的痕迹，代码里没人知道。建议：① daemon 注册两个 handler，记日志后继续服务（单次任务异常不该拖垮守护进程）；② overlay 监听 `render-process-gone` 重载一次并写进 `/health`；③ 健康面板加「最近崩溃/恢复次数」。
+- 原判断：9 个任务里 `closeOcuMcp()` 在 finally 出现 0 次，担心泄漏
+- **实测推翻了**：父进程正常 exit 或被 SIGTERM 杀掉时，MCP 子进程都自己退出了（stdio 关闭触发），打了 exit 钩子和没打补丁的对照结果一样干净
+- 结论：这条**不用改**。真正需要 finally 的是「进程不退出但资源要释放」的场景，这里不适用
 
-16. **`overlay/main.js` 1969 行、71 个函数、5 类职责，建议拆**：抓帧/缩略图 137 处引用、会话管理 74 处、窗口几何 69 处、宿主检测 50 处、HTTP/IPC 16 处。纯函数已经拆得不错（`capture-policy`/`frame-target`/`host-select`/`layout`/`recover`/`window-id`），剩下的是有状态的编排。建议拆 `overlay/thumb.js`（抓帧循环 + 失败恢复 + 自适应帧率）和 `overlay/sessions.js`（会话创建/TTL/上限/状态机），`main.js` 只留装配。理由不是好看：**抓帧是最常改的、窗口会话是最怕改坏的，放在同一个文件里，每次改抓帧都在赌**。
+### 6. `npm stop` 谎报「已停止」（**补丁已备**：托管时给指引、非托管时杀完复查）
 
-15. **「画面自动恢复」这个用户可见行为没有文档**：现在只有 CHANGELOG 提过——绑定的窗口被关掉后小窗会在 0.5 秒内解绑（状态回 `no-window`，不是错误），同一应用又开新窗口时约 1 秒内自动重绑。不写文档的话，用户第一次遇到会以为坏了。建议在 overlay 文档补一小节，顺带写上自检开关 `OVERLAY_CAPTURE_WHILE_HIDDEN=1`（默认关）。
+- launchd 托管时 `logs/daemon.pid` 不存在 → kill 静默跳过 → 仍打印「已停止」；且 `KeepAlive` 会立刻拉回
+- 建议：先判断是否 launchd 托管，托管时明确提示用 `service:uninstall`/`launchctl bootout`
 
-14. **「还原前台」缺失败信号**：`settleFront()` 会返回 `finalFront`，但**没有任何调用方看它**（app-matrix / cdp-driver / applescript-channel 都只取 `stolen`）。所以「尝试还原了但没成功」和「还原成功」在报告里长得一模一样。建议：① 返回值加 `restored: finalFront === expect`；② 报告加一列「前台还原 ok/失败」，失败时日志写明「还原失败，当前前台是 X」；③ README 那句改成「会尝试立刻还原；还原失败会在报告里标出来」——承诺的强度应该由「最终状态」决定，不是由「尝试过」决定。
+### 7. `npm start` 会开出两个小窗（**补丁已备**：探 7788 有响应就跳过，401 也算活着）
 
-13. **锁屏跳过统一化留了三处不可达代码**：`background-stability.mjs:17/18`、`terminal-control.mjs:33/34` 连着两次同样的锁屏检查（第二段永远不执行）；`cold-launch.mjs:46` 提前 return 之后，`48-49` 的 `locked` 恒为 false，那句「提示：屏幕已锁 —— 前台断言跳过」永远打不出来。更要紧的是 cold-launch 原本有「锁屏时照跑、只跳过前台断言」的设计（注释写着），现在整任务都跳过了，**锁屏场景下不再验证后台启动能力**。建议二选一：要么删死代码统一跳过，要么 cold-launch 恢复「照跑 + 只跳过前台断言」——我倾向后者，锁屏是常态，否则「无人值守」在测试上是空的。
+- `start-all.mjs` 对 daemon 有复用判断，对小窗没有；已装服务时再跑 `npm start` → 第二个 Electron 绑 7788 失败但窗口照样显示
+- 注意：探 7788 必须带 `localHeaders()`，否则 401 会误判成「没在跑」
 
-12. **窗口自动重绑：并列时会盲选（我实测了）**
-   - 标题能区分时是对的：候选「101 购物清单 / 102 工作记录」、hint「工作记录（旧）」→ 正确选中 102
-   - 完全并列时**按列表顺序盲选**：两个都叫「备忘录」的窗口（201/202）→ 选中 201，没有歧义保护
-   - `test/overlay-recover.test.mjs` 现有 4 项测试（同 owner、标题变了、排除自身、无匹配返回 null），**没覆盖并列场景**
-   - 改法：最高分不唯一时返回 null（解绑 + 提示重新绑定），并补一条「并列 → null」的单测
+### 8. 常驻进程没有兜底异常处理（**补丁已备：`flow/patch-p1.diff`**）
 
-11. **`flow/AGENT-COORDINATION.md` 第 23 行的说法要补一句**：现在写「`npm run accept` 结束会自动调用 `npm run cleanup:test`」，但清理脚本默认**只报告不删**（要 `--force` / `NOTES_CLEANUP_FORCE=1` 才真删）。读者会以为测试数据已经被自动清干净了，实际不会。建议改成：「自动调用清理，但默认只报告；要真删需 `npm run cleanup:test:apply`（或加 `--force`），因为误删用户笔记不可恢复」。
+- `daemon.mjs` / `runner.mjs` 无 `uncaughtException`/`unhandledRejection`；`overlay/main.js` 无 `render-process-gone`
 
-10. **窗口失效后不会自动恢复**（10 次巡检里 2 次失败就是它）：`overlay/main.js` 抓帧连续失败到阈值后只把 `thumbnail.state` 切成 `error`，**不清空失效的 windowId、也不重新解析窗口**，于是会话一直停在 error 直到外部重新 `/window` 绑定。建议阈值时核对窗口：原 id 还在就保持；同进程有唯一新窗口就自动改绑；都没有就清空 windowId 回 `no-window`。同时 monitor 的「画面」检查要区分「未绑定（设计内）/ 自动恢复过 / 真失效」，否则指标虚高。
+### 8.5 `ocu` 缺失时任务会崩在未捕获异常上（**补丁已备**，实测）
 
-9. **发布前隐私/历史检查（我扫了 170 个提交）**：
-   - 没发现任何密钥、token、私钥（`sk-` / `ghp_` / `AKIA` / PRIVATE KEY 全部零命中）——这项可以放心
-   - 但历史里有 **20 个 `goodlifedog@users.noreply.github.com` 的自动检查点提交**，公开仓库里会显得杂乱。建议发布前 squash 成一个初始提交，或至少把这些 checkpoint 提交去掉
-   - `git config user.email` 没设，提交作者是 `tester@goodlifedogdeMacBook-Pro.local`：公开后这个机器名会跟着出现在每条提交上，而且不会关联到你的 GitHub 主页。发布前改成本地配置：`git config user.email "<id>+<username>@users.noreply.github.com"`、`git config user.name "<你的名字>"`
-   - 当前工作区是干净的（`/Users/tester` 只出现在 gitignore 的 `reports/` 里），历史里有 5 处（都是文档示例），影响很小
+- 老审查（`docs/REVIEW.md` 1.4）提过 `ocu-mcp.mjs` 的 spawn 没有 `error` 监听，至今未修
+- 实测：`new OcuMcp({ bin: '/nonexistent/ocu' }).start()` → `UNCAUGHT: spawn ... ENOENT`，任务进程直接崩
+- 补丁后：`start 抛错：ocu 可执行文件无法启动（...）：spawn ... ENOENT`，是一条能看懂的错误
+- 影响：用户机器上 ocu 没装/路径不对时，看到的是崩溃栈而不是「请先装 ocu」
+- 建议：记日志后继续服务；overlay 崩了重载并把事件写进 `/health`
 
-8. **命令发现性**：`package.json` 现在有 **52 个脚本**，README 只列了 26 个。文档本身覆盖得很好（49/52 有说明），但缺一张「一屏看完」的分类速查表。建议在 `docs/USAGE.md` 开头加三列：**日常用**（start/status/health/accept/doctor）、**排查用**（service:status、service:restart、prune、review-watch）、**内部工具**（其余）。另外补两个漏掉的别名：`npm run dialogs:guard`（文档里只写了 `node core/dialog-guard.mjs`）和 `npm start`（等于 `scripts/start-all.mjs`，一条命令起 daemon + 小窗，Ctrl+C 一起停）。
+## P2 · 打磨（按需，不阻塞发布）
 
-7. **`docs/SECURITY.md` 里的测试数字**：还写着 `npm test # 322 项`，实际 365 项。（第三节的重复段我复查时已经没了，这条已修）
+### 8.6 overlay 折叠路径把「前台」写死成宿主 bundle（**补丁已备**）
 
-5. **文档里的测试数字又飘了**：`docs/SECURITY.md:57` 写「npm test # 322 项」，实际已经 **365 项**。建议在 `repo:check` 里加一条：解析文档里 `N 项` 的说法，和 `npm test` 实际输出比对，不一致就报错（这个仓库已经有很全的体检，加这条成本很低）。
-6. **孤儿脚本 `scripts/ui-gallery.mjs`**：全仓库没有任何地方引用它。要么接进文档/验收，要么挪到 `examples/`，要么删掉。
+- `overlay/main.js:1810`（从放大态还原成小窗时）调用 `attachToDsh(s, 'com.deepseek.dsh', ...)`，硬编码宿主 bundle
+- 后果：`frontOk` 恒为 true，即使用户已经切到别的应用，折叠后小窗仍按「宿主在前台」处理 → 该隐藏时没隐藏
+- 也绕过了 `OVERLAY_HOST_BUNDLES` 环境变量（换宿主时不生效）
+- 补丁改为折叠时读真实前台：`readFrontmostBundle().then((frontNow) => attachToDsh(s, frontNow, dshBounds))`
 
-2. **验收锁三个小洞**（只读复查发现）：① 锁用 `existsSync` + `writeFileSync` 非原子，两个验收同时启动可能都进去，改成 `{ flag: 'wx' }`；② 没有 SIGINT/SIGTERM 释放，Ctrl-C 会留锁（pid 被复用时会误判「另一个验收正在进行」）；③ `cleanupAfterAcceptance` 的 catch 是空的，清理失败用户完全不知道。
+### 9. 验收锁三个小洞（**补丁已备：`flow/patch-p1.diff`**）
 
-2. **`flow/BACKGROUND-CONTROL.md` 第 140 行对 `-j` 的描述太绝对**：原文「窗口仍建出来、AX 树照样可读写、画面能抓」。实测：计算器隐藏后 AX 25 个按钮照常在（对），但文本编辑隐藏时 ocu 看不到「标准窗口」节点（要显示后才有），画面也确实抓不到（只有纯色帧）。建议改成「多数应用 AX 可读，部分应用窗口节点需显示后才出现；画面抓不到，需要画面时设 AGENT_LAUNCH_HIDDEN=0」。
+- `existsSync` + `writeFileSync` 非原子（改 `{ flag: 'wx' }`）
+- 无 SIGINT/SIGTERM 释放（Ctrl-C 留锁，pid 复用时会误判）
+- `cleanupAfterAcceptance` 的 catch 是空的（清理失败无提示）
 
+### 10. 文档数字会腐烂
 
-2. **找到「窗口来回切」的来源：Telegram 一读 AX 就跳前台**（app-matrix 实测：11 个应用里只有它，读树/读元素两步前台变成 Telegram，看门狗还回去所以用户看到「闪一下」）。建议建「AX 访问即激活」的已知应用名单，并在矩阵报告里输出打扰度。
-4. **README 那句「全程不抢焦点」**：个别 Electron 应用启动瞬间会自己跳到前台（app-matrix 报告里有实据）。建议改成「不主动抢，抢了会立刻还回去」。
+- `README` 写「本机 27 个应用」，实测已 32 个
+- 建议措辞改成「跑 `npm run apps:inventory` 看当前值」，并在 `repo:check` 里加一条数字比对
 
-## 发布前已自查通过
+### 11. CLI 未知子命令退出码 0（**补丁已备：`flow/patch-p1.diff`**）
 
-- **资源卫生（第 58 轮复查）**：`ocu app-agent` 残留 0 个（第 17 轮时是 4 个，其中一个是 26 小时前的）、离屏 Chrome 0 个、`/tmp/agentd-*.lock` 0 个、临时帧文件 0 个、验收锁 0 个 —— 进程收尾和清理这条线是真的修好了
-- **产物有界**：`reports/` 正好 200 个（prune 的 KEEP_REPORTS 生效）、`logs/daemon` 204 个、日志报告总计 3.4MB
+- `desktop-agent foo` 打印用法但 `exit=0`，脚本里 `|| die` 会误判；建议返回 2
 
+### 12. `overlay/main.js` 1969 行 / 71 函数 / 5 类职责
 
-- **第三方许可合规**：`third_party/open-computer-use/` 里 LICENSE / NOTICE / THIRD_PARTY_NOTICES 都在仓库里，`scripts/bundle-ocu.mjs` 打包时会带上，`THIRD-PARTY.md` 也写明了再分发义务
-- **密钥泄漏**：170 个提交全扫过，无 token / 私钥 / AKIA / ghp_
-- **LICENSE**：MIT，版权人写的真名，没有占位符
+- 建议拆 `thumb.js`（抓帧循环）与 `sessions.js`（会话生命周期），main 只做装配
 
-## 已修好（不用再看）
+### 12.5 文档里的「待补」标记
 
-- 控制面 token（daemon + overlay 都 401）、Origin/跨域防护（403）
-- pid 复核把 Helper 当主应用
-- 验收覆盖新通道（10 项）、部署漂移守卫、进程收尾（组杀 + SIGKILL + runner 转发 TERM）
-- 失败归类放水（ENOENT / 未送达）
-- 启动应用把窗口丢到用户桌面（改 `open -g -j` 隐藏启动）
-- `npm run doctor` 误报小窗红叉
-- `docs/USAGE.md` 的 curl 示例已全部带票（0 处无票）
-- `status.mjs` 的「最近验收」排序（已改成只认 acceptance-* 并按时间戳取最新）
-- 日志无轮转（`scripts/prune.mjs` + `npm run prune`，默认 dry-run，配 2 项单测）
-- 卸载不清 token / 不管游离进程（已修，我复看过实现）
-- `-j` 隐藏启动带来「窗口抓不到画面但 AX 可读」，需要在文档里说明这是预期
-- 应用锁会被偷
-- 小窗圆角随尺寸自适应、软件自身弹窗守卫
+- `flow/CROSS-PLATFORM.md:94` 有 `Windows（待补）：`，公开仓库里看着像没写完；建议改成「Windows：未实现（计划中）」或直接删掉这段占位
+
+### 12.6 旧审查遗留两条（不阻塞）
+
+- `CAPABILITIES.md` 头部仍是「最后更新 2026-11-05」，内容基本仍成立，但日期该改
+- `docs/REVIEW.md` 2.13「点击热区描述不完整」我无法判断是否已解决，需要作者确认
+- 其余 16 条已在 `docs/REVIEW.md` 第 7 节标注状态（13 已修 / 3 进补丁）
+
+### 13. 孤儿
+
+- 4 个没人引用的任务（`boss-candidates` `human-demo` `parallel-demo` `parallel-real-demo`）
+- 1 个没人引用的脚本（`scripts/ui-gallery.mjs`）
+
+### 14. `repo:check` 在非 git 目录会报红
+
+- 下载 ZIP 的用户跑会看到 `❌ git 仓库可用 / git ls-files 失败`；建议降级为「跳过（非 git 目录）」
+
+### 15. 发布前隐私与历史
+
+- `git config user.email` 未设置（作者是 `tester@goodlifedogdeMacBook-Pro.local`），设置成 GitHub noreply
+- 历史里有 20 个 `goodlifedog@users.noreply.github.com` 自动检查点提交，公开前建议 squash
+
+## 已修好（复核过，不用再看）
+
+控制面 token（daemon + overlay 全接口）· Origin/跨域拦截 · pid Helper 误匹配 · 验收覆盖新通道（10 项）·
+部署漂移守卫 · 进程收尾（组杀/SIGKILL/转发 TERM）· 失败归类放水（ENOENT/未送达/❌ 覆盖验收路径）·
+应用锁偷锁 · doctor 误报 · USAGE curl 带票 · status 最近验收排序 · 日志轮转 · 卸载清理 ·
+`open -g -j` 隐藏启动 · 弹窗守卫 · 验收互斥与空闲守卫 · 笔记盲删（已改成 force + 顶部 N 条）·
+会话泄漏（任务主动 close + overlay 回收）· 小窗窗口失效自动恢复 · 还原失败信号 · 重绑并列保护 ·
+锁屏死代码 · README 绝对化表述 · 命令速查表 · SECURITY 文档数字 · AGENT-COORDINATION 清理语义

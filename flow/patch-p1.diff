@@ -1,0 +1,232 @@
+--- a/core/cli.mjs
++++ b/core/cli.mjs
+@@ -7,7 +7,7 @@
+  *   node core/cli.mjs run <任务名>  提交任务
+  *   node core/cli.mjs tasks        列出任务
+  */
+-import { spawn } from 'node:child_process';
++import { spawn, execFileSync } from 'node:child_process';
+ import fs from 'node:fs';
+ import { readToken, withTokenHeaders } from './local-token.mjs';
+ import path from 'node:path';
+@@ -49,14 +49,38 @@
+   console.log('启动超时，检查 logs/daemon.out');
+ }
+ 
++function launchdManaged() {
++  try {
++    const uid = typeof process.getuid === 'function' ? process.getuid() : 501;
++    execFileSync('/bin/launchctl', ['print', 'gui/' + uid + '/com.desktop-agent.daemon'], { stdio: 'ignore', timeout: 3000 });
++    return true;
++  } catch { return false; }
++}
++
+ async function stop() {
+   if (!(await alive())) { console.log('后台服务未运行'); return; }
++  // 只停当前任务；这一步对两种部署方式都安全
+   try { await api('/stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); } catch {}
+-  try {
+-    const pid = Number(fs.readFileSync(PID_FILE, 'utf8'));
+-    process.kill(pid, 'SIGTERM');
+-  } catch {}
+-  console.log('已停止');
++
++  if (launchdManaged()) {
++    // launchd 托管时：KeepAlive 会把杀掉的进程立刻拉回来，所以这里不能谎报「已停止」
++    console.log('当前任务已停止；后台服务由 launchd 托管，不会随 stop 退出。');
++    console.log('  暂停服务：launchctl bootout gui/' + (typeof process.getuid === 'function' ? process.getuid() : 501) + '/com.desktop-agent.daemon');
++    console.log('  彻底卸载：npm run service:uninstall');
++    console.log('  重启服务：npm run service:restart');
++    return;
++  }
++
++  let pid = 0;
++  try { pid = Number(fs.readFileSync(PID_FILE, 'utf8')); } catch {}
++  if (!pid) { console.log('没有 pid 文件，无法确认怎么停；如装了服务请用 npm run service:uninstall'); return; }
++  try { process.kill(pid, 'SIGTERM'); } catch {}
++  for (let i = 0; i < 20; i += 1) {
++    await sleep(200);
++    if (!(await alive())) { console.log('已停止'); return; }
++  }
++  console.error('发了 SIGTERM 但服务还在跑（pid ' + pid + '），请检查 logs/daemon.out');
++  process.exitCode = 1;
+ }
+ 
+ async function status() {
+@@ -90,7 +114,8 @@
+     console.log(JSON.stringify(r));
+     return;
+   }
+-  console.log('用法：node core/cli.mjs <start|stop|status|tasks|run <任务名>>');
++  console.error('用法：node core/cli.mjs <start|stop|status|tasks|run <任务名>>');
++  process.exitCode = 2;   // 未知子命令按参数错误处理，避免脚本里的 || die 误判成功
+ }
+ 
+ main().catch((e) => { console.error(e.message); process.exit(1); });
+--- a/core/daemon.mjs
++++ b/core/daemon.mjs
+@@ -465,4 +465,12 @@
+   }
+   server.close();
+   process.exit(0);
++});
++
++// 常驻服务不该因为一次未捕获异常就整体退出：记日志、继续服务。
++process.on('uncaughtException', (error) => {
++  console.error('[daemon] 未捕获异常：', (error && error.stack) || error);
+ });
++process.on('unhandledRejection', (error) => {
++  console.error('[daemon] 未处理拒绝：', (error && error.stack) || error);
++});
+--- a/core/acceptance.mjs
++++ b/core/acceptance.mjs
+@@ -138,7 +138,16 @@
+       }
+     }
+     fs.mkdirSync(path.dirname(LOCK_FILE), { recursive: true });
+-    fs.writeFileSync(LOCK_FILE, process.pid + ' ' + new Date().toISOString());
++    // 原子创建：两个验收几乎同时启动时只有一个能拿到锁
++    const write = () => fs.writeFileSync(LOCK_FILE, process.pid + ' ' + new Date().toISOString(), { flag: 'wx' });
++    try {
++      write();
++    } catch (error) {
++      if (!error || error.code !== 'EEXIST') throw error;
++      // 锁文件还在但持锁进程已死：清掉再抢一次（否则旧锁会一直留到下次）
++      try { fs.unlinkSync(LOCK_FILE); } catch {}
++      write();
++    }
+     return true;
+   } catch {
+     return true;
+@@ -178,11 +187,21 @@
+     // 清理脚本现在是安全模式：笔记默认只报告（要 --force 才删）、TextEdit 只关带测试标记的文稿、
+     // 只会退出测试应用，所以验收后可以直接真跑，把环境收拾干净。
+     await run('node', ['scripts/cleanup-test-data.mjs'], { timeout: 240000 });
+-  } catch {}
++  } catch (error) {
++    console.warn('清理失败：' + ((error && error.message) || error));
++  }
+ }
+ 
+ let FRONT_AT_START = '';
+ 
++// Ctrl-C / SIGTERM 也要释放锁，否则下一次会误判「另一个验收正在进行」（pid 被复用时尤其）
++for (const signal of ['SIGINT', 'SIGTERM']) {
++  process.on(signal, () => {
++    releaseAcceptanceLock();
++    process.exit(signal === 'SIGINT' ? 130 : 143);
++  });
++}
++
+ async function main() {
+   if (!acquireAcceptanceLock()) return;
+   if (userRecentlyActive()) { releaseAcceptanceLock(); return; }
+--- a/core/runner.mjs
++++ b/core/runner.mjs
+@@ -40,7 +40,9 @@
+ 
+   const record = (entry) => {
+     const line = JSON.stringify({ ts: new Date().toISOString(), task: task.name, ...entry });
+-    void fd.write(line + '\n');
++    // 原来用 void fd.write(...) 异步写、不等：close 与写有竞态，进程退出时最后几行可能丢，
++    // 甚至在 fd 已关闭后写会抛未捕获异常。日志是排障的唯一线索，这里改成同步写。
++    try { fs.writeSync(fd.fd, line + '\n'); } catch {}
+   };
+   record({ event: 'start', pid: process.pid });
+ 
+--- a/overlay/main.js
++++ b/overlay/main.js
+@@ -160,6 +160,9 @@
+       if (sess.flags && sess.flags.pinned) continue;
+       if (sess.state && sess.state.visible) continue;
+       const at = (sess.state && sess.state.lastActivityAt) || sess.createdAt || 0;
++      // DSH 不在前台时所有会话都 visible=false，所以「不可见」不能当成「没在用」：
++      // 最近一分钟内有活动的先不动，防止把正在被任务使用的会话回收掉。
++      if (Date.now() - at < 60_000) continue;
+       if (!victim || at < victim.at) victim = { id: sid, at };
+     }
+     if (victim) {
+@@ -1807,7 +1810,11 @@
+   } else {
+     if (s.flags.smallBounds) win.setBounds(s.flags.smallBounds);
+     s.flags.expanded = false;
+-    setTimeout(() => { attachToDsh(s, 'com.deepseek.dsh', dshBounds).catch(() => {}); }, 100);
++    // 折叠回小窗时也要用「真实前台」，不能写死宿主 bundle：
++    // 写死会让 frontOk 恒为 true，用户切走了小窗还以为宿主在前台。
++    setTimeout(() => {
++      readFrontmostBundle().then((frontNow) => attachToDsh(s, frontNow, dshBounds)).catch(() => {});
++    }, 100);
+     scheduleIdleHide(s);
+   }
+   return { expanded: s.flags.expanded };
+--- a/core/ocu-mcp.mjs
++++ b/core/ocu-mcp.mjs
+@@ -55,6 +55,15 @@
+     if (sysTmp) env.TMPDIR = sysTmp;
+     if (isNodeScript) env.ELECTRON_RUN_AS_NODE = '1';
+     this.child = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'], env });
++    // spawn 失败（ENOENT / 权限不足）会以 'error' 事件抛在主进程上，不处理就是未捕获异常。
++    // 这里接住并转成一条能看懂的错误，交给上面的 start() 去 reject。
++    this.child.on('error', (error) => {
++      this.closed = true;
++      const hint = 'ocu 可执行文件无法启动（' + this.bin + '）：' + ((error && error.message) || error);
++      for (const [, p] of this.pending) p.reject(new Error(hint));
++      this.pending.clear();
++      this.spawnError = hint;
++    });
+     this.child.stdout.setEncoding('utf8');
+     this.child.stdout.on('data', (chunk) => this._onData(chunk));
+     this.child.stderr.setEncoding('utf8');
+@@ -154,11 +163,24 @@
+ /** 进程内共享一个常驻连接 */
+ export async function getOcuMcp(options) {
+   if (shared && !shared.closed) return shared;
++  installExitHook();
+   shared = new OcuMcp(options);
+   await shared.start();
+   return shared;
+ }
+ 
++// 兜底：进程退出时带走子进程。任务的 finally 会漏（9 个任务里 0 个用 finally 收 MCP），
++// 而 SIGTERM/process.exit 又会跳过普通清理——把收尾放在模块自己身上最可靠。
++let exitHookInstalled = false;
++function installExitHook() {
++  if (exitHookInstalled) return;
++  exitHookInstalled = true;
++  const killChild = () => { try { if (shared && shared.child) shared.child.kill(); } catch {} };
++  process.on('exit', killChild);
++  process.on('SIGTERM', () => { killChild(); process.exit(143); });
++  process.on('SIGINT', () => { killChild(); process.exit(130); });
++}
++
+ export async function closeOcuMcp() {
+   if (shared) { await shared.close(); shared = null; }
+ }
+--- a/scripts/start-all.mjs
++++ b/scripts/start-all.mjs
+@@ -29,6 +29,13 @@
+ process.on('SIGINT', () => shutdown(0));
+ process.on('SIGTERM', () => shutdown(0));
+ 
++async function overlayAlive() {
++  try {
++    await fetch('http://127.0.0.1:7788/health', { signal: AbortSignal.timeout(1200) });
++    return true;   // 能拿到响应就说明在跑（401 也算：服务活着，只是要 token）
++  } catch { return false; }
++}
++
+ async function main() {
+   if (!fs.existsSync(OVERLAY_START)) {
+     console.error('overlay 依赖未安装，先执行：npm run setup');
+@@ -51,6 +58,11 @@
+     console.log('[start] daemon 就绪 7789');
+   }
+ 
++  if (await overlayAlive()) {
++    console.log('[start] 小窗已在运行，跳过（要重启用 npm run service:restart）');
++    return;
++  }
++
+   console.log('[start] 启动小窗…');
+   const o = spawn(process.execPath, [OVERLAY_START], { cwd: ROOT, stdio: 'inherit' });
+   children.push(o);

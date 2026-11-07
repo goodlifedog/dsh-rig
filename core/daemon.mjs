@@ -466,3 +466,11 @@ process.on('SIGTERM', () => {
   server.close();
   process.exit(0);
 });
+
+// 常驻服务不该因为一次未捕获异常就整体退出：记日志、继续服务。
+process.on('uncaughtException', (error) => {
+  console.error('[daemon] 未捕获异常：', (error && error.stack) || error);
+});
+process.on('unhandledRejection', (error) => {
+  console.error('[daemon] 未处理拒绝：', (error && error.stack) || error);
+});

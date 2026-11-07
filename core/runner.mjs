@@ -40,7 +40,9 @@ async function runOnce(task, { timeoutMs }) {
 
   const record = (entry) => {
     const line = JSON.stringify({ ts: new Date().toISOString(), task: task.name, ...entry });
-    void fd.write(line + '\n');
+    // 原来用 void fd.write(...) 异步写、不等：close 与写有竞态，进程退出时最后几行可能丢，
+    // 甚至在 fd 已关闭后写会抛未捕获异常。日志是排障的唯一线索，这里改成同步写。
+    try { fs.writeSync(fd.fd, line + '\n'); } catch {}
   };
   record({ event: 'start', pid: process.pid });
 

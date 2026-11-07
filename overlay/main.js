@@ -33,7 +33,7 @@ const { computeFrameTarget } = require('./frame-target.js');
 const layout = require('./layout.js');
 const { appleScriptQuote } = require('./quote.js');
 const { nextCaptureDelay } = require('./capture-policy.js');
-const { shouldEvictSession } = require('./session-policy.js');
+const { shouldEvictSession, pickEvictionVictim } = require('./session-policy.js');
 
 const APP_NAME = 'desktop-agent-overlay';
 
@@ -57,6 +57,9 @@ const SELF_WINDOW_PATTERN = new RegExp([
 ].join('|'), 'i');
 const MAX_LOGS = 200;
 const MAX_SESSIONS = Math.max(1, Math.round(Number(process.env.OVERLAY_MAX_SESSIONS) || 12));
+// 会话数到上限时，最近这段时间内有活动的会话不参与回收（DSH 不在前台时它们也 visible=false，
+// 光看「不可见」会把正在被任务使用的会话关掉）。可用环境变量调，0 = 只按可见/固定判断。
+const SESSION_RECENT_MS = Math.max(0, Math.round(Number(process.env.OVERLAY_SESSION_RECENT_MS ?? 60_000)));
 const DEFAULT_PORT = 7788;
 const DEFAULT_WIDTH = 300;
 const DEFAULT_HEIGHT = 190;
@@ -154,19 +157,32 @@ function ensureSession(id, source) {
   if (sessions.size >= MAX_SESSIONS) {
     // 先回收最久没活动、不可见、未固定的闲置会话（保护 default 与用户正在看的会话）。
     // 否则调用方忘了 /close 时，后续任务会因为"会话数已达上限"整块失败（实测踩过：矩阵跑完不关会话）。
-    let victim = null;
-    for (const [sid, sess] of sessions) {
-      if (sid === DEFAULT_SESSION) continue;
-      if (sess.flags && sess.flags.pinned) continue;
-      if (sess.state && sess.state.visible) continue;
-      const at = (sess.state && sess.state.lastActivityAt) || sess.createdAt || 0;
-      if (!victim || at < victim.at) victim = { id: sid, at };
-    }
-    if (victim) {
-      closeSession(victim.id);
-      console.log('[overlay] 会话数到上限，回收闲置会话 ' + victim.id);
+    // DSH 不在前台时所有会话都 visible=false，所以「不可见」不能当成「没在用」：
+    // 最近一分钟内有活动的由 pickEvictionVictim 跳过，防止把正在被任务使用的会话回收掉。
+    const evictionList = [...sessions].map(([sid, sess]) => ({
+      id: sid,
+      visible: Boolean(sess.state && sess.state.visible),
+      lastActivityAt: sess.state && sess.state.lastActivityAt,
+      createdAt: sess.createdAt,
+      pinned: Boolean(sess.flags && sess.flags.pinned),
+    }));
+    const victimId = pickEvictionVictim(evictionList, {
+      now: Date.now(),
+      protectMs: SESSION_RECENT_MS,
+      defaultSession: DEFAULT_SESSION,
+    });
+    if (victimId) {
+      closeSession(victimId);
+      console.log('[overlay] 会话数到上限，回收闲置会话 ' + victimId);
     } else {
-      const error = new Error('会话数已达上限 ' + MAX_SESSIONS + '（都不可回收：存在可见/固定会话）');
+      const others = evictionList.filter((s) => s.id !== DEFAULT_SESSION);
+      const shown = others.filter((s) => s.visible);
+      const pinned = others.filter((s) => s.pinned);
+      const recent = others.filter((s) => !s.visible && !s.pinned
+        && Date.now() - Number(s.lastActivityAt || s.createdAt || 0) < SESSION_RECENT_MS);
+      const error = new Error('会话数已达上限 ' + MAX_SESSIONS + '（' + others.length + ' 个非默认会话：'
+        + shown.length + ' 个正在显示、' + pinned.length + ' 个已固定、' + recent.length
+        + ' 个最近 ' + Math.round(SESSION_RECENT_MS / 1000) + ' 秒内活动过；一个都不能回收）');
       error.statusCode = 409;
       throw error;
     }
@@ -1807,7 +1823,11 @@ function toggleExpand(s) {
   } else {
     if (s.flags.smallBounds) win.setBounds(s.flags.smallBounds);
     s.flags.expanded = false;
-    setTimeout(() => { attachToDsh(s, 'com.deepseek.dsh', dshBounds).catch(() => {}); }, 100);
+    // 折叠回小窗时也要用「真实前台」，不能写死宿主 bundle：
+    // 写死会让 frontOk 恒为 true，用户切走了小窗还以为宿主在前台。
+    setTimeout(() => {
+      readFrontmostBundle().then((frontNow) => attachToDsh(s, frontNow, dshBounds)).catch(() => {});
+    }, 100);
     scheduleIdleHide(s);
   }
   return { expanded: s.flags.expanded };

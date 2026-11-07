@@ -375,7 +375,7 @@ curl -s -H "X-Agent-Token: $TOKEN" http://127.0.0.1:7788/health | head -c 400   
 
 6. **daemon 里跑任务报 `env: node: No such file or directory`**：
    launchd 拉起 daemon 时 PATH 只有 `/usr/bin:/bin:/usr/sbin:/sbin`，而 ocu 是 `#!/usr/bin/env node` 脚本、本机 node 在 `~/.local/bin`——于是任务里所有 ocu 调用都失败。
-   **绕法**：这类任务用 `npm run run <task>`（runner 继承你的 shell 环境）；或者给 plist 补 `PATH`（`core/service.mjs` 目前没写，属于已知缺口）。
+   **绕法**：这类任务用 `npm run run <task>`（runner 继承你的 shell 环境）；plist 现在由 `core/service.mjs` 自动写入 PATH（含 ~/.local/bin），装服务时已处理。
 
 7. **看日志定位**：
 

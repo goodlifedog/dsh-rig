@@ -22,4 +22,33 @@ function shouldEvictSession(session, now, ttlMs) {
   return at - last >= ttl;
 }
 
-module.exports = { shouldEvictSession };
+/**
+ * 会话数到上限时挑一个可以回收的会话（纯函数，便于单测）。
+ *
+ * 背景：调用方忘了 /close 时，上限会让后续任务整块 409 失败；但「不可见」并不等于「没在用」——
+ * DSH 不在前台时所有会话都是 visible=false，盲挑最久没活动的有可能把正在被任务用的会话关掉。
+ * 所以最近 protectMs 内有活动的一律跳过；一个都不能动时返回 null，让调用方如实报 409。
+ *
+ * @param {{id: string, lastActivityAt?: number, createdAt?: number, visible?: boolean, pinned?: boolean, flags?: {pinned?: boolean}}[]} list
+ * @param {{now?: number, protectMs?: number, defaultSession?: string}} [options]
+ * @returns {string|null}
+ */
+function pickEvictionVictim(list, options = {}) {
+  const now = Number(options.now) || Date.now();
+  const protectMs = Math.max(0, Number(options.protectMs) || 0);
+  const defaultSession = options.defaultSession == null ? 'default' : String(options.defaultSession);
+  let victim = null;
+  for (const sess of Array.isArray(list) ? list : []) {
+    if (!sess || !sess.id) continue;
+    if (String(sess.id) === defaultSession) continue;
+    if (sess.visible) continue;
+    if (sess.pinned || (sess.flags && sess.flags.pinned)) continue;
+    const last = Number(sess.lastActivityAt || sess.createdAt || 0);
+    if (!Number.isFinite(last) || last <= 0) continue;
+    if (now - last < protectMs) continue;
+    if (!victim || last < victim.last) victim = { id: String(sess.id), last };
+  }
+  return victim ? victim.id : null;
+}
+
+module.exports = { shouldEvictSession, pickEvictionVictim };

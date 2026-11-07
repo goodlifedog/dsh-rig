@@ -7,7 +7,7 @@
  *   node core/cli.mjs run <任务名>  提交任务
  *   node core/cli.mjs tasks        列出任务
  */
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import { readToken, withTokenHeaders } from './local-token.mjs';
 import path from 'node:path';
@@ -49,14 +49,38 @@ async function start() {
   console.log('启动超时，检查 logs/daemon.out');
 }
 
+function launchdManaged() {
+  try {
+    const uid = typeof process.getuid === 'function' ? process.getuid() : 501;
+    execFileSync('/bin/launchctl', ['print', 'gui/' + uid + '/com.desktop-agent.daemon'], { stdio: 'ignore', timeout: 3000 });
+    return true;
+  } catch { return false; }
+}
+
 async function stop() {
   if (!(await alive())) { console.log('后台服务未运行'); return; }
+  // 只停当前任务；这一步对两种部署方式都安全
   try { await api('/stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); } catch {}
-  try {
-    const pid = Number(fs.readFileSync(PID_FILE, 'utf8'));
-    process.kill(pid, 'SIGTERM');
-  } catch {}
-  console.log('已停止');
+
+  if (launchdManaged()) {
+    // launchd 托管时：KeepAlive 会把杀掉的进程立刻拉回来，所以这里不能谎报「已停止」
+    console.log('当前任务已停止；后台服务由 launchd 托管，不会随 stop 退出。');
+    console.log('  暂停服务：launchctl bootout gui/' + (typeof process.getuid === 'function' ? process.getuid() : 501) + '/com.desktop-agent.daemon');
+    console.log('  彻底卸载：npm run service:uninstall');
+    console.log('  重启服务：npm run service:restart');
+    return;
+  }
+
+  let pid = 0;
+  try { pid = Number(fs.readFileSync(PID_FILE, 'utf8')); } catch {}
+  if (!pid) { console.log('没有 pid 文件，无法确认怎么停；如装了服务请用 npm run service:uninstall'); return; }
+  try { process.kill(pid, 'SIGTERM'); } catch {}
+  for (let i = 0; i < 20; i += 1) {
+    await sleep(200);
+    if (!(await alive())) { console.log('已停止'); return; }
+  }
+  console.error('发了 SIGTERM 但服务还在跑（pid ' + pid + '），请检查 logs/daemon.out');
+  process.exitCode = 1;
 }
 
 async function status() {
@@ -90,7 +114,8 @@ async function main() {
     console.log(JSON.stringify(r));
     return;
   }
-  console.log('用法：node core/cli.mjs <start|stop|status|tasks|run <任务名>>');
+  console.error('用法：node core/cli.mjs <start|stop|status|tasks|run <任务名>>');
+  process.exitCode = 2;   // 未知子命令按参数错误处理，避免脚本里的 || die 误判成功
 }
 
 main().catch((e) => { console.error(e.message); process.exit(1); });
