@@ -54,6 +54,7 @@ test('daemon：队列串行、环境失败不重试、临时失败重试一次',
     'ok-task': 'console.log("ok"); process.exit(0);\n',
     'flaky-task': 'console.error("FAIL: 等待 Chrome 调试端口超时"); process.exit(1);\n',
     'hard-fail': 'console.error("FAIL: 断言不成立：标题不对"); process.exit(1);\n',
+    'env-skip-task': 'console.log("环境跳过：锁屏测试"); process.exit(0);\n',
   };
   for (const [name, body] of Object.entries(tasks)) {
     await fs.writeFile(path.join(dir, name + '.mjs'), body);
@@ -207,4 +208,23 @@ test('daemon：队列串行、环境失败不重试、临时失败重试一次',
   assert.equal(stats.runs, 4, '统计应包含 4 次运行（3 + 1 次重试）');
   assert.equal(stats.retries, 1, '统计里应记录 1 次重试');
   assert.equal(stats.okRate, 25, '4 次里只有 1 次成功');
+
+  // 环境跳过要以 envSkip 标记出来：任务退 0 + 打印「环境跳过」，daemon 不能把它当普通成功
+  await fetch(BASE + '/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...TOKEN_HEADERS },
+    body: JSON.stringify({ task: 'env-skip-task' }),
+  });
+  const skipRun = await waitFor(async () => {
+    const st = await (await gets('/status')).json();
+    const hit = (st.history || []).find((h) => h.name === 'env-skip-task');
+    return hit && !st.current ? hit : null;
+  }, 20000);
+  assert.ok(skipRun, '环境跳过任务没有跑完');
+  assert.equal(skipRun.ok, true, '退 0 仍然算 ok');
+  assert.equal(skipRun.envSkip, true, '必须标出 envSkip，否则 soak/monitor 会当成验证成功');
+  const stats2 = await (await gets('/stats')).json();
+  assert.equal(stats2.runs, 5);
+  assert.equal(stats2.envSkips, 1, '统计里要单列环境跳过次数');
+  assert.equal(stats2.okRate, 25, '成功率分母要排除环境跳过（1 成功 / 4 次真跑）');
 });

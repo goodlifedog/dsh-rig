@@ -15,6 +15,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { overlay } from './agentd.mjs';
+import { envSkipReason } from './run-classify.mjs';
 import { isLoopbackHost } from './safety.mjs';
 import { decideRetry } from './retry-policy.mjs';
 import { frontAppFast, startFrontWatch } from './front-watch.mjs';
@@ -98,11 +99,14 @@ function statsOf() {
   let okCount = 0;
   let totalMs = 0;
   let retries = 0;
+  let envSkips = 0;
   for (const run of runs) {
     if (!run) continue;
-    const item = byTask.get(run.name) || { name: run.name, count: 0, ok: 0, totalMs: 0, maxMs: 0, retries: 0 };
+    const item = byTask.get(run.name) || { name: run.name, count: 0, ok: 0, skips: 0, totalMs: 0, maxMs: 0, retries: 0 };
     item.count += 1;
-    if (run.ok) { item.ok += 1; okCount += 1; }
+    // 环境跳过也是 ok=true，但它没验证任何东西：成功率和「成功数」都不能把它算进去
+    if (run.envSkip === true) { item.skips += 1; envSkips += 1; }
+    else if (run.ok) { item.ok += 1; okCount += 1; }
     item.totalMs += run.durationMs || 0;
     totalMs += run.durationMs || 0;
     item.maxMs = Math.max(item.maxMs, run.durationMs || 0);
@@ -113,7 +117,8 @@ function statsOf() {
     .map((t) => ({
       name: t.name,
       count: t.count,
-      okRate: t.count ? Math.round((t.ok / t.count) * 100) : 0,
+      skips: t.skips,
+      okRate: t.count - t.skips > 0 ? Math.round((t.ok / (t.count - t.skips)) * 100) : 0,
       avgMs: t.count ? Math.round(t.totalMs / t.count) : 0,
       maxMs: t.maxMs,
       retries: t.retries,
@@ -121,7 +126,8 @@ function statsOf() {
     .sort((a, b) => b.count - a.count);
   return {
     runs: runs.length,
-    okRate: runs.length ? Math.round((okCount / runs.length) * 100) : 0,
+    envSkips,
+    okRate: runs.length - envSkips > 0 ? Math.round((okCount / (runs.length - envSkips)) * 100) : 0,
     avgMs: runs.length ? Math.round(totalMs / runs.length) : 0,
     retries,
     tasks,
@@ -250,8 +256,14 @@ function runTask(name, attempt = 0) {
     overlay.status('后台任务：' + name + (attempt ? '（第 ' + (attempt + 1) + ' 次）' : '')).catch(() => {});
     overlay.log('开始执行 ' + name).catch(() => {});
 
-    child.stdout.on('data', (b) => { out.write(b); });
-    child.stderr.on('data', (b) => { out.write(b); });
+    // 只留尾部 8KB 用于「这轮是不是环境跳过」的判定（任务输出可能很大，不能全留内存）
+    let tail = '';
+    const keepTail = (b) => {
+      tail = (tail + b.toString()).slice(-8192);
+      out.write(b);
+    };
+    child.stdout.on('data', keepTail);
+    child.stderr.on('data', keepTail);
 
     const timer = setTimeout(() => { try { child.kill('SIGTERM'); } catch {} }, 10 * 60 * 1000);
 
@@ -290,7 +302,15 @@ function runTask(name, attempt = 0) {
       // 用户主动停止不是失败：单独标记，健康统计和自动重试都不该把它算进去
       const cancelled = state.cancelled === true;
       const guard = lastFrontWatchStats;
-      const entry = { name, attempt, ok, code, cancelled, frontSteals: guard ? guard.steals : 0, startedAt: new Date(startedAt).toISOString(), durationMs, logFile };
+      // 环境跳过要和「真成功」分开：任务锁屏时退 0 + 打印环境跳过，如果只记 ok=true，
+      // soak/monitor 会把整轮跳过说成「成功」（实测踩过）。
+      const skipReason = ok ? envSkipReason(tail) : '';
+      const entry = {
+        name, attempt, ok, code, cancelled,
+        envSkip: Boolean(skipReason), skipReason,
+        frontSteals: guard ? guard.steals : 0,
+        startedAt: new Date(startedAt).toISOString(), durationMs, logFile,
+      };
       state.current = null;
       state.history.unshift(entry);
       state.history = state.history.slice(0, 200);

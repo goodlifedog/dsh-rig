@@ -80,6 +80,8 @@ async function main() {
     ? history.filter((h) => h && h.startedAt && h.startedAt > sinceStartedAt)
     : history.slice(0, ROUNDS);
   const failures = newRuns.filter((h) => h && h.ok === false);
+  // 环境跳过（锁屏等）也是 ok=true，但它是「没验证」不是「验证成功」：单独计数
+  const envSkips = newRuns.filter((h) => h && h.envSkip === true);
   const rssStart = samples[0] ? samples[0].rss : 0;
   const rssEnd = samples[samples.length - 1] ? samples[samples.length - 1].rss : 0;
   const rssDelta = rssEnd - rssStart;
@@ -92,7 +94,9 @@ async function main() {
 
   const rows = [
     ['轮次', String(ROUNDS) + ' 轮｜用时 ' + Math.round((Date.now() - startedAll) / 1000) + 's'],
-    ['任务结果', (newRuns.length - failures.length) + '/' + newRuns.length + ' 成功' + (failures.length ? '（失败：' + failures.map((f) => f.name).join(', ') + '）' : '')],
+    ['任务结果', (newRuns.length - failures.length - envSkips.length) + '/' + newRuns.length + ' 成功'
+      + (envSkips.length ? '（其中 ' + envSkips.length + ' 项环境跳过）' : '')
+      + (failures.length ? '（失败：' + failures.map((f) => f.name).join(', ') + '）' : '')],
     ['最慢一轮', slowest ? slowest.task + ' ' + slowest.ms + 'ms' : '-'],
     ['小窗内存', rssStart + 'MB → ' + rssEnd + 'MB（变化 ' + (rssDelta >= 0 ? '+' : '') + rssDelta + 'MB）'],
     ['有帧的采样', fpsValues.length + '/' + samples.length + (fpsValues.length ? '（fps ' + Math.min(...fpsValues) + '–' + Math.max(...fpsValues) + '）' : '')],
@@ -100,6 +104,11 @@ async function main() {
   const width = Math.max(...rows.map((r) => r[0].length)) + 2;
   console.log('\n稳定性巡检\n');
   for (const [k, v] of rows) console.log('  ' + k.padEnd(width) + v);
+
+  if (newRuns.length && failures.length === 0 && envSkips.length === newRuns.length) {
+    console.log('\n环境跳过：本轮任务全部按环境跳过（锁屏等），不能当稳定性验证\n');
+    process.exit(0);
+  }
 
   const problems = [];
   if (!newRuns.length) problems.push('daemon 没记录到运行结果');

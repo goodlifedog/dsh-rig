@@ -158,8 +158,10 @@ async function main() {
     };
     let failDetail;
     const stopNote = cancelledRuns.length ? '，主动停止 ' + cancelledRuns.length + ' 次' : '';
+    const skipRuns = hist.filter((h) => h && h.envSkip === true);
+    const skipNote = skipRuns.length ? '｜其中 ' + skipRuns.length + ' 次环境跳过（未验证）' : '';
     if (!hist.length) failDetail = '暂无记录';
-    else if (!fails.length) failDetail = '最近 ' + hist.length + ' 次全部成功（上次：' + hist[0].name + ' ' + fmtDur(hist[0].durationMs) + '）' + stopNote;
+    else if (!fails.length) failDetail = '最近 ' + hist.length + ' 次全部成功（上次：' + hist[0].name + ' ' + fmtDur(hist[0].durationMs) + '）' + stopNote + skipNote;
     else {
       const lf = fails[0];
       failDetail = fails.length + ' / ' + hist.length + ' 次失败（最近失败：' + lf.name + '，退出码 ' + lf.code + '，' + (lf.startedAt || '').slice(5, 16).replace('T', ' ') + ' UTC）';
@@ -189,7 +191,8 @@ async function main() {
       const secs = (ms) => (ms >= 1000 ? (ms / 1000).toFixed(1) + 's' : Math.round(ms) + 'ms');
       const slowest = (stats.tasks || []).slice().sort((a, b) => b.avgMs - a.avgMs)[0];
       add('任务耗时', true,
-        '近 ' + stats.runs + ' 次：成功率 ' + stats.okRate + '%｜平均 ' + secs(stats.avgMs) +
+        '近 ' + stats.runs + ' 次：成功率 ' + stats.okRate + '%' +
+        (stats.envSkips ? '（已排除 ' + stats.envSkips + ' 次环境跳过）' : '') + '｜平均 ' + secs(stats.avgMs) +
         (slowest ? '｜最慢 ' + slowest.name + ' ' + secs(slowest.avgMs) + '（最多 ' + secs(slowest.maxMs) + '）' : ''));
     }
   }
