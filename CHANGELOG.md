@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 补进程收尾的最后一层（外部评审 21 轮）：runner 收到 SIGTERM 时转发给任务进程组（原来 daemon 只杀到 runner 组，任务因为自成组会继续跑），4 秒后补 SIGKILL 再退出；任务子进程 pid 记进运行日志（`task-spawned`），排查"任务拉起了什么"有据可查
+- 实测：runner 收 TERM 后同组任务与孙进程全部结束；真实任务运行日志里能看到 `taskPid`
 - 修进程收尾三个缺口（外部评审实锤：一个孤儿 app-agent 活了 26 小时）：runner 任务改为独立进程组、超时先 TERM 整组 5 秒后补 KILL；daemon 收到 SIGTERM 先结束当前任务进程组再退出；daemon 启动时清理孤儿 app-agent（只清 ppid=1、当前用户、命令属于本项目依赖的），实测清掉 37097/48216 两个残留、保留父进程还活着的那个
 - 修失败归类放水（外部评审）：从环境跳过规则里移除过宽的 `No such file or directory` 和 `未送达`，只保留 `env: node: No such file` 与业务状态 `已联系`；补负向测试确保「投递未送达」「依赖缺失」这类真失败不会再被当成环境跳过（验收假通过的根源）
 - README 安全边界补：浏览器来源拦截、控制面 token、pid 复核、service:status/restart 用法

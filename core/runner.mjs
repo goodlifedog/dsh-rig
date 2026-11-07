@@ -53,6 +53,10 @@ async function runOnce(task, { timeoutMs }) {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
+    currentChild = child;
+    // 把任务子进程 pid 记进日志：出问题时要能查到"这个任务到底拉起了哪些进程"
+    record({ event: 'task-spawned', taskPid: child.pid });
+
     let stdout = '';
     let stderr = '';
     let lastLineAt = 0;
@@ -88,6 +92,7 @@ async function runOnce(task, { timeoutMs }) {
 
     child.on('close', async (code, signal) => {
       clearTimeout(timer);
+      if (currentChild === child) currentChild = null;
       const durationMs = Date.now() - startedAt;
       record({ event: 'end', code, signal, durationMs, stdoutBytes: stdout.length, stderrBytes: stderr.length });
       await fd.close();
@@ -95,6 +100,29 @@ async function runOnce(task, { timeoutMs }) {
     });
   });
 }
+
+// 当前正在跑的任务子进程：runner 收到 TERM 时要转发给它的进程组。
+// 不做这一步的话：daemon 杀 runner 的进程组，任务因为在另一个组里会继续跑，它拉起的 ocu/Chrome 就变孤儿。
+let currentChild = null;
+
+function forwardSignalToTask(signal) {
+  if (!currentChild || !currentChild.pid) return false;
+  try {
+    process.kill(-currentChild.pid, signal);
+    return true;
+  } catch {
+    try { currentChild.kill(signal); return true; } catch { return false; }
+  }
+}
+
+process.on('SIGTERM', () => {
+  forwardSignalToTask('SIGTERM');
+  // 给任务 4 秒收尾，再补 KILL 并退出；超时也要退，别让 daemon 等死
+  setTimeout(() => {
+    forwardSignalToTask('SIGKILL');
+    process.exit(0);
+  }, 4000).unref();
+});
 
 async function runTask(name, { retries = 1, timeoutMs = 300000 } = {}) {
   const tasks = listTasks();
