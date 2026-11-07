@@ -316,6 +316,14 @@ flow/patch-deploy-freshness.diff     代码新鲜度检查（service:status 能�
          overlay/docs/overlay-pip*.png overlay/docs/space-own.png overlay/docs/clarity-small.png
   ```
 
+### 2.12 清理脚本会退出用户自己的备忘录/计算器（不区分「谁开的」）
+
+- `scripts/cleanup-test-data.mjs` 的 `quitTestApps()` 无条件 `quitApp` 计算器和备忘录，注释写「Notes 自动保存，关掉不会丢用户内容」
+- 实测跑一次 `npm run cleanup:test`（默认就执行，不需要 --force）：报告里出现 `{"kind":"quit","app":"Notes","mode":"quit"}`
+- 问题不在数据（备忘录会自动保存），在于**打扰**：用户正开着备忘录写东西，跑个清理就被关掉；这跟项目反复强调的「不打扰、不动用户的应用」不一致
+- 对比：`background-stability` 任务已经改成「只关自己拉起来的应用」（`launchedByUs`），清理脚本还没这个意识
+- 建议：① 记录本次运行自己启动过的应用，只退这些；或 ② 退出前加 HID 空闲判断（用户最近 60 秒动过键鼠就不退）；或 ③ 至少把「退出应用」收进 `--force`，默认只报告
+
 ## 已修好（复核过，不用再看）
 
 控制面 token（daemon + overlay 全接口）· Origin/跨域拦截 · pid Helper 误匹配 · 验收覆盖新通道（10 项）·
