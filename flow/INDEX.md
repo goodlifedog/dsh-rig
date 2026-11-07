@@ -18,6 +18,8 @@
 ## 发布与协作（新加的，放这里免得找不到）
 
 > **只想看一页？→ [START-HERE.md](START-HERE.md)**
+>
+> **通宵收尾的结论 → [FINAL-REPORT.md](FINAL-REPORT.md)**
 
 
 | 我想… | 看这份 |
