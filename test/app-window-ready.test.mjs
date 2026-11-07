@@ -3,6 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  ensureAppRunning,
   waitForWindow,
   parseDialogDump,
   pickOnboardingButton,
@@ -117,4 +118,51 @@ test('弹窗有白名单按钮：点掉并复查前台', async () => {
   assert.equal(r.button, '继续');
   assert.ok(calls.some((c) => c.includes('click button') && c.includes('继续')), '要按名字点，不能按序号瞎点');
   assert.ok(calls.some((c) => c === 'DSH'), '点完要复查前台');
+});
+test('慢启动应用：等够时间才判定成功（Keynote/腾讯会议实测 5s+）', async () => {
+  let checks = 0;
+  const r = await ensureAppRunning(
+    { bundleId: 'com.apple.Keynote', appName: 'Keynote Creator Studio', processName: 'Keynote' },
+    {
+      waitMs: 2000,
+      deps: {
+        frontName: async () => 'DSH',
+        isAppRunning: async () => { checks += 1; return checks > 2; },
+        sleep: async () => {},
+        openApp: async () => {},
+      },
+    },
+  );
+  assert.equal(r.launched, true);
+  assert.equal(r.running, true);
+  assert.ok(checks >= 3, '要真的轮询到起来为止');
+});
+
+test('一直没起来：返回 error，但前台仍记为未变', async () => {
+  const r = await ensureAppRunning(
+    { bundleId: 'x.y', appName: 'X', processName: 'x' },
+    {
+      waitMs: 0,
+      deps: {
+        frontName: async () => 'DSH',
+        isAppRunning: async () => false,
+        sleep: async () => {},
+        openApp: async () => {},
+      },
+    },
+  );
+  assert.equal(r.launched, false);
+  assert.ok(r.error.length > 0);
+  assert.equal(r.frontUnchanged, true);
+});
+
+test('已经在跑：直接返回，不再 open', async () => {
+  let opened = 0;
+  const r = await ensureAppRunning(
+    { bundleId: 'a.b', appName: 'A', processName: 'a' },
+    { deps: { frontName: async () => 'DSH', isAppRunning: async () => true, sleep: async () => {}, openApp: async () => { opened += 1; } } },
+  );
+  assert.equal(r.launched, false);
+  assert.equal(r.running, true);
+  assert.equal(opened, 0);
 });

@@ -66,6 +66,14 @@ const post = (pathname, body) => fetch(OVERLAY + pathname, {
   signal: AbortSignal.timeout(5000),
 }).then((r) => r.json()).catch(() => null);
 
+// 有些应用（菜单栏工具、自绘界面）AX 里窗口数是 0，但系统窗口层明明有窗口；
+// 判断"窗口就绪"时两个来源都看，避免误判成没窗口。
+async function overlayWindowCount(pattern) {
+  const list = await getJson(OVERLAY + '/windows');
+  const windows = (list && list.windows) || [];
+  return windows.filter((w) => pattern.test(String(w.owner || '') + ' ' + String(w.title || ''))).length;
+}
+
 async function probeCapture(session, pattern, titleHint) {
   const list = await getJson(OVERLAY + '/windows');
   const windows = (list && list.windows) || [];
@@ -116,16 +124,23 @@ async function main() {
     const before = await frontName();
     const steps = {};
 
-    const launch = await ensureAppRunning({ bundleId: app.bundle, appName: app.name, processName: app.process });
+    const launch = await ensureAppRunning(
+      { bundleId: app.bundle, appName: app.name, processName: app.process },
+      { waitMs: 15000 },
+    );
     steps.launch = await frontName();
     row.launch = launch.error ? 'error' : (launch.launched ? 'launched' : 'running');
     row.launchFrontUnchanged = launch.frontUnchanged !== false;
     // 刚启动时窗口可能还没建好：等它出现再探测，否则会得到"没有窗口"的假结论
     const ready = await waitForWindow(app.name, { timeoutMs: 12000 });
-    row.windowReady = ready.ok;
     row.windowWaitMs = ready.waitedMs;
     row.windowAttempts = ready.attempts;
-    if (!ready.ok) row.captureNote = '等了 ' + ready.waitedMs + 'ms 仍没有窗口';
+    // AX 看不到窗口时退一步看系统窗口层（菜单栏工具、自绘界面实测会这样）
+    let cgCount = 0;
+    if (!ready.ok) cgCount = await overlayWindowCount(pattern);
+    row.windowReady = ready.ok || cgCount > 0;
+    row.windowReadySource = ready.ok ? 'ax' : (cgCount > 0 ? 'cgwindow' : 'none');
+    if (!row.windowReady) row.captureNote = '等了 ' + ready.waitedMs + 'ms 仍没有窗口';
     // 首启欢迎弹窗会卡住 Apple 事件：点掉白名单按钮（默认开，MATRIX_DISMISS=0 关）
     if (process.env.MATRIX_DISMISS !== '0') {
       const dis = await dismissOnboarding(app.name, { timeoutMs: 6000 });

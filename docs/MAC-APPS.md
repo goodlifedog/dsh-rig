@@ -100,13 +100,35 @@ Ghostty、ChatGPT 读界面树会把应用顶到前台（连不截图也发生�
 | Gemini | Electron | 68 节点 | 46 | offscreen | 异步抢，已还原 | 2 个窗口按钮 |
 | iMovie | AppKit 重应用 | 有 | 有 | live | 首次读取短暂抢夺，已还原 | — |
 | Steam | Electron/Chromium | 9 节点 | 0 | live（10949B） | 无 | 窗口 677ms 就绪；退出需 TERM |
+| 腾讯会议 | Electron 会议 | 9 节点（不稳定，重开有时 0） | 2 | 抓不到窗口 | 无 | 窗口在系统层可见（owner 显示「腾讯会议」）但 AX 窗口数为 0 |
+| FastZip | 原生压缩工具 | 51 节点 | 7 | live（34822B） | 无 | 窗口 761ms 就绪，收尾优雅退出 |
+| State | 菜单栏工具 | 62 节点 | 1 | live（31454B） | 无 | AX 窗口数恒为 0，靠系统窗口层判定就绪 |
+| Keynote Creator Studio | 办公文档 | 0 节点 | 0 | live（50805B） | 读取瞬间抢了一下，已还原 | 元素级不可用，只能画面+坐标 |
+| Numbers Creator Studio | 办公文档 | 0 节点 | 0 | live（51925B） | 无 | 同上 |
 | 抖音 | App Store 版 | 否 | 否 | 否 | 无 | 启动后 <1s 自退，应用侧限制 |
 | Antigravity | Electron IDE | 否 | 否 | 否 | 无 | 启动即退出（退出码 0），应用侧限制 |
 
 汇总口径：可读 = 界面树有内容；可点 = 至少一个 AXButton；live = 画面能直接回显；
 offscreen = 窗口在别的桌面，系统返回纯色帧。
 
-## 五、已知边界
+## 五、AX 为空的几类应用（只能画面 + 坐标）
+
+有几类应用系统窗口层明明有窗口，AX 树却是空的或者时有时无，元素级操作不可靠：
+
+- **菜单栏工具**（State）：AX 窗口数恒为 0，但界面树有 62 个节点、画面能抓到。
+- **个别会议/办公应用**（腾讯会议、Keynote/Numbers Creator Studio）：窗口在系统层可见
+  （腾讯会议的窗口 owner 显示成「腾讯会议」，不是进程名），AX 树时有时无、常常为 0。
+- 对这类应用，后台能做的只有**抓画面 + 按坐标点**，或者走它自己的快捷键；
+  不要去等 AX 元素，等到超时只会白等。
+
+判定「窗口就绪」时因此要看两个来源：System Events 的窗口数（`windowCount()`）和
+overlay 的系统窗口列表（CGWindowList）。只信 AX 会把菜单栏工具误判成「没有窗口」。
+
+另外这类应用**启动偏慢**：Keynote Creator Studio、腾讯会议首次拉起要 5 秒以上，
+原来的 3 秒判定会报「启动后仍检测不到进程」。现在 `ensureAppRunning()` 默认等 8 秒
+（矩阵里给到 15 秒），`waitMs` 可调。
+
+## 六、已知边界
 
 - **菜单栏命令**：备忘录这类应用菜单栏节点不可查询（AXMenuBarItem/AXMenuItem 均为 0），
   后台点菜单走不通；⌘N 快捷键会把应用顶到前台，AppleScript 控制第三方应用会触发自动化权限弹窗。

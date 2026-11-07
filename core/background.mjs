@@ -59,10 +59,18 @@ export async function isAppRunning({ bundleId, appName, processName }) {
  * 后台启动应用：open -g 不激活前台；返回 { launched, front, frontUnchanged }。
  * 已经在运行的应用直接返回（不去碰它，避免某些应用被 open 唤起时抢前台）。
  */
-export async function ensureAppRunning({ bundleId, appName, processName }) {
-  const before = await frontName();
+export async function ensureAppRunning({ bundleId, appName, processName }, options = {}) {
+  const opts = options || {};
+  const deps = Object.assign({
+    frontName,
+    isAppRunning,
+    sleep,
+    openApp: (args) => exec('/usr/bin/open', ['-g', ...args], { timeout: 8000 }),
+  }, opts.deps || {});
+  const waitMs = Number.isFinite(opts.waitMs) ? opts.waitMs : 8000;
+  const before = await deps.frontName();
   const check = { bundleId, appName, processName };
-  if (await isAppRunning(check)) {
+  if (await deps.isAppRunning(check)) {
     return { launched: false, running: true, front: before, frontUnchanged: true };
   }
   let error = '';
@@ -72,18 +80,19 @@ export async function ensureAppRunning({ bundleId, appName, processName }) {
   if (bundleId) attempts.push(['-b', bundleId]);
   for (const args of attempts) {
     try {
-      await exec('/usr/bin/open', ['-g', ...args], { timeout: 8000 });
-      for (let i = 0; i < 15; i += 1) {
-        if (await isAppRunning(check)) break;
-        await sleep(200);
+      await deps.openApp(args);
+      const deadline = Date.now() + waitMs;
+      while (Date.now() < deadline) {
+        if (await deps.isAppRunning(check)) break;
+        await deps.sleep(250);
       }
-      if (await isAppRunning(check)) break;
+      if (await deps.isAppRunning(check)) break;
     } catch (e) {
       error = String(e.message || e);
     }
   }
-  const after = await frontName();
-  const started = await isAppRunning(check);
+  const after = await deps.frontName();
+  const started = await deps.isAppRunning(check);
   return {
     launched: started,
     running: started,

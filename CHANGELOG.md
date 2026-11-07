@@ -8,6 +8,9 @@
 - 新增 `dialogs()` / `dismissOnboarding()`：首启欢迎弹窗是 app-modal，会把 Apple 事件整个卡住（Pages Creator Studio 连 count documents 都超时 -1712），但 System Events 仍能读到结构；只点「继续/开始使用/知道了」白名单按钮，见到「存储/删除/取消」一律不点
 - 新增 `quitApp()`：先优雅退出，退不掉（被弹窗卡住）再按进程 TERM，如实回报 quit/term/already-stopped
 - 新增 `windowCount()`、`parseDialogDump()`、`pickOnboardingButton()` 纯函数 + 10 项单测（窗口迟到、一直没窗口、-1 不当成功、坏行解析、破坏性按钮不点）
+- 应用启动判定放宽：`ensureAppRunning()` 默认等 8 秒（矩阵 15 秒，`waitMs` 可调），Keynote Creator Studio / 腾讯会议这类 5 秒以上才起来的应用不再被误判「启动后仍检测不到进程」
+- 窗口就绪判定加 CGWindow 兜底：AX 窗口数为 0 但系统窗口层有窗口的应用（菜单栏工具 State、腾讯会议、Keynote/Numbers Creator Studio）不再被误判「没有窗口」；报告新增「窗口就绪来源」（ax/cgwindow）
+- 实测第三批门类：FastZip（51 节点/7 按钮/live，窗口 761ms）、State（菜单栏工具，62 节点，AX 窗口数恒 0）、腾讯会议（AX 时有时无、画面抓不到）、Keynote/Numbers Creator Studio（AX 0 节点但画面可回显，读取瞬间抢前台已还原）；五个应用全部自动收尾、前台未变
 - 实测补两个门类：Steam（Chromium 应用，窗口 677ms、9 节点、0 按钮、画面 live，退出需 TERM）、iMovie（读取瞬间会抢前台，settleFront 还原成功）
 - 如实记录应用侧限制：抖音（App Store 版 8.1.1）与 Antigravity 启动后自行退出（抖音存活 <1s，Antigravity 退出码 0），不是控制层能解决的问题
 - bg:verify 汇总里标注「锁屏：前台断言跳过」，避免把部分验证当成全部通过
