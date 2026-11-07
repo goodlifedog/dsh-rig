@@ -2,6 +2,10 @@
 
 ## 未发布
 
+- 新增 `npm run matrix` 应用能力矩阵：7 个门类应用逐个探明后台启动/读/点/设值/回显，结果写 reports/app-matrix-*.md
+- 新增 `npm run stability` 焦点稳定性验证：12 轮后台操作 0 次抢前台、单轮约 900ms
+- 后台启动改用「先判断是否在跑（AppleScript is running），只在没跑时 open -g」，避免把已在运行的应用唤起
+- 矩阵每步都记录前台应用，万一被抢立刻还原并标记
 - 后台控制层 `core/background.mjs`：后台启动（open -g 不激活）、AX 点击、AX 设值、后台键入，每步都记录前台是否被抢占
 - 新增 `core/tasks/background-control.mjs` 验收任务：冷启动备忘录→新建→写正文→点击计算器→写入文本编辑，8 项全过、全程前台未变
 - 窗口列表改为 CGWindowList 全量（原来只列当前桌面，别的桌面的窗口根本看不到，但系统其实允许抓图）

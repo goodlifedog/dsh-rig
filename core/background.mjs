@@ -24,32 +24,55 @@ export async function frontName() {
   }
 }
 
-/** 后台启动应用：open -g 不会激活；返回 { launched, front, frontUnchanged } */
+/** 应用是否在运行：优先按本地化名称问 AppleScript，其次按 bundle id 找进程 */
+export async function isAppRunning({ bundleId, appName }) {
+  if (appName) {
+    try {
+      const { stdout } = await exec('/usr/bin/osascript', ['-e', 'application ' + JSON.stringify(appName) + ' is running'], { timeout: 4000 });
+      if (/true/i.test(stdout)) return true;
+    } catch {}
+  }
+  if (bundleId) {
+    try {
+      const { stdout } = await exec('/usr/bin/pgrep', ['-f', bundleId], { timeout: 3000 });
+      if (stdout.trim()) return true;
+    } catch {}
+  }
+  return false;
+}
+
+/**
+ * 后台启动应用：open -g 不激活前台；返回 { launched, front, frontUnchanged }。
+ * 已经在运行的应用直接返回（不去碰它，避免某些应用被 open 唤起时抢前台）。
+ */
 export async function ensureAppRunning({ bundleId, appName }) {
   const before = await frontName();
-  const running = await isRunning(bundleId);
-  if (running) return { launched: false, front: before, frontUnchanged: true };
+  if (await isAppRunning({ bundleId, appName })) {
+    return { launched: false, running: true, front: before, frontUnchanged: true };
+  }
+  let error = '';
   try {
-    await exec('/usr/bin/open', ['-g', '-b', bundleId], { timeout: 8000 });
-  } catch (error) {
-    return { launched: false, error: String(error.message || error), front: before, frontUnchanged: true };
+    if (appName) await exec('/usr/bin/open', ['-g', '-a', appName], { timeout: 8000 });
+    else await exec('/usr/bin/open', ['-g', '-b', bundleId], { timeout: 8000 });
+  } catch (e) {
+    error = String(e.message || e);
   }
   // 等进程起来（最多 6 秒）
   for (let i = 0; i < 30; i += 1) {
-    if (await isRunning(bundleId)) break;
+    if (await isAppRunning({ bundleId, appName })) break;
     await sleep(200);
   }
   const after = await frontName();
-  return { launched: true, appName, front: after, frontUnchanged: before === after, before };
-}
-
-async function isRunning(bundleId) {
-  try {
-    const { stdout } = await exec('/usr/bin/pgrep', ['-f', bundleId], { timeout: 3000 });
-    return Boolean(stdout.trim());
-  } catch {
-    return false;
-  }
+  const started = await isAppRunning({ bundleId, appName });
+  return {
+    launched: started,
+    running: started,
+    error: started ? '' : (error || '启动后仍检测不到进程'),
+    appName,
+    front: after,
+    frontUnchanged: before === after,
+    before,
+  };
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

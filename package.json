@@ -50,6 +50,8 @@
     "trends": "node scripts/trends.mjs",
     "verify": "npm run check && npm test && npm run repo:check",
     "humanize:live": "node scripts/humanize-live.mjs",
+    "matrix": "node core/tasks/app-matrix.mjs",
+    "stability": "node core/tasks/background-stability.mjs",
     "ui:check": "node scripts/ui-check.mjs",
     "health": "node scripts/health.mjs"
   }
