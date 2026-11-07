@@ -10,6 +10,7 @@
 git apply flow/patch-publish.diff            # 发布配置（发布前必打）
 git apply flow/patch-prune-consolidate.diff  # prune 死代码合并（建议打）
 git apply flow/patch-deploy-freshness.diff   # 代码新鲜度检查（建议打）
+git apply flow/patch-title-gate.diff          # 会话标题门控不再用裸子串匹配（建议打）
 # patch-watchdog-hid 已应用（看门狗 HID 判据），文件已删
 npm test && npm run repo:check
 ```
@@ -69,6 +70,20 @@ node --test test/front-watch.test.mjs   # 7 项全过
 验证：
 ```bash
 node --test test/text-edit-guard.test.mjs
+```
+
+## 4. patch-title-gate.diff（40 行 / 2 个文件）
+
+**问题**：会话标题门控用 host.indexOf(hint) 裸子串匹配，实测：
+  hint 规划布局探讨 vs host 规划布局探讨（二） → true（误判），
+  同时开两个名字相近的会话时，A 的小窗会跑到 B 里显示。
+
+补丁：全等直接通过；否则允许「去掉 hint 后只剩标点/符号/空白」（宿主标题带状态点、装饰符的情况），
+其余一律不匹配。配 2 条测试（相近名字互不点亮、装饰后缀仍算同一会话）。
+
+验证：
+```bash
+node --test test/session-gate.test.mjs   # 7 项全过
 ```
 
 ## 已采纳并删除的补丁（留档，不要再找）
