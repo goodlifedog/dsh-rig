@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { envSkipReason } from './run-classify.mjs';
 import { acquireLock, releaseLock } from './acceptance-lock.mjs';
+import { findForeignUiRunsNow } from './foreground-guard.mjs';
 import { overlay } from './agentd.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -198,6 +199,14 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 async function main() {
   if (!acquireAcceptanceLock()) return;
   if (userRecentlyActive()) { releaseAcceptanceLock(); return; }
+  // 跨会话互斥：别的会话正在跑 bg:verify / 矩阵 / 后台控制时，任务会互相干扰成假失败
+  const foreign = await findForeignUiRunsNow({ selfPids: [process.pid, process.ppid] });
+  if (foreign.length) {
+    console.error('拒绝执行：另一个前台类验收正在进行');
+    for (const f of foreign.slice(0, 3)) console.error('  pid=' + f.pid + ' ' + f.command);
+    releaseAcceptanceLock();
+    return;
+  }
   console.log('=== 桌面代理端到端验收 ===');
   FRONT_AT_START = frontmostApp();
   const h = await checkOverlay();

@@ -8,6 +8,7 @@
  * 锁屏时各项自己会报「环境跳过」，不会给出误导性结论。
  */
 import { spawn } from 'node:child_process';
+import { findForeignUiRunsNow } from '../core/foreground-guard.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -65,6 +66,15 @@ function classify(result, name) {
 }
 
 async function main() {
+  // 跨会话互斥：另一个会话正在跑 acceptance / 矩阵 / 后台控制时，两边会互相关应用/抢前台，
+  // 结果都变成假失败（实测踩过）。发现别人在跑就直接拒绝，别硬上。
+  const foreign = await findForeignUiRunsNow({ selfPids: [process.pid, process.ppid] });
+  if (foreign.length) {
+    console.error('拒绝执行：另一个前台类验收正在进行');
+    for (const f of foreign.slice(0, 3)) console.error('  pid=' + f.pid + ' ' + f.command);
+    console.error('等它跑完再试，或先确认没有别的会话在验收。');
+    process.exit(3);
+  }
   const rows = [];
   for (const check of CHECKS) {
     process.stdout.write('跑 ' + check.name + ' … ');
