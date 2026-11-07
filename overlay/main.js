@@ -34,6 +34,7 @@ const layout = require('./layout.js');
 const { appleScriptQuote } = require('./quote.js');
 const { nextCaptureDelay } = require('./capture-policy.js');
 const { shouldEvictSession, pickEvictionVictim, isSessionReallyVisible } = require('./session-policy.js');
+const { createCrashLog } = require('./crash-log.js');
 
 const APP_NAME = 'desktop-agent-overlay';
 
@@ -121,6 +122,14 @@ const pendingTempFiles = new Set();
 /** @type {Map<string, any>} */
 const sessions = new Map();
 let sessionSeq = 0;
+
+// 最近一次崩溃/渲染进程退出：写进 /health，排障时能看出「窗口没了」是崩了还是没绑上
+const crashLog = createCrashLog();
+function noteCrash(kind, detail) {
+  const info = crashLog.note(kind, detail);
+  console.error('[overlay] ' + info.kind + '：' + info.detail);
+  return info;
+}
 
 // 记录属于 DeepSeek Harness 自身的窗口 id：这些窗口永远不允许被当作"被控目标"。
 const selfWindowIds = new Set();
@@ -1543,6 +1552,17 @@ function createWindowForSession(s) {
   s.win = win;
   s.flags.ready = false;
 
+  // 渲染进程崩溃（GPU 驱动、内存不足、页面脚本异常都可能导致）：不要整个小窗跟着死，
+  // 记录一次并通过 /health 暴露，然后把这个会话的窗口重新加载起来。
+  win.webContents.on('render-process-gone', (_event, details) => {
+    noteCrash('render-process-gone', (details && (details.reason + '/' + details.exitCode)) || '');
+    if (!sessions.has(s.id) || !s.win || s.win.isDestroyed()) return;
+    setTimeout(() => {
+      try { if (!s.win.isDestroyed()) s.win.reload(); } catch {}
+    }, 800);
+  });
+  win.webContents.on('unresponsive', () => noteCrash('renderer-unresponsive', s.id));
+
   // 层级：只用 floating（浮在普通窗口上，低于菜单/屏保），不用 screen-saver 全局置顶。
   // 配合「DSH 不是前台就 hide」，效果是只浮在 DSH 上面，不会盖住别的 App。
   // 注意：不要在窗口还没 show 的时候调 setVisibleOnAllWorkspaces(false)，
@@ -1771,7 +1791,7 @@ async function startServer() {
       sessions: () => Array.from(sessions.values()).map(sessionHealth),
       health: (session) => {
         const s = sessions.get(session);
-        return s ? sessionHealth(s) : missingSessionHealth(session);
+        return Object.assign(s ? sessionHealth(s) : missingSessionHealth(session), { crash: crashLog.get() });
       },
       windows: listWindows,
     },
@@ -2005,6 +2025,18 @@ if (!hasSingleInstanceLock) {
       app.quit();
     });
 }
+
+// 渲染/子进程崩溃要留痕：/health 里能看到最后一次崩溃原因，
+// 排障时不用猜「小窗没出现」是没绑上窗口还是崩了。
+app.on('child-process-gone', (_event, details) => {
+  noteCrash('child-process-gone', (details && (String(details.type || '') + '/' + String(details.reason || ''))) || '');
+});
+process.on('uncaughtException', (error) => {
+  noteCrash('uncaughtException', (error && error.stack) || error);
+});
+process.on('unhandledRejection', (error) => {
+  noteCrash('unhandledRejection', (error && error.stack) || error);
+});
 
 app.on('before-quit', () => {
   try { supervisor.stopDaemon(); } catch {}
