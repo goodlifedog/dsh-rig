@@ -168,7 +168,7 @@ npm run doctor                     # 应全绿
 npm run scope:check   # 锁屏下应显示环境跳过、退出码 0；解锁后仍跑完整 7 项
 ```
 
-### patch-monitor-detail.diff（58 行 / 2 个文件）
+### ✅ patch-monitor-detail.diff（58 行 / 2 个文件）—— 已应用（并补了环境跳过识别），补丁文件已删除
 
 **问题（实测）**：`npm run monitor` 输出里有两处自相矛盾：
 

@@ -29,6 +29,16 @@ function runNode(script, args, env) {
 const lines = (text) => String(text || '').split('\n').map((s) => s.replace(/\s+$/, '')).filter(Boolean);
 const pick = (text, re) => (lines(text).find((l) => re.test(l)) || '').trim();
 
+// 环境跳过：锁屏等情况下被检脚本会退 0 并打印「环境跳过：…」，这时候不能算失败、也别硬编明细
+const skipLine = (text) => lines(text).find((l) => /环境跳过/.test(l)) || '';
+
+// 明细兜底：过去统一回落成「未通过」，于是出现「✅ 会话隔离 … 未通过」这种自相矛盾的行
+function detailOr(parts, ok) {
+  const text = (parts || []).filter(Boolean).join('｜');
+  if (text) return text;
+  return ok ? '（本项没有明细输出）' : '未通过（且无输出）';
+}
+
 async function main() {
   const steps = [];
   const startedAt = new Date();
@@ -41,6 +51,7 @@ async function main() {
     ok: health.ok,
     ms: health.ms,
     detail: healthy.filter((l) => l.includes('❌')).join(' ') || (healthy.length + ' 项全部正常'),
+    skipped: false,
   });
 
   // 2. 会话隔离（小窗只在该会话出现、切走/切回耗时）
@@ -51,7 +62,8 @@ async function main() {
     name: '会话隔离',
     ok: scope.ok,
     ms: scope.ms,
-    detail: [hide.replace(/^\s*✅\s*/, ''), back.replace(/^\s*✅\s*/, '')].filter(Boolean).join('｜') || '未通过',
+    skipped: Boolean(skipLine(scope.out)),
+    detail: skipLine(scope.out) || detailOr([hide.replace(/^\s*✅\s*/, ''), back.replace(/^\s*✅\s*/, '')], scope.ok),
   });
 
   // 3. 帧率（默认 12 秒）
@@ -63,7 +75,8 @@ async function main() {
     name: '帧率压测',
     ok: fps.ok,
     ms: fps.ms,
-    detail: [fpsLine, byteLine, pushLine].map((s) => s.replace(/^\s{2}/, '')).filter(Boolean).join('｜') || '未通过',
+    skipped: Boolean(skipLine(fps.out)),
+    detail: skipLine(fps.out) || detailOr([fpsLine, byteLine, pushLine].map((s) => s.replace(/^\s{2}/, '')), fps.ok),
   });
 
   // 4. 稳定性：短跑 2 轮，抓「任务变慢/失败」这类回归（完整巡检用 npm run soak）
@@ -74,16 +87,20 @@ async function main() {
     name: '任务稳定性',
     ok: soak.ok,
     ms: soak.ms,
-    detail: [soakResult, soakMem].map((s) => s.replace(/^\s{2}/, '')).filter(Boolean).join('｜') || '未通过',
+    skipped: Boolean(skipLine(soak.out)),
+    detail: skipLine(soak.out) || detailOr([soakResult, soakMem].map((s) => s.replace(/^\s{2}/, '')), soak.ok),
   });
 
-  const failed = steps.filter((s) => !s.ok);
+  const failed = steps.filter((s) => !s.ok && !s.skipped);
+  const skippedSteps = steps.filter((s) => s.skipped);
   const w = Math.max(...steps.map((s) => s.name.length)) + 2;
   console.log('\n巡检结果（' + startedAt.toLocaleString('zh-CN') + '）\n');
   for (const s of steps) {
-    console.log((s.ok ? '  ✅ ' : '  ❌ ') + s.name.padEnd(w) + (s.ms / 1000).toFixed(1) + 's  ' + s.detail);
+    const mark = s.skipped ? '  ⏭️ ' : (s.ok ? '  ✅ ' : '  ❌ ');
+    console.log(mark + s.name.padEnd(w) + (s.ms / 1000).toFixed(1) + 's  ' + s.detail);
   }
-  console.log('\n' + (failed.length ? failed.length + ' 项未通过：' + failed.map((s) => s.name).join('、') : '全部正常') + '\n');
+  const skipNote = skippedSteps.length ? '，环境跳过 ' + skippedSteps.length + ' 项' : '';
+  console.log('\n' + (failed.length ? failed.length + ' 项未通过：' + failed.map((s) => s.name).join('、') : '全部正常') + skipNote + '\n');
 
   const dir = path.join(ROOT, 'reports');
   fs.mkdirSync(dir, { recursive: true });
@@ -92,11 +109,12 @@ async function main() {
     '# 巡检报告',
     '',
     '- 时间：' + startedAt.toISOString(),
-    '- 结果：' + (failed.length ? failed.length + ' 项未通过' : '全部正常'),
+    '- 结果：' + (failed.length ? failed.length + ' 项未通过' : '全部正常')
+      + (skippedSteps.length ? '（环境跳过 ' + skippedSteps.length + ' 项）' : ''),
     '',
     '| 项目 | 结果 | 耗时 | 关键数据 |',
     '| --- | --- | --- | --- |',
-    ...steps.map((s) => '| ' + s.name + ' | ' + (s.ok ? 'PASS' : 'FAIL') + ' | ' + (s.ms / 1000).toFixed(1) + 's | ' + s.detail.replace(/\|/g, '/') + ' |'),
+    ...steps.map((s) => '| ' + s.name + ' | ' + (s.skipped ? 'SKIP' : (s.ok ? 'PASS' : 'FAIL')) + ' | ' + (s.ms / 1000).toFixed(1) + 's | ' + s.detail.replace(/\|/g, '/') + ' |'),
     '',
   ].join('\n');
   fs.writeFileSync(file, md);

@@ -120,7 +120,7 @@ async function main() {
   const rows = [
     ['时长', elapsed.toFixed(1) + 's，目标/实际帧率 ' + TARGET_FPS + ' / ' + actualFps.toFixed(1) + ' fps'],
     ['小窗自报帧率', validSamples.length ? '平均 ' + avgSample.toFixed(1) + '｜中位 ' + median(validSamples).toFixed(1) + '｜最低 ' + Math.min(...validSamples).toFixed(1) + '（' + fpsSamples.length + ' 次采样）' : '没有采样到有效帧率'],
-    ['单帧体积', avgBytes + 'B（' + target.width + 'px 宽出图，' + (process.env.FPS_CHECK_EXPANDED === '1' ? '放大态' : '收起态') + '）'],
+    ['单帧体积', avgBytes + 'B（' + (target.width || 600) + 'px 宽出图，' + (process.env.FPS_CHECK_EXPANDED === '1' ? '放大态' : '收起态') + '）'],
     ['推一帧耗时', '平均 ' + Math.round(pushTimes.reduce((a, b) => a + b, 0) / pushTimes.length) + 'ms｜中位 ' + median(pushTimes) + 'ms｜最长 ' + Math.max(...pushTimes) + 'ms'],
     ['小窗内存', rssStart + 'MB → ' + rssEnd + 'MB（变化 ' + (rssEnd - rssStart >= 0 ? '+' : '') + (rssEnd - rssStart) + 'MB）'],
   ];
