@@ -28,7 +28,7 @@ import { ensureAppRunning, waitForWindow, dismissOnboarding,
          readSafe, findSafe, quitApp } from './core/background.mjs';
 
 const app = { name: 'Steam', bundle: 'com.valvesoftware.steam', process: 'steam_osx' };
-const launch = await ensureAppRunning(app);        // open -g，不激活前台
+const launch = await ensureAppRunning(app);        // open -g -j：不激活前台、也不闪窗口
 await waitForWindow(app.name, { timeoutMs: 12000 }); // 等窗口真的建出来
 await dismissOnboarding(app.name);                 // 只点「继续/开始使用」这类白名单按钮
 const tree = await readSafe(app.name);             // 读前记前台、读后还原

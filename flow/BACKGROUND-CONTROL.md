@@ -8,7 +8,7 @@
 | --- | --- |
 | frontName() | 当前前台应用名（System Events，约 120ms） |
 | isAppRunning({bundleId, appName, processName}) | 应用是否在运行（优先英文可执行名 pgrep -x） |
-| ensureAppRunning({...}) | 后台启动：已在跑就直接返回，没跑才 open -g |
+| ensureAppRunning({...}) | 后台启动：已在跑就直接返回，没跑才 `open -g -j`（连窗口都不显示；旧行为设 `AGENT_LAUNCH_HIDDEN=0`） |
 | state(app) | 读界面树文本（裸读，某些应用会被顶前台，探索性场景用 readSafe） |
 | find(app, {role, text, limit}) | 按角色/文字查元素（同上，探索性场景用 findSafe） |
 | click(app, elementIndex) | AX 语义点击 |
@@ -135,7 +135,8 @@ npm run user:active  # 你在用 A 时，后台控 B，A 的界面与前台都�
 三条结论：
 
 1. **读 + 点 + 设值在后台都成立**：全程只用 `include_screenshot=false` 的 AX 通路，7 个应用前台一个都没被抢。
-2. **冷启动不跳前台**：`open -g -a <应用>` 起应用，窗口会出现但不激活；实测备忘录冷启动前后前台都是 DeepSeek Harness。
+2. **冷启动不跳前台、也不闪窗口**：`open -g -j -a <应用>` 起应用，不激活且窗口不显示；
+   实测 FastZip / iRightMouse 加 `-j` 后窗口仍建出来、AX 树照样可读写、画面能抓，前台全程是 DeepSeek Harness。
 3. **回显受限于桌面**：窗口在当前桌面 → live；在别的桌面且系统没渲染 → 纯色帧，标记 `offscreen`
    （仍可后台操作，只是画面抓不到）。
 

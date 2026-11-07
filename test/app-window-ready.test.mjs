@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ensureAppRunning,
+  launchFlags,
   waitForWindow,
   parseDialogDump,
   pickOnboardingButton,
@@ -279,4 +280,9 @@ test('退出保护：显示名查不到弹窗时，按进程名也要查到，�
   assert.equal(r.mode, 'needs-confirm');
   assert.ok(r.detail.includes('未强杀'));
   assert.ok(!calls.some((c) => c.includes('-TERM')), '查到保存弹窗时不许发 TERM');
+});
+test('后台启动参数：默认隐藏窗口，AGENT_LAUNCH_HIDDEN=0 才正常显示', () => {
+  assert.deepEqual(launchFlags({ env: {} }), ['-g', '-j']);
+  assert.deepEqual(launchFlags({ env: { AGENT_LAUNCH_HIDDEN: '0' } }), ['-g']);
+  assert.deepEqual(launchFlags({ env: { AGENT_LAUNCH_HIDDEN: '1' } }), ['-g', '-j']);
 });

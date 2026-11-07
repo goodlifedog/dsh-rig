@@ -65,7 +65,18 @@ export async function isAppRunning({ bundleId, appName, processName }) {
 }
 
 /**
- * 后台启动应用：open -g 不激活前台；返回 { launched, front, frontUnchanged }。
+ * 后台启动参数（纯函数）：-g 不切前台，-j 连窗口都不显示。
+ *
+ * 实测（FastZip / iRightMouse）加 -j 后窗口仍建出来、AX 树照样可读写，
+ * 但用户不会再看到一闪而过的窗口。需要旧行为（窗口正常显示）时设 AGENT_LAUNCH_HIDDEN=0。
+ */
+export function launchFlags(options = {}) {
+  const env = (options && options.env) || process.env;
+  return env.AGENT_LAUNCH_HIDDEN === '0' ? ['-g'] : ['-g', '-j'];
+}
+
+/**
+ * 后台启动应用：open -g -j 不激活前台、不闪窗口；返回 { launched, front, frontUnchanged }。
  * 已经在运行的应用直接返回（不去碰它，避免某些应用被 open 唤起时抢前台）。
  */
 export async function ensureAppRunning({ bundleId, appName, processName }, options = {}) {
@@ -74,7 +85,7 @@ export async function ensureAppRunning({ bundleId, appName, processName }, optio
     frontName,
     isAppRunning,
     sleep,
-    openApp: (args) => exec('/usr/bin/open', ['-g', ...args], { timeout: 8000 }),
+    openApp: (args) => exec('/usr/bin/open', [...launchFlags(), ...args], { timeout: 8000 }),
   }, opts.deps || {});
   const waitMs = Number.isFinite(opts.waitMs) ? opts.waitMs : 8000;
   const before = await deps.frontName();
