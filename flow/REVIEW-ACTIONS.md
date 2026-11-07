@@ -68,6 +68,13 @@ flow/patch-deploy-freshness.diff     代码新鲜度检查（service:status 能�
 - 同一份任务里备忘录那段是安全的（我们自己新建的笔记，标题带 `[AGENT-TEST]`），只有文本编辑这一步没有「这是不是我们的文稿」的判断
 - 建议二选一：① 写之前读一下该文本区内容，只有为空、或已包含我们写的 `后台写入：` 字样才写；否则 `recordSkipped('文本编辑里有用户内容，跳过写入以免覆盖')`；② 更稳：自己做一份文稿再写（`make new document` / 快捷键新建），写完关掉自己那份
 
+### 2.85 `form-fill` 恢复用户原值不在 `finally`，中途异常会让输入框停在测试值上
+
+- `core/tasks/form-fill.mjs` 的注入脚本里，顺序是：读原值 → `writeValue(NEWVAL)` → 重新读状态 → `writeValue(out.original)` 恢复
+- 但这段整体在一个 `try { … } catch (e) { out.error = … }` 里，**恢复不是 `finally`**：如果 `setNew` 之后、恢复之前有任何一步抛异常（`getAXState` 超时、页面跳转、CDP 断开），恢复就被跳过
+- 结果：用户自己的搜索框内容被换成了测试关键词，而且清理脚本不会去动 Chrome 里的输入框
+- 建议：把恢复放进 `finally`，并在恢复失败时至少再重试一次（照 `writeValue` 自带的 4 次重试即可）；同时把「恢复失败」当**真失败**上报，别混在环境跳过里
+
 ### 3. 笔记删除缺最后一层标记
 
 - 现状：`core/note-cleanup.mjs` 删除行时不看标题（靠「只删顶部 N 条 + `--force`」挡着）
