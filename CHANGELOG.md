@@ -8,6 +8,8 @@
 - 新增 `dialogs()` / `dismissOnboarding()`：首启欢迎弹窗是 app-modal，会把 Apple 事件整个卡住（Pages Creator Studio 连 count documents 都超时 -1712），但 System Events 仍能读到结构；只点「继续/开始使用/知道了」白名单按钮，见到「存储/删除/取消」一律不点
 - 新增 `quitApp()`：先优雅退出，退不掉（被弹窗卡住）再按进程 TERM，如实回报 quit/term/already-stopped
 - 新增 `windowCount()`、`parseDialogDump()`、`pickOnboardingButton()` 纯函数 + 10 项单测（窗口迟到、一直没窗口、-1 不当成功、坏行解析、破坏性按钮不点）
+- 新增 `npm run apps:probe`：按应用名或门类预设一条命令探测一批应用（名字自动解析 bundle/进程名），跑完自动刷新清点；支持 --dry/--keep/--no-refresh；12 项单测覆盖参数解析、按名字匹配、扫描目录
+- 清点与探测共用 `core/app-scan.mjs` 扫描逻辑（原来清点脚本里自己写了一份），少一份会漂移的重复代码
 - 清点报告末尾自动生成「下一步补测」命令：把未测应用拼成 MATRIX_APPS_JSON，复制即可跑（3 项单测）
 - 新增 `core/app-strategy.mjs` 操控策略判定：按探测结果自动给「元素级驱动 / 只读状态 / 画面+坐标 / 专用通道 / 不接管 / 应用侧限制」，不用人肉看报告；清点和矩阵报告都多出「建议控法」一列；9 项单测
 - 修自动收尾的数据安全风险：`quitApp()` 优雅退出失败时先检查有没有「保存/删除」类弹窗，有就返回 `needs-confirm` 且绝不发 TERM（强杀会丢用户未保存的内容，文本编辑实测会弹这个）；3 项单测覆盖（有弹窗不强杀、没弹窗走 TERM、TERM 后仍在跑如实报）

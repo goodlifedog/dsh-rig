@@ -48,7 +48,11 @@ MATRIX_DISMISS=0 npm run matrix                  # 不点首启弹窗
 想知道「本机装的软件有哪些还没适配」，直接跑清点：
 
 ```bash
-npm run apps:inventory   # 扫描 /Applications，对照预设和全部历史矩阵报告，输出 reports/app-inventory-*.md
+npm run apps:inventory                 # 扫描 /Applications，对照预设和全部历史矩阵报告，输出 reports/app-inventory-*.md
+npm run apps:probe -- GarageBand,UURemote   # 按应用名临时探测（自动解析 bundle/进程名），跑完刷新清点
+npm run apps:probe -- --preset tools        # 按门类探测
+npm run apps:probe -- GarageBand --dry      # 只打印将要执行的命令
+npm run apps:probe -- GarageBand --keep     # 探测完不关闭（排障时用）
 ```
 
 清点会如实区分「已适配 / 可只用画面 / 专用方案 / 不动 / 限制 / 未测 / 未安装」，

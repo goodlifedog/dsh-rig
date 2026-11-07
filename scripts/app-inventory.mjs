@@ -5,68 +5,19 @@
  *   node scripts/app-inventory.mjs
  *   npm run apps:inventory
  */
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PRESETS, presetNames, SPECIAL_APP_HANDLING } from '../core/app-presets.mjs';
 import { flattenPresets, mergeInventory, renderInventoryMarkdown, normalizeName, nextProbeCommands } from '../core/app-inventory.mjs';
+import { scanDirs, readBundleInfo } from '../core/app-scan.mjs';
 
-const exec = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
 const USER_DIRS = ['/Applications', '/Applications/Utilities'];
 // 系统应用只取预设里提到的那几个（Finder 在 CoreServices 里，单独补），否则报告会被几十个系统小工具淹掉
 const SYSTEM_DIRS = ['/System/Applications', '/System/Applications/Utilities'];
 const FINDER_PATH = '/System/Library/CoreServices/Finder.app';
-
-async function bundleInfo(appPath) {
-  const plist = path.join(appPath, 'Contents', 'Info.plist');
-  const read = async (key) => {
-    try {
-      const { stdout } = await exec('/usr/libexec/PlistBuddy', ['-c', 'Print :' + key, plist], { timeout: 4000 });
-      return String(stdout).trim();
-    } catch {
-      return '';
-    }
-  };
-  const [bundle, exe, display] = await Promise.all([
-    read('CFBundleIdentifier'),
-    read('CFBundleExecutable'),
-    read('CFBundleDisplayName'),
-  ]);
-  return { bundle, exe, display };
-}
-
-async function scanOne(appPath) {
-  const info = await bundleInfo(appPath);
-  if (!info.bundle) return null;
-  return {
-    name: info.display || path.basename(appPath).replace(/\.app$/, ''),
-    bundle: info.bundle,
-    process: info.exe,
-    appPath,
-  };
-}
-
-async function scanDirs(dirs) {
-  const out = [];
-  for (const dir of dirs) {
-    let entries = [];
-    try {
-      entries = await fs.promises.readdir(dir, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      if (!entry.isDirectory() || !entry.name.endsWith('.app')) continue;
-      const app = await scanOne(path.join(dir, entry.name));
-      if (app) out.push(app);
-    }
-  }
-  return out;
-}
 
 /**
  * 合并全部历史矩阵报告（按文件时间从旧到新），同一个 bundle 以最近一次为准。
@@ -109,7 +60,10 @@ async function main() {
   const sysApps = (await scanDirs(SYSTEM_DIRS)).filter(
     (a) => presetBundles.has(a.bundle) || presetNameKeys.has(normalizeName(a.name)),
   );
-  const finder = await scanOne(FINDER_PATH);
+  const finderInfo = await readBundleInfo(FINDER_PATH);
+  const finder = finderInfo.bundle
+    ? { name: finderInfo.display || 'Finder', bundle: finderInfo.bundle, process: finderInfo.exe || 'Finder' }
+    : null;
   const installed = [...userApps, ...sysApps, ...(finder ? [finder] : [])];
   const matrix = matrixHistory();
   const rows = mergeInventory({
