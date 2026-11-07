@@ -6,7 +6,7 @@
 
 ```bash
 git apply flow/patch-publish.diff        # 发布配置（发布前必打）
-git apply flow/patch-scope-lock.diff     # 锁屏时 scope:check 标环境跳过而不是报红
+# patch-scope-lock 已应用（锁屏时 scope:check 环境跳过），文件已删
 # patch-ports 已应用（端口单一来源 core/ports.mjs），文件已删
 # repocheck-zip / packaging-files 已应用（ZIP 降级 + 打包白名单），文件已删
 ```
@@ -154,7 +154,7 @@ AGENTD_PORT=7799 npm run doctor   # 应报 7799 未启动
 npm run doctor                     # 应全绿
 ```
 
-### patch-scope-lock.diff（28 行 / 1 个文件）
+### ✅ patch-scope-lock.diff（28 行 / 1 个文件）—— 已应用，补丁文件已删除
 
 **问题（实测）**：锁屏状态下跑 `npm run scope:check` 会红——`❌ 读得到当前会话标题 拿不到 dshTitle`。
 锁屏时系统前台是 loginwindow，宿主窗口标题读不到，这是环境限制，不是会话隔离坏了。
