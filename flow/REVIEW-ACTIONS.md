@@ -76,7 +76,16 @@ flow/patch-deploy-freshness.diff     代码新鲜度检查（service:status 能�
 - 影响：用户机器上 ocu 没装/路径不对时，看到的是崩溃栈而不是「请先装 ocu」
 - 建议：记日志后继续服务；overlay 崩了重载并把事件写进 `/health`
 
-## P2 · 打磨（按需，不阻塞发布）
+## P1.5 · 安全边界的一处不一致
+
+### 2.5 CDP 端口主人校验存在，但主路径没调用
+
+- `core/safety.mjs` 有 `debugPortTrust()`（端口主人 pid 必须等于期望应用 pid），`cdp-driver.mjs:161` 也确实调用了——**但只在调用方显式传 `expectedPid` 时才校验**
+- 实际情况：`core/tasks/cdp-driver.mjs:55` 在 `launchWithDebug` 之后直接 `attachPage({ port })`，没传 expectedPid；`launchWithDebug` 也只返回 version，不返回应用 pid
+- 风险链路：调试端口是按 bundle id 哈希出来的**固定值**（9330-9389）。若本机有别的进程先占住该端口，应用带 `--remote-debugging-port` 启动会失败，但我们的 `probe` 探测到「端口有 CDP 响应」就认为成功，随后连上的是别人的调试服务
+- 对比：`core/browser.mjs` 用 `--remote-debugging-port=0` + 自己的 user-data-dir 读 `DevToolsActivePort`，随机端口，风险低得多
+- 建议：`launchWithDebug` 顺带取到应用 pid（已有 `findChromePid` 这类工具可复用），`attachPage({ port, expectedPid })`；拿不到 pid 时至少校验端口主人的可执行路径属于该应用 bundle
+
 
 ### 2.7 看门狗判定「用户意图」只看次数，不看人有没有真的在动
 
