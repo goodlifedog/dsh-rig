@@ -2,6 +2,11 @@
 
 ## 未发布
 
+- overlay 控制面加票据：`/frame`、`/window`、`/visible`、`/health`、`/windows` 等全部接口都要求 `X-Agent-Token`（与 daemon 共用 `~/.desktop-agent/api-token`，文件 600/目录 700）；有 token 才放行，实测无 token 401、有 token 200
+- 票据实现抽成 `core/local-token.cjs`（CJS，给 daemon/overlay）+ `core/local-token.mjs`（ESM 外观），避免两份实现漂移
+- 16 个 overlay 调用方（任务脚本/巡检脚本/agentd 客户端）统一从 `localHeaders()` 取头，机械替换后逐个语法检查
+- 补 2 项 overlay 票据单测（无 token 读写都 401、带对 token 正常/错的 401/查询参数也认）
+- 实测 `npm run accept`：11/11 通过、2 项环境跳过、exit=0（token 全量开启下）
 - `service:status` 同时检查 overlay（7788）的监听者与 launchd 受管 pid，`service:restart` 也会把手工实例的 overlay 换成 launchd 受管实例（原来只处理 daemon，overlay 同样存在"手工实例占端口、launchd 拉不起来"）
 - 验收的「活动触发显示」改为区分环境状态：锁屏 / 取不到前台 / 前台不是宿主 / 宿主窗口不可见都算环境跳过，不再把环境波动判成失败；验收结束把前台还给宿主
 - 新增 `isOurOverlayCommand` 单测：只认本仓库 overlay 目录下的 Electron 进程

@@ -25,6 +25,7 @@ const platform = require('./platform.js');
 const supervisor = require('./supervisor.js');
 const { normalizeDshTitle, matchesTitle } = require('./session-gate.js');
 const { createOverlayServer, DEFAULT_SESSION, SESSION_PATTERN } = require('./server.js');
+const { ensureTokenSync } = require('../core/local-token.cjs');
 const { normalizeWindowId, resolveWindowId } = require('./window-id.js');
 const { computeFrameTarget } = require('./frame-target.js');
 const layout = require('./layout.js');
@@ -1660,6 +1661,8 @@ async function startServer() {
   overlayServer = createOverlayServer({
     host: config.host,
     port: config.port,
+    // 本地控制面票据：启动时确保存在（600 权限），所有请求都要带
+    token: ensureTokenSync(),
     handlers: {
       onLog: (session, text, titleHint) => {
         const s = ensureSession(session, 'HTTP /log');

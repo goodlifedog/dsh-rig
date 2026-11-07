@@ -20,6 +20,7 @@
  */
 
 const http = require('node:http');
+const { isAuthorized } = require('../core/local-token.cjs');
 
 // 外部推帧是 base64 dataURL，单帧通常 50–200KB，给足空间
 // headless/CDP 截图可能是较大的 PNG/JPEG，给到 8MB
@@ -153,6 +154,9 @@ function createOverlayServer(options) {
   const host = opts.host || '127.0.0.1';
   const port = opts.port === undefined ? 7788 : opts.port;
   const handlers = opts.handlers || {};
+  // 配了 token 就要求所有请求带上（客户端从 ~/.desktop-agent/api-token 读）；
+  // 测试环境不传 token，保持原有行为，方便单测直接打接口。
+  const token = String(opts.token || '');
 
   async function route(req, res) {
     const url = new URL(req.url || '/', 'http://' + (req.headers.host || '127.0.0.1'));
@@ -164,6 +168,10 @@ function createOverlayServer(options) {
       throw httpError(403, '不支持跨域预检');
     }
     assertLocalClient(req, method);
+    // 控制面票据：挡"本机别的用户/别的进程"随意读写窗口、推帧、改会话
+    if (token && !isAuthorized(req.headers, token, url.searchParams.get('token') || '')) {
+      throw httpError(401, '缺少或无效的 X-Agent-Token（从 ~/.desktop-agent/api-token 读取）');
+    }
 
     if (pathname === '/' && method === 'GET') {
       return json(res, 200, {

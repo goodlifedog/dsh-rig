@@ -17,6 +17,7 @@ import { isAppRunning, readSafe, windowCount, frontName, settleFront } from '../
 import { probeDebugPort, debugPortFor } from '../core/cdp-driver.mjs';
 import { checkAutomationPermission } from '../core/applescript-driver.mjs';
 import { closeOcuMcp } from '../core/ocu-mcp.mjs';
+import { localHeaders } from '../core/local-token.mjs';
 
 const OVERLAY = process.env.OVERLAY_URL || 'http://127.0.0.1:7788';
 
@@ -35,7 +36,7 @@ function appPid(app) {
 /** 问 overlay 的系统窗口层：某个应用有几个窗口（AX 窗口数不可信时的补充证据，按 pid 匹配最可靠） */
 async function overlayWindowCount(app) {
   try {
-    const res = await fetch(OVERLAY + '/windows', { signal: AbortSignal.timeout(2000) });
+    const res = await fetch(OVERLAY + '/windows', { headers: localHeaders(), signal: AbortSignal.timeout(2000) });
     const data = await res.json();
     const windows = data.windows || [];
     const pid = appPid(app);

@@ -16,6 +16,7 @@ import { execFileSync } from 'node:child_process';
 import { getOcuMcp, closeOcuMcp } from '../ocu-mcp.mjs';
 import { restoreFront } from '../front-watch.mjs';
 import { isScreenLocked } from '../platform.mjs';
+import { localHeaders } from '../local-token.mjs';
 
 const APP = process.env.CLI_TERM_APP || 'Ghostty';
 const PROMPT = process.env.CLI_PROMPT || '只回复两个字：收到';
@@ -31,11 +32,11 @@ function front() {
   } catch { return '(unknown)'; }
 }
 const getJson = async (url) => {
-  try { return await (await fetch(url, { signal: AbortSignal.timeout(3000) })).json(); } catch { return null; }
+  try { return await (await fetch(url, { headers: localHeaders(), signal: AbortSignal.timeout(3000) })).json(); } catch { return null; }
 };
 const post = (pathname, body) => fetch(OVERLAY + pathname, {
   method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
+  headers: localHeaders({ 'Content-Type': 'application/json' }),
   body: JSON.stringify(body || {}),
   signal: AbortSignal.timeout(5000),
 }).then((r) => r.json()).catch(() => null);

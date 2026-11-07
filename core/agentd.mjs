@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { resolveOcu } from './platform.mjs';
+import { localHeaders } from './local-token.mjs';
 const OCU = resolveOcu() || path.join(os.homedir(), '.local/bin/ocu');
 const OVERLAY = process.env.OVERLAY_URL || 'http://127.0.0.1:7788';
 // 当前 agent 所属的 DSH 会话：每个会话召唤自己的小窗，缺省 default（旧行为不变）
@@ -22,7 +23,7 @@ async function post(pathname, body) {
   try {
     const res = await fetch(OVERLAY + pathname, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: localHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ session: AGENT_SESSION, ...(body || {}) }),
       signal: AbortSignal.timeout(1500),
     });
@@ -44,26 +45,26 @@ export const overlay = {
   // 小窗当前需要多大的帧（收起 600px / 放大 1920px）：推帧方按它出图，别固定推 2560px
   async frameTarget() {
     try {
-      const res = await fetch(OVERLAY + '/frame-target?session=' + encodeURIComponent(AGENT_SESSION), { signal: AbortSignal.timeout(1500) });
+      const res = await fetch(OVERLAY + '/frame-target?session=' + encodeURIComponent(AGENT_SESSION), { headers: localHeaders(), signal: AbortSignal.timeout(1500) });
       return await res.json();
     } catch { return { ok: false, offline: true }; }
   },
   close: () => post('/close', {}),
   async health() {
     try {
-      const res = await fetch(OVERLAY + '/health?session=' + encodeURIComponent(AGENT_SESSION), { signal: AbortSignal.timeout(1500) });
+      const res = await fetch(OVERLAY + '/health?session=' + encodeURIComponent(AGENT_SESSION), { headers: localHeaders(), signal: AbortSignal.timeout(1500) });
       return await res.json();
     } catch { return { ok: false, offline: true }; }
   },
   async sessions() {
     try {
-      const res = await fetch(OVERLAY + '/sessions', { signal: AbortSignal.timeout(1500) });
+      const res = await fetch(OVERLAY + '/sessions', { headers: localHeaders(), signal: AbortSignal.timeout(1500) });
       return await res.json();
     } catch { return { ok: false, offline: true }; }
   },
   async findWindow(pattern) {
     try {
-      const res = await fetch(OVERLAY + '/windows', { signal: AbortSignal.timeout(3000) });
+      const res = await fetch(OVERLAY + '/windows', { headers: localHeaders(), signal: AbortSignal.timeout(3000) });
       const data = await res.json();
       const re = pattern instanceof RegExp ? pattern : new RegExp(pattern, 'i');
       return (data.windows || []).find((w) => re.test(w.title || '')) || null;

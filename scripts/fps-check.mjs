@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { launch } from '../core/browser.mjs';
+import { localHeaders } from '../core/local-token.mjs';
 
 const OVERLAY = process.env.OVERLAY_URL || 'http://127.0.0.1:7788';
 const SESSION = 'fps-check';
@@ -14,11 +15,11 @@ const TARGET_FPS = Math.max(2, Number(process.env.FPS_CHECK_TARGET) || 13);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const getJson = async (url) => {
-  try { return await (await fetch(url, { signal: AbortSignal.timeout(3000) })).json(); } catch { return null; }
+  try { return await (await fetch(url, { headers: localHeaders(), signal: AbortSignal.timeout(3000) })).json(); } catch { return null; }
 };
 const post = (p, body) => fetch(OVERLAY + p, {
   method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
+  headers: localHeaders({ 'Content-Type': 'application/json' }),
   body: JSON.stringify({ session: SESSION, ...(body || {}) }),
   signal: AbortSignal.timeout(5000),
 }).then((r) => r.json()).catch(() => null);
@@ -102,7 +103,7 @@ async function main() {
   await browser.close();
   await post('/status', { clear: true });
   await post('/visible', { visible: false });
-  await fetch(OVERLAY + '/close', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session: SESSION }) }).catch(() => {});
+  await fetch(OVERLAY + '/close', { method: 'POST', headers: localHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ session: SESSION }) }).catch(() => {});
 
   const actualFps = sent / elapsed;
   const validSamples = fpsSamples.filter((v) => v > 0);

@@ -8,7 +8,7 @@
 | 攻击面 | 后果 | 现在的处理 |
 | --- | --- | --- |
 | 浏览器页面调本地接口 | 任何网页能读窗口标题（隐私）、往浮窗塞图（钓鱼）、让守护进程跑任务（打字/退出应用） | overlay 7788 和 daemon 7789 都**拒绝带 Origin 的请求**（403），并拒掉跨域预检；POST 必须 `Content-Type: application/json`（415），表单式跨站提交进不来 |
-| 本机任意进程驱动守护进程 | 任何本地进程 POST /run 就能让后台跑任务（打字、退出应用） | daemon 的 `/run`、`/stop`、`/selftest` 必须带 `X-Agent-Token`；token 在服务端启动时随机生成并写到 `~/.desktop-agent/api-token`（权限 600），客户端从同一文件读，实测无 token 401 |
+| 本机任意进程驱动守护进程 / 小窗 | 任何本地进程都能 POST /run 让后台跑任务，或调 overlay 读窗口标题、往浮窗塞图 | **daemon 与 overlay 的全部接口都要 `X-Agent-Token`**；token 启动时随机生成写到 `~/.desktop-agent/api-token`（文件 600、目录 700），客户端自动读取；实测两个服务无 token 均 401 |
 | AppleScript 注入 | 应用名/进程名里塞引号或换行把脚本截断，执行任意命令 | 拼进脚本的名字走白名单校验（`isSafeIdentifier`），含引号/反斜杠/控制字符一律不执行；`isSafeScriptLiteral` 再做一层 |
 | AppleScript 授权弹窗 | 后台流程被系统弹框打断，或替用户点"允许" | 先用 `AEDeterminePermissionToAutomateTarget(askUserIfNeeded=false)` 静默查授权，没授权**不发 Apple 事件** |
 | CDP 端口劫持 | 本地进程抢先监听调试端口冒充 CDP，我们连上去等于把页面内容/输入交给它 | 连之前用 `lsof` 查端口主人，必须等于目标应用 pid，否则拒绝（`debugPortTrust`） |
@@ -29,9 +29,10 @@
 
 ## 三、还没堵的（如实列出）
 
-1. **overlay 的写接口还没加 token**：daemon 的危险接口已经要 token，overlay（7788）的
-   `/frame`、`/window`、`/visible`、`/close` 等仍是"本机+无 Origin"即可调用。
-   同一用户下的恶意程序仍能往浮窗塞图（钓鱼）；跨用户调用同理。下一步把 token 铺到 overlay。
+1. **同一用户下的恶意进程能读到 token 文件**：token 防的是"别的用户 / 浏览器页面 / 误连"，
+   挡不住已经以你这个用户身份运行的恶意程序（它能读你的文件、装键盘记录、读 token）。
+   这属于操作系统层面的信任边界，不在工具能解决的范围。服务端已经做到：daemon 与 overlay
+   的全部接口都要 `X-Agent-Token`（token 文件 600、目录 700），没 token 一律 401。
 2. **同用户恶意进程本来就能读 token 文件**：token 防的是"别的用户/浏览器/误连"，
    防不住已经以你这个用户身份运行的恶意程序（它能读你的文件、装键盘记录），
    这属于操作系统层面的信任边界，不在工具能解决的范围。

@@ -4,6 +4,7 @@
 //   SOAK_ROUNDS=12 node scripts/soak.mjs
 import { execFileSync } from 'node:child_process';
 import { readToken, withTokenHeaders } from '../core/local-token.mjs';
+import { localHeaders } from '../core/local-token.mjs';
 
 const DAEMON = process.env.AGENTD_URL || 'http://127.0.0.1:7789';
 const OVERLAY = process.env.OVERLAY_URL || 'http://127.0.0.1:7788';
@@ -14,7 +15,7 @@ const TASKS = (process.env.SOAK_TASKS || 'electron-demo,headless-demo').split(',
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const getJson = async (url, timeout = 3000) => {
-  try { return await (await fetch(url, { signal: AbortSignal.timeout(timeout) })).json(); } catch { return null; }
+  try { return await (await fetch(url, { headers: localHeaders(), signal: AbortSignal.timeout(timeout) })).json(); } catch { return null; }
 };
 const postJson = async (url, body) => {
   try {

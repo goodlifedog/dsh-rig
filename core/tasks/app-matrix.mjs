@@ -20,6 +20,7 @@ import { presetApps } from '../app-presets.mjs';
 import { scanDirs, findByBundle } from '../app-scan.mjs';
 import { recommendStrategy } from '../app-strategy.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
+import { localHeaders } from '../local-token.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
@@ -82,11 +83,11 @@ async function restoreFrontChecked(target, attempts = 4) {
 }
 
 const getJson = async (url) => {
-  try { return await (await fetch(url, { signal: AbortSignal.timeout(3000) })).json(); } catch { return null; }
+  try { return await (await fetch(url, { headers: localHeaders(), signal: AbortSignal.timeout(3000) })).json(); } catch { return null; }
 };
 const post = (pathname, body) => fetch(OVERLAY + pathname, {
   method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
+  headers: localHeaders({ 'Content-Type': 'application/json' }),
   body: JSON.stringify(body || {}),
   signal: AbortSignal.timeout(5000),
 }).then((r) => r.json()).catch(() => null);

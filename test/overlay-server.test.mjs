@@ -172,3 +172,34 @@ test('安全边界：POST 必须是 JSON，表单式跨站提交进不来', asyn
     assert.equal(ok.status, 200, '正常 JSON 客户端不受影响');
   });
 });
+async function withTokenServer(fn, token = 'test-token-123') {
+  const { handlers, calls } = stubHandlers();
+  const srv = createOverlayServer({ host: '127.0.0.1', port: 0, handlers, token });
+  const addr = await srv.listen();
+  const base = 'http://' + addr.address + ':' + addr.port;
+  try { await fn(base, calls); } finally { await srv.close(); }
+}
+
+test('控制面票据：没带 token 的读写都拒绝', async () => {
+  await withTokenServer(async (base) => {
+    const get = await fetch(base + '/windows');
+    assert.equal(get.status, 401);
+    const write = await fetch(base + '/status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: 'x' }),
+    });
+    assert.equal(write.status, 401);
+  });
+});
+
+test('控制面票据：带对 token 就正常；错的照样 401', async () => {
+  await withTokenServer(async (base) => {
+    const ok = await fetch(base + '/windows', { headers: { 'X-Agent-Token': 'test-token-123' } });
+    assert.equal(ok.status, 200);
+    const wrong = await fetch(base + '/windows', { headers: { 'X-Agent-Token': 'nope' } });
+    assert.equal(wrong.status, 401);
+    const viaQuery = await fetch(base + '/health?token=test-token-123');
+    assert.equal(viaQuery.status, 200);
+  });
+});

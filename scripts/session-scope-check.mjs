@@ -1,3 +1,4 @@
+import { localHeaders } from '../core/local-token.mjs';
 'use strict';
 // 会话隔离检查：小窗只能出现在「召唤它的那个会话」里，切走要立刻藏、切回要很快出现。
 //   node scripts/session-scope-check.mjs
@@ -9,10 +10,10 @@ const rows = [];
 function record(name, ok, detail) { rows.push({ name, ok, detail: detail === undefined ? '' : String(detail) }); }
 
 async function api(pathname, init) {
-  const r = await fetch(BASE + pathname, { ...init, signal: AbortSignal.timeout(5000) });
+  const r = await fetch(BASE + pathname, { ...init, headers: localHeaders((init && init.headers) || {}), signal: AbortSignal.timeout(5000) });
   return { status: r.status, json: await r.json().catch(() => null) };
 }
-const post = (pathname, body) => api(pathname, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) }).then((r) => r.json);
+const post = (pathname, body) => api(pathname, { method: 'POST', headers: localHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(body || {}) }).then((r) => r.json);
 const health = (session) => api('/health?session=' + encodeURIComponent(session)).then((r) => r.json);
 
 async function waitFor(check, timeoutMs, stepMs) {

@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { classifyRun } from '../core/run-classify.mjs';
+import { localHeaders } from '../core/local-token.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -14,7 +15,7 @@ function add(name, ok, detail) { rows.push({ name, ok, detail: detail === undefi
 
 async function getJson(url, timeout = 2500) {
   try {
-    const r = await fetch(url, { signal: AbortSignal.timeout(timeout) });
+    const r = await fetch(url, { headers: localHeaders(), signal: AbortSignal.timeout(timeout) });
     return await r.json();
   } catch { return null; }
 }

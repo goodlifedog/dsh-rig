@@ -304,8 +304,9 @@ MATRIX_PRESET=im npm run matrix   # 按门类批量探测：office / im / dev / 
   防止标题里藏 `$(...)` 造成命令注入
 - **浏览器页面调不动本地接口**：overlay(7788) 和 daemon(7789) 拒绝带 Origin 的请求与跨域预检，
   POST 强制 JSON（表单式跨站提交进不来）
-- **危险接口要票据**：daemon 的 `/run`、`/stop`、`/selftest` 必须带 `X-Agent-Token`，
-  token 启动时随机生成写到 `~/.desktop-agent/api-token`（权限 600），命令行客户端自动读取
+- **控制面要票据**：daemon(7789) 与 overlay(7788) **全部接口**都要 `X-Agent-Token`，
+  token 启动时随机生成写到 `~/.desktop-agent/api-token`（文件 600、目录 700），命令行客户端自动读取；
+  实测两个服务无 token 均 401
 - **杀进程前核对身份**：先 `ps` 确认 pid 还是那个进程（防 pid 复用误杀），
   只在命令行确认是本项目 `daemon.mjs` 时才结束端口监听者
 
