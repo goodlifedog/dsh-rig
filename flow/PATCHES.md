@@ -12,7 +12,7 @@ git apply flow/patch-deploy-freshness.diff   # 代码新鲜度检查（可选，
 npm test && npm run repo:check
 ```
 
-三个一起打之后实测：424 项测试全过、`repo:check` 全绿。
+三个一起打之后实测：全量测试全过（当时 424 项，数字会随开发变化）、`repo:check` 全绿。
 
 ## 1. `patch-publish.diff`（78 行 / 3 个文件）
 

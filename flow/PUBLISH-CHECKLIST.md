@@ -54,7 +54,7 @@ node core/cli.mjs foo; echo $? # 应为 2（P1 已实现，无需打补丁）
 
 ## B. 发布配置
 
-- [ ] **B1. 应用发布补丁**（补丁已实测：干净 checkout 里 `git apply` 成功，应用后 381 项测试仍全绿）：`git apply flow/patch-publish.diff`（包名 scoped / bin / files / repository / CI 只跑 macOS / 徽章换真地址六项）
+- [ ] **B1. 应用发布补丁**（补丁已实测：干净 checkout 里 `git apply` 成功，应用后全量测试仍全绿）：`git apply flow/patch-publish.diff`（包名 scoped / bin / files / repository / CI 只跑 macOS / 徽章换真地址六项）
   - 应用后把 `@goodlifedog/desktop-agent` 和 `github.com/tester/desktop-agent` 换成真实值
   - 验证：`python3 -c "import json;d=json.load(open('package.json'));print(d['name'],bool(d['bin']),bool(d['files']),bool(d['repository']))"`
 

@@ -2,7 +2,7 @@
 
 > 只列**还没做**的。已修好的沉到底部，不复述。
 > 详细理由见 [`REVIEW-2026-11-07.md`](REVIEW-2026-11-07.md)，发布流程见 [`PUBLISH-CHECKLIST.md`](PUBLISH-CHECKLIST.md)。
-> 更新：2026-11-08 17:00（**P1 全部由主会话自行实现并有测试**；`patch-p1.diff`、`patch-classify.diff` 已删除——两处实现都已落地，补丁再 apply 会失败。单测 407）
+> 更新：2026-11-08 17:00（**P1 全部由主会话自行实现并有测试**；`patch-p1.diff`、`patch-classify.diff` 已删除——两处实现都已落地，补丁再 apply 会失败。单测 400+）
 >
 > 旧记录：2026-11-08 15:00（`flow/patch-p1.diff` = **232 行 / 7 个文件**，新增 `core/runner.mjs`：日志写入从 `void fd.write()` 改为同步写，避免退出时末行丢失。**`docs/REVIEW.md` 那份 18 条旧审查，现在全部要么已验证修复、要么已进补丁。**）
   ① `node core/cli.mjs foo` → 退出码 2，用法输出到 stderr
@@ -83,7 +83,7 @@ flow/patch-deploy-freshness.diff     代码新鲜度检查（service:status 能�
 - `core/prune.mjs`（58 行）导出 `logTimestamp` / `selectStaleLogs` / `selectExcessReports` / `isPrunablePath`，**全仓零引用**（含测试）
 - 真正在用的是 `scripts/prune.mjs` 自己的 `planPrune`（`npm run prune` 和 `test/prune.test.mjs` 都走它）
 - 两个文件写的是一回事：一套在 core 里没人用，一套在 scripts 里带测试
-- **已按方案②出补丁**：`planPrune` 移进 `core/prune.mjs`（清掉四个零引用导出），`scripts/prune.mjs` 改为 import + 只留 CLI，`test/prune.test.mjs` 改 import 路径。临时克隆里 `node scripts/prune.mjs` 正常、全量 419 项测试全绿
+- **已按方案②出补丁**：`planPrune` 移进 `core/prune.mjs`（清掉四个零引用导出），`scripts/prune.mjs` 改为 import + 只留 CLI，`test/prune.test.mjs` 改 import 路径。临时克隆里 `node scripts/prune.mjs` 正常、全量测试全绿
 
 顺带：`core/driver-resolution.mjs` 的 `DRIVER_ORDER_NOTE` 常量、`core/tasks/greet-verify.mjs` 的 `readChatList` 也是零引用（后者随 BOSS 内容一起走）
 
