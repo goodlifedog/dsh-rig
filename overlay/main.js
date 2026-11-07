@@ -1410,6 +1410,12 @@ async function recoverTarget(s) {
     }
     pushLog(s, '目标窗口已失效，已解绑（窗口重开后请重新绑定）', 'system');
     setWindowId(s, null, 'auto-recover');
+    // setWindowId 的显式解绑会把错误清空，但这里是「因为失效才解绑」：
+    // 清成干净的空状态会让用户以为只是没绑窗口，不知道为什么没画面。
+    // 留一条能看懂的话（state 仍是 no-window，错误文案只解释原因）。
+    s.state.thumbnail.state = 'no-window';
+    s.state.thumbnail.error = '目标窗口已失效，已自动解绑；如果应用还开着，请重新选择窗口';
+    signalThumbState(s, true);
   } finally {
     s.recovering = false;
   }
