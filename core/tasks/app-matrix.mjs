@@ -26,9 +26,11 @@ const DEFAULT_APPS = [
   { name: '系统设置', bundle: 'com.apple.systempreferences', process: 'System Settings' },
   { name: 'Clash Verge', bundle: 'com.nicenormalboy.clash-verge', process: 'clash-verge' },
   { name: 'Telegram', bundle: 'com.tdesktop.Telegram', process: 'Telegram' },
-  // 补两个门类：终端（Ghostty）与 Electron 聊天（ChatGPT）
+  // 补三个门类：终端、Electron 聊天、原生浏览器、办公文档
   { name: 'Ghostty', bundle: 'com.mitchellh.ghostty', process: 'ghostty' },
   { name: 'ChatGPT', bundle: 'com.openai.chat', process: 'ChatGPT' },
+  { name: 'Safari', bundle: 'com.apple.Safari', process: 'Safari' },
+  { name: 'WPS Office', bundle: 'com.kingsoft.wpsoffice.mac', process: 'wpsoffice' },
 ];
 
 let APPS = DEFAULT_APPS;

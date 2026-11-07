@@ -3,6 +3,7 @@
 ## 未发布
 
 - bg:verify 汇总里标注「锁屏：前台断言跳过」，避免把部分验证当成全部通过
+- 矩阵默认覆盖扩到 11 个门类（新增 Safari 原生浏览器、WPS Office 办公文档）；README 增「后台能控制哪些软件（实测）」表与已知边界
 - 新增应用能力缓存 `core/capabilities.mjs` + `smartTypeWithCache()`：记住每个应用吃哪种输入方式（成功提前/失败押后），写 `~/.desktop-agent/capabilities.json`，9 项单测；后台控制验收改用它
 - 终端后台控制验收：`npm run terminal:bg` 在 Ghostty 敲 echo + 回车，5 项全过且前台未变；已并入 bg:verify（现 6 项）
 - 发现并修「读取抢前台」：Ghostty / ChatGPT 读界面树会把应用顶到前台（连不截图也发生）；
