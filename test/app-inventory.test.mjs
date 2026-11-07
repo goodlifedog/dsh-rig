@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   normalizeName,
+  nextProbeCommands,
   flattenPresets,
   classifyApp,
   mergeInventory,
@@ -99,4 +100,35 @@ test('报告渲染：有表头、有状态列、汇总按顺序', () => {
   assert.ok(md.includes('| 应用 | 门类 | 状态 | 建议控法 | 说明 |'));
   assert.ok(md.indexOf('已适配') < md.indexOf('不动'), '汇总按 已适配→不动 排序');
   assert.ok(md.includes('汇总：已适配 1，不动 1，未测 1'));
+});
+test('给未测应用生成补测命令，跳过没装/不动的', () => {
+  const cmds = nextProbeCommands([
+    { name: 'GarageBand', bundle: 'com.apple.garageband10', process: 'GarageBand', installed: true, status: '未测' },
+    { name: 'UURemote', bundle: 'com.netease.uuremote', process: 'UURemote', installed: true, status: '未测' },
+    { name: '没装的', bundle: 'x.y', process: 'x', installed: false, status: '未安装' },
+    { name: 'Clash', bundle: 'a.b', process: 'clash', installed: true, status: '不动' },
+  ]);
+  assert.equal(cmds.length, 1);
+  assert.ok(cmds[0].startsWith('MATRIX_APPS_JSON='));
+  assert.ok(cmds[0].includes('GarageBand'));
+  assert.ok(!cmds[0].includes('没装的'));
+  assert.ok(!cmds[0].includes('Clash'));
+  assert.ok(cmds[0].endsWith('npm run matrix'));
+});
+
+test('没有未测应用：不生成命令', () => {
+  assert.deepEqual(nextProbeCommands([{ name: 'A', status: '已适配', installed: true }]), []);
+  assert.deepEqual(nextProbeCommands([]), []);
+});
+
+test('报告里的下一步补测段落只对未测应用出现', () => {
+  const withPending = renderInventoryMarkdown([
+    { name: 'A', preset: 'media', status: '未测', installed: true, bundle: 'a.b', process: 'a', detail: '装了但还没测' },
+  ]);
+  assert.ok(withPending.includes('## 下一步补测'));
+  assert.ok(withPending.includes('npm run matrix'));
+  const noPending = renderInventoryMarkdown([
+    { name: 'B', preset: 'im', status: '已适配', installed: true, detail: '节点 9' },
+  ]);
+  assert.ok(!noPending.includes('下一步补测'));
 });

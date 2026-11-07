@@ -159,6 +159,19 @@ export function mergeInventory({ installed = [], presetApps = [], tested = [], s
 }
 
 /**
+ * 给「未测」的应用生成下一步要跑的命令，省得人手写 MATRIX_APPS_JSON。
+ * @param {Array<{name:string, bundle:string, process:string, installed:boolean, status:string}>} rows
+ * @returns {string[]}
+ */
+export function nextProbeCommands(rows) {
+  const pending = (rows || []).filter((r) => r.status === '未测' && r.installed !== false && r.bundle && r.process);
+  if (!pending.length) return [];
+  const apps = pending.map((r) => ({ name: r.name, bundle: r.bundle, process: r.process }));
+  const json = JSON.stringify(apps);
+  return ["MATRIX_APPS_JSON=" + "'" + json + "'" + " npm run matrix"];
+}
+
+/**
  * 渲染成 markdown 报告。
  * @param {Array<object>} rows mergeInventory 的输出
  * @param {{now?:Date, matrixReport?:string}} [meta]
@@ -186,5 +199,16 @@ export function renderInventoryMarkdown(rows, meta = {}) {
   }
   lines.push('');
   lines.push('汇总：' + order.filter((s) => counts.has(s)).map((s) => s + ' ' + counts.get(s)).join('，'));
+  const next = nextProbeCommands(rows);
+  if (next.length) {
+    lines.push('');
+    lines.push('## 下一步补测');
+    lines.push('');
+    lines.push('下面这些应用装了但还没测，直接跑这条命令（探测完会自动关掉自己拉起的实例）：');
+    lines.push('');
+    lines.push('```bash');
+    lines.push(next[0]);
+    lines.push('```');
+  }
   return lines.join('\n') + '\n';
 }

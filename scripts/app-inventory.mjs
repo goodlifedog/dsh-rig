@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PRESETS, presetNames, SPECIAL_APP_HANDLING } from '../core/app-presets.mjs';
-import { flattenPresets, mergeInventory, renderInventoryMarkdown, normalizeName } from '../core/app-inventory.mjs';
+import { flattenPresets, mergeInventory, renderInventoryMarkdown, normalizeName, nextProbeCommands } from '../core/app-inventory.mjs';
 
 const exec = promisify(execFile);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -130,6 +130,8 @@ async function main() {
   console.log('扫描到 ' + installed.length + ' 个应用，预设门类：' + presetNames().join('/'));
   console.log('状态汇总: ' + JSON.stringify(counts));
   console.log('报告: reports/app-inventory-' + stamp + '.md');
+  const next = nextProbeCommands(rows);
+  if (next.length) console.log('下一步补测: ' + next[0]);
 }
 
 main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
