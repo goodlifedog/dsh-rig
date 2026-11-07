@@ -81,6 +81,14 @@ test('释放锁只删自己的，别人的锁不动', () => {
   assert.equal(fs.existsSync(file), false);
 });
 
+test('写锁失败时按未加锁继续，但必须给警告（fail-open 是有意为之，不能静默）', () => {
+  const parent = path.join(dir, 'not-a-dir');
+  fs.writeFileSync(parent, 'x');   // 父路径是个文件：建目录/写临时文件都会失败
+  const r = acquireLock(path.join(parent, 'lock'), { pid: 4321 });
+  assert.equal(r.ok, true, '拿不到锁不该把验收直接卡死');
+  assert.ok(r.warning && r.warning.length > 0, '但必须警告，否则用户不知道这次没加锁');
+});
+
 test('pidAlive：自己活着，0 和非法值、不存在的 pid 都是死', () => {
   assert.equal(pidAlive(process.pid), true);
   assert.equal(pidAlive(0), false);

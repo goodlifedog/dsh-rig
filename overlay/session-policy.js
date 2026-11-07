@@ -51,4 +51,14 @@ function pickEvictionVictim(list, options = {}) {
   return victim ? victim.id : null;
 }
 
-module.exports = { shouldEvictSession, pickEvictionVictim };
+/**
+ * 会话是否真的显示在用户眼前。
+ *
+ * state.visible 只是「按状态它应该显示」，窗口实例可能已经销毁/隐藏（宿主切走、Space 不同）。
+ * 回收与会话上限判断要用这个「真可见」，否则一批刚建好、状态标记还是 true 的会话会把上限顶死。
+ */
+function isSessionReallyVisible(stateVisible, windowVisible) {
+  return Boolean(stateVisible) && Boolean(windowVisible);
+}
+
+module.exports = { shouldEvictSession, pickEvictionVictim, isSessionReallyVisible };

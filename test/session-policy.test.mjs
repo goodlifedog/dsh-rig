@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { shouldEvictSession, pickEvictionVictim } = require('../overlay/session-policy.js');
+const { shouldEvictSession, pickEvictionVictim, isSessionReallyVisible } = require('../overlay/session-policy.js');
 
 const MIN = 60 * 1000;
 const NOW = 1_700_000_000_000;
@@ -93,6 +93,14 @@ test('没有活动时间时用创建时间兜底；都没有的不参与回收',
     { id: 'created-old', createdAt: NOW - 99 * MIN },
   ];
   assert.equal(pickEvictionVictim(list, { now: NOW, protectMs: MIN }), 'created-old');
+});
+
+test('「真的显示」要状态标记和窗口实例同时为真，缺一个都不算', () => {
+  assert.equal(isSessionReallyVisible(true, true), true);
+  assert.equal(isSessionReallyVisible(true, false), false, '状态说显示、窗口已隐藏：不算显示');
+  assert.equal(isSessionReallyVisible(false, true), false, '窗口还在但已按门控隐藏：不算显示');
+  assert.equal(isSessionReallyVisible(undefined, undefined), false);
+  assert.equal(isSessionReallyVisible(true, 0), false);
 });
 
 test('空列表 / 非法输入返回 null，不抛异常', () => {

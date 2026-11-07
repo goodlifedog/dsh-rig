@@ -78,7 +78,9 @@ export function acquireLock(file, options = {}) {
       writeLockAtomic(file, pid);
       return { ok: true };
     } catch (error) {
-      if (error && error.code === 'EEXIST') continue; // 别人刚抢到，回去看是谁的
+      // 只有「锁文件本身已存在」才是并发抢锁，回去看持有者是谁；
+      // 其它 EEXIST（比如父路径是个普通文件，建目录失败）不能当成并发，否则会误报 busy 卡住验收。
+      if (error && error.code === 'EEXIST' && fs.existsSync(file)) continue;
       return { ok: true, warning: '拿不到验收锁（' + ((error && error.message) || error) + '），按未加锁继续' };
     }
   }

@@ -33,7 +33,7 @@ const { computeFrameTarget } = require('./frame-target.js');
 const layout = require('./layout.js');
 const { appleScriptQuote } = require('./quote.js');
 const { nextCaptureDelay } = require('./capture-policy.js');
-const { shouldEvictSession, pickEvictionVictim } = require('./session-policy.js');
+const { shouldEvictSession, pickEvictionVictim, isSessionReallyVisible } = require('./session-policy.js');
 
 const APP_NAME = 'desktop-agent-overlay';
 
@@ -163,8 +163,10 @@ function ensureSession(id, source) {
     // state.visible 置 true，若只看状态里这个标记，一批刚建的会话会把上限顶死、后续任务全 409。
     const evictionList = [...sessions].map(([sid, sess]) => ({
       id: sid,
-      visible: Boolean(sess.state && sess.state.visible
-        && sess.win && !sess.win.isDestroyed() && sess.win.isVisible()),
+      visible: isSessionReallyVisible(
+        sess.state && sess.state.visible,
+        sess.win && !sess.win.isDestroyed() && sess.win.isVisible(),
+      ),
       lastActivityAt: sess.state && sess.state.lastActivityAt,
       createdAt: sess.createdAt,
       pinned: Boolean(sess.flags && sess.flags.pinned),
