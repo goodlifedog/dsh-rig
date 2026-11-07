@@ -60,6 +60,14 @@ flow/patch-deploy-freshness.diff     代码新鲜度检查（service:status 能�
 - 应用后替换两处占位：`@goodlifedog/desktop-agent`、`github.com/tester/desktop-agent`
 - 验证：`npm publish --dry-run` 必须显示 `Publishing to https://registry.npmjs.org ... public access`
 
+### 2.8 🚨 后台控制任务会**覆盖用户正在编辑的文本编辑文稿**（数据丢失，未做内容检查）
+
+- `core/tasks/background-control.mjs:138-141`：`const textAreas = await find('文本编辑', { role: 'AXTextArea', limit: 5 })` → 直接 `setValue('文本编辑', textAreas[0].index, '后台写入：…')`
+- `setValue` 走 ocu 的 `set_value`，语义是**把该元素的值设成新值**——不追加、不询问，原来内容直接没了
+- 也就是说：用户开着有内容的文本编辑文稿时跑验收/后台控制，第一步写入就把用户内容覆盖掉；清理脚本也只能关「未命名且空」的文稿，救不回来
+- 同一份任务里备忘录那段是安全的（我们自己新建的笔记，标题带 `[AGENT-TEST]`），只有文本编辑这一步没有「这是不是我们的文稿」的判断
+- 建议二选一：① 写之前读一下该文本区内容，只有为空、或已包含我们写的 `后台写入：` 字样才写；否则 `recordSkipped('文本编辑里有用户内容，跳过写入以免覆盖')`；② 更稳：自己做一份文稿再写（`make new document` / 快捷键新建），写完关掉自己那份
+
 ### 3. 笔记删除缺最后一层标记
 
 - 现状：`core/note-cleanup.mjs` 删除行时不看标题（靠「只删顶部 N 条 + `--force`」挡着）
