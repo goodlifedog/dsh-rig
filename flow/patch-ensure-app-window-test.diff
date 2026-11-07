@@ -1,0 +1,99 @@
+diff --git a/test/ensure-app-window.test.mjs b/test/ensure-app-window.test.mjs
+new file mode 100644
+index 0000000..9394291
+--- /dev/null
++++ b/test/ensure-app-window.test.mjs
+@@ -0,0 +1,93 @@
++'use strict';
++// ensureAppWindow：应用「在跑但没窗口」时的唤起与判就绪逻辑。
++// 这个函数给任务兜住了「进程在、窗口没了」的现实状态（如文本编辑关掉最后一个文稿），
++// 但之前没有任何单测；它完全靠注入 deps，可以不起应用就测完所有分支。
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { ensureAppWindow } from '../core/background.mjs';
++
++function deps(over = {}) {
++  return {
++    ensureAppRunning: async () => ({ launched: false, running: true }),
++    waitForWindow: async () => ({ ok: true, windows: 1, attempts: 1 }),
++    openApp: async () => {},
++    frontName: async () => 'Chrome',
++    sleep: async () => {},
++    ...over,
++  };
++}
++
++const app = { bundleId: 'com.apple.TextEdit', appName: '文本编辑', processName: 'TextEdit' };
++
++test('应用没在跑：直接返回 window=false，不尝试唤起', async () => {
++  let opened = 0;
++  const r = await ensureAppWindow(app, {
++    deps: deps({
++      ensureAppRunning: async () => ({ launched: false, running: false }),
++      openApp: async () => { opened += 1; },
++    }),
++  });
++  assert.equal(r.running, false);
++  assert.equal(r.window, false);
++  assert.equal(opened, 0);
++});
++
++test('在跑且有窗口：不唤起，前台不变', async () => {
++  let opened = 0;
++  const r = await ensureAppWindow(app, { deps: deps({ openApp: async () => { opened += 1; } }) });
++  assert.equal(r.window, true);
++  assert.equal(r.summoned, false);
++  assert.equal(opened, 0);
++  assert.equal(r.frontUnchanged, true);
++});
++
++test('窗口计数为 0 但 probe 说 AX 可读：按就绪处理（viaProbe）', async () => {
++  const r = await ensureAppWindow(app, {
++    deps: deps({ waitForWindow: async () => ({ ok: false, windows: 0, attempts: 1 }) }),
++    probe: async () => true,
++  });
++  assert.equal(r.window, true);
++  assert.equal(r.viaProbe, true);
++  assert.equal(r.summoned, false);
++});
++
++test('没有窗口：用 bundleId 唤起后拿到窗口', async () => {
++  const calls = [];
++  let first = true;
++  const r = await ensureAppWindow(app, {
++    deps: deps({
++      waitForWindow: async () => {
++        if (first) { first = false; return { ok: false, windows: 0, attempts: 1 }; }
++        return { ok: true, windows: 1, attempts: 2 };
++      },
++      openApp: async (args) => { calls.push(args.join(' ')); },
++    }),
++  });
++  assert.equal(r.window, true);
++  assert.equal(r.summoned, true);
++  assert.ok(calls[0].includes('com.apple.TextEdit'), '优先用 bundleId 唤起：' + calls[0]);
++});
++
++test('唤起后仍然没有窗口：返回可读错误', async () => {
++  const r = await ensureAppWindow(app, {
++    deps: deps({ waitForWindow: async () => ({ ok: false, windows: 0, attempts: 1 }) }),
++  });
++  assert.equal(r.window, false);
++  assert.match(r.error, /没有可读窗口/);
++});
++
++test('唤起过程中前台被换：frontUnchanged=false 如实记录', async () => {
++  let n = 0;
++  let first = true;
++  const r = await ensureAppWindow(app, {
++    deps: deps({
++      frontName: async () => (n++ === 0 ? 'Chrome' : 'TextEdit'),
++      waitForWindow: async () => {
++        if (first) { first = false; return { ok: false, windows: 0, attempts: 1 }; }
++        return { ok: true, windows: 1, attempts: 2 };
++      },
++    }),
++  });
++  assert.equal(r.frontUnchanged, false);
++  assert.equal(r.front, 'TextEdit');
++});

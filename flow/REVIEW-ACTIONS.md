@@ -67,6 +67,13 @@
 
 ## P2 · 打磨（按需，不阻塞发布）
 
+### 3.1 `ensureAppWindow`（新加的组合动作，任务全靠它兜「进程在但没窗口」）没有单测（**补丁已备**：`flow/patch-ensure-app-window-test.diff`）
+
+- 它把「确保在跑 → 等窗口 → 没有就用 bundleId/appName 唤起 → 仍没有就如实报错」串在一起，分支不少，但测试是 0
+- 好在完全靠 `deps` 注入，不起任何应用就能测完：未运行、已有窗口、窗口计数 0 但 probe 可读（viaProbe）、唤起后成功、唤起后仍失败、唤起中前台被换
+- 补丁：`git apply flow/patch-ensure-app-window-test.diff`（6 条测试 / 99 行，已对着当前实现跑通）
+
+
 ### 3.2 `core/electron-task.mjs`（500+ 行，overlay 的关键依赖）没有任何单测（**补丁已备**：`flow/patch-electron-task-test.diff`）
 
 - 全仓 41 个 core 模块，38 个被测试引用；没被引用的三个是 `platform-smoke`（脚本）、`permissions`（读 TCC，纯 IO）、`electron-task`
