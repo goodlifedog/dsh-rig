@@ -169,7 +169,8 @@ function normalizeSession(raw) {
 function readTitleHint(body) {
   if (!body || body.titleHint === undefined) return undefined;
   if (typeof body.titleHint !== 'string') throw httpError(400, 'titleHint 必须是字符串');
-  return body.titleHint;
+  // 主进程也会截到 120，但这里是边界层：不让超长字符串先进内存/日志
+  return body.titleHint.replace(/\s+/g, ' ').trim().slice(0, 120);
 }
 
 function sessionFrom(url, body) {
@@ -300,7 +301,12 @@ function createOverlayServer(options) {
       const raw = body.windowId !== undefined ? body.windowId : body.id;
       // null / 空串 = 显式解绑：任务结束时靠它停掉抓帧循环、清掉旧错误
       const explicitUnbind = raw === null || raw === '';
-      const windowId = await handlers.onWindow(session, raw, body.title);
+      // 标题只是给日志/展示用的提示，截断防止超长字符串进内存
+      if (body.title !== undefined && typeof body.title !== 'string') {
+        return json(res, 400, { ok: false, error: 'title 必须是字符串' });
+      }
+      const title = typeof body.title === 'string' ? body.title.slice(0, 200) : undefined;
+      const windowId = await handlers.onWindow(session, raw, title);
       if (explicitUnbind && !windowId) {
         return json(res, 200, { ok: true, session: session, windowId: null, unbound: true });
       }
@@ -349,7 +355,9 @@ function createOverlayServer(options) {
       }
       const width = readDimension(body.width, 'width');
       const height = readDimension(body.height, 'height');
-      await handlers.onFrame(session, body.dataUrl, body.note, body.cursor, width, height);
+      // note 是画面角标文字：截断，避免超长字符串进日志/渲染层
+      const note = typeof body.note === 'string' ? body.note.replace(/\s+/g, ' ').trim().slice(0, 200) : undefined;
+      await handlers.onFrame(session, body.dataUrl, note, body.cursor, width, height);
       return json(res, 200, {
         ok: true,
         session: session,

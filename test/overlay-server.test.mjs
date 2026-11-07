@@ -204,6 +204,30 @@ async function withTokenServer(fn, token = 'test-token-123') {
   try { await fn(base, calls); } finally { await srv.close(); }
 }
 
+test('长文本字段在边界层截断：titleHint 120 / title 200 / frame note 200', async () => {
+  const seen = {};
+  const { handlers } = stubHandlers({
+    onLog: (session, text, titleHint) => { seen.titleHint = titleHint; return { text }; },
+    onWindow: (session, raw, title) => { seen.title = title; return String(raw) === '123' ? 123 : null; },
+    onFrame: (session, dataUrl, note) => { seen.note = note; return { ok: true }; },
+  });
+  const srv = createOverlayServer({ host: '127.0.0.1', port: 0, handlers });
+  const addr = await srv.listen();
+  const base = 'http://' + addr.address + ':' + addr.port;
+  try {
+    await post(base, '/log', { text: 'x', titleHint: '标'.repeat(5000) });
+    assert.ok(seen.titleHint.length <= 120, 'titleHint 应截到 120，实际 ' + seen.titleHint.length);
+    await post(base, '/window', { windowId: 123, title: '标'.repeat(5000) });
+    assert.ok(seen.title.length <= 200, 'title 应截到 200，实际 ' + seen.title.length);
+    await post(base, '/frame', { dataUrl: 'data:image/png;base64,AAAA', note: '标'.repeat(5000) });
+    assert.ok(seen.note.length <= 200, 'note 应截到 200，实际 ' + seen.note.length);
+    const badTitle = await post(base, '/window', { windowId: 123, title: 123 });
+    assert.equal(badTitle.status, 400, 'title 类型不对要 400');
+  } finally {
+    await srv.close();
+  }
+});
+
 test('超大请求体给 413，而不是把连接掐成 ECONNRESET', async () => {
   await withTokenServer(async (base) => {
     const res = await fetch(base + '/frame', {
