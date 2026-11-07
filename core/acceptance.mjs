@@ -93,6 +93,14 @@ async function checkIdleHide() {
   }
 }
 
+function frontmostApp() {
+  try {
+    return execFileSync('/usr/bin/osascript', ['-e', 'tell application "System Events" to get name of first process whose frontmost is true'], { encoding: 'utf8', timeout: 4000 }).trim();
+  } catch {
+    return '';
+  }
+}
+
 function frontmostBundle() {
   if (process.platform !== 'darwin') return null;
   try {
@@ -171,10 +179,13 @@ async function cleanupAfterAcceptance() {
   } catch {}
 }
 
+let FRONT_AT_START = '';
+
 async function main() {
   if (!acquireAcceptanceLock()) return;
   if (userRecentlyActive()) { releaseAcceptanceLock(); return; }
   console.log('=== 桌面代理端到端验收 ===');
+  FRONT_AT_START = frontmostApp();
   const h = await checkOverlay();
   if (h.ok) await checkIdleHide();
 
@@ -196,11 +207,17 @@ async function main() {
     ]),
   });
 
-  // 验收里有些 demo 会把目标应用留到前台；结束时把前台还给宿主，别把用户的窗口状态改乱
-  if (process.platform === 'darwin') {
-    try {
-      execFileSync('/usr/bin/osascript', ['-e', 'tell application "System Events" to set frontmost of first process whose bundle identifier is "com.deepseek.dsh" to true'], { timeout: 5000 });
-    } catch {}
+  // 验收里有些 demo 会把目标应用留到前台；结束时按"用户原来所在的应用"还原。
+  // 用户中途自己切走了（浏览器/终端）就不要动，避免被硬拽。
+  if (process.platform === 'darwin' && FRONT_AT_START) {
+    const TARGETS = ['Calculator', 'Notes', 'TextEdit', 'DeepSeek Harness', 'iMovie', 'Steam', 'FastZip', 'iRightMouse', 'TencentMeeting', 'Keynote', 'Numbers', 'Pages'];
+    const current = frontmostApp();
+    const isTouched = TARGETS.some((name) => current === name || current.includes(name)) || current === FRONT_AT_START;
+    if (current !== FRONT_AT_START && isTouched) {
+      try {
+        execFileSync('/usr/bin/osascript', ['-e', 'tell application "System Events" to set frontmost of first process whose name is ' + JSON.stringify(FRONT_AT_START) + ' to true'], { timeout: 5000 });
+      } catch {}
+    }
   }
 
   await cleanupAfterAcceptance();

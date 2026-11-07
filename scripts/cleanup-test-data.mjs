@@ -88,10 +88,13 @@ async function cleanupTextEdit(report) {
   }
 }
 
-async function quitTestApps(report, notesWasRunning) {
+async function quitTestApps(report) {
   if (dryRun) return;
-  const apps = [{ bundleId: 'com.apple.calculator', appName: '计算器', processName: 'Calculator' }];
-  if (!notesWasRunning) apps.push({ bundleId: 'com.apple.Notes', appName: 'Notes', processName: 'Notes' });
+  // 清完就退出测试应用：Notes 自动保存，关掉不会丢用户内容；留着会一直躺在后台
+  const apps = [
+    { bundleId: 'com.apple.calculator', appName: '计算器', processName: 'Calculator' },
+    { bundleId: 'com.apple.Notes', appName: 'Notes', processName: 'Notes' },
+  ];
   for (const app of apps) {
     const q = await quitApp(app);
     if (q.mode !== 'already-stopped') report.push({ kind: 'quit', app: app.appName, mode: q.mode });
@@ -110,11 +113,10 @@ async function reportOnly(report) {
 
 async function main() {
   const before = await frontName();
-  const notesWasRunning = osa('application "Notes" is running') === 'true';
   const report = [];
   await cleanupNotes(report);
   await cleanupTextEdit(report);
-  await quitTestApps(report, notesWasRunning);
+  await quitTestApps(report);
   await reportOnly(report);
   const after = await frontName();
   console.log(JSON.stringify({ dryRun, front: { before, after }, report }, null, 1));
