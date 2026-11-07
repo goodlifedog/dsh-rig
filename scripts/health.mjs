@@ -6,7 +6,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { classifyRun } from '../core/run-classify.mjs';
+import { classifyRun, envSkipReason } from '../core/run-classify.mjs';
 import { localHeaders } from '../core/local-token.mjs';
 import { daemonUrl, daemonPort, overlayUrl, overlayPort } from '../core/ports.mjs';
 
@@ -252,14 +252,10 @@ async function main() {
       return { total, failed, detail: total ? (total + ' 项，' + failed + ' 项失败' + (names.length ? '：' + names.join('、') : '')) : '没有输出' };
     };
 
-    // 被检脚本在锁屏时会打印「环境跳过」并退 0：这是环境限制，不能显示成 ❌
-    const envSkipOf = (out) => {
-      const line = String(out || '').split('\n').find((l) => l.includes('环境跳过'));
-      return line ? line.trim().slice(0, 80) : '';
-    };
-
+    // 被检脚本在锁屏时会打印「环境跳过」并退 0：这是环境限制，不能显示成 ❌。
+    // 复用 run-classify 的那套判定（已单测），不在这里另写一条正则。
     const ui = runCheck('ui-regression.mjs');
-    const uiSkip = envSkipOf(ui.out);
+    const uiSkip = envSkipReason(ui.out) ? '环境跳过：' + envSkipReason(ui.out) : '';
     const uiSum = summarize(ui.out);
     if (uiSkip) add('小窗效果回归', true, uiSkip);
     else {
@@ -268,7 +264,7 @@ async function main() {
     }
 
     const scope = runCheck('session-scope-check.mjs');
-    const scopeSkip = envSkipOf(scope.out);
+    const scopeSkip = envSkipReason(scope.out) ? '环境跳过：' + envSkipReason(scope.out) : '';
     const scopeSum = summarize(scope.out);
     if (scopeSkip) add('会话隔离检查', true, scopeSkip);
     else add('会话隔离检查', scopeSum.failed === 0 && scopeSum.total > 0, scopeSum.detail);
