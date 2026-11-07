@@ -351,7 +351,7 @@ bash scripts/export.sh    # 生成 dist/desktop-agent-<version>.tar.gz，排除�
 ```bash
 npm run monitor   # 一键巡检：健康 + 小窗回归 + 会话隔离 + 帧率，结果写 reports/monitor-*.md
 npm run health    # 一条命令看全局（服务/身份权限/小窗/队列/失败）
-npm run health -- --deep   # 再加上 14 项小窗效果回归
+npm run health -- --deep   # 再加上小窗效果 + 会话隔离回归（具体项数以脚本为准）
 npm run scope:check        # 小窗只在该会话出现？切走/切回各要多久？（逐项给出毫秒）
 npm run fps:check          # 帧率压测：实际帧率、单帧体积、推帧耗时（FPS_CHECK_EXPANDED=1 测放大态）
 npm run soak               # 稳定性巡检：连跑 6 轮任务，看耗时、内存增长、有没有有效帧

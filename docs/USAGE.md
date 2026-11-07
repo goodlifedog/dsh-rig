@@ -288,7 +288,7 @@ curl -s -H "X-Agent-Token: $TOKEN" http://127.0.0.1:7788/health | head -c 600
 
 ```bash
 npm run health                                   # 一条命令看全局（服务/权限/小窗/队列/失败）
-npm run health -- --deep                         # 上面这些 + 跑一遍小窗效果回归
+npm run health -- --deep                         # 上面这些 + 小窗效果与会话隔离回归
 npm run doctor                                   # 环境 + 两个服务在不在
 npm run status                                   # 小窗状态 + 有没有任务占着应用锁
 curl -s -H "X-Agent-Token: $TOKEN" http://127.0.0.1:7788/health | head -c 400   # 小窗自己怎么说
