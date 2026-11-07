@@ -571,6 +571,11 @@ plist 在 `~/Library/LaunchAgents/`：`com.desktop-agent.daemon.plist`、`com.de
 | `OVERLAY_MAX_SESSIONS` | `12` | 最多会话窗口数 |
 | `OVERLAY_SESSION_TTL_MS` | `1800000` | 会话窗口多久没活动就自动关掉（默认 30 分钟，0 关闭回收；下次有活动按需重建） |
 | `OVERLAY_SHOW_DOCK` | `0` | 设 1 保留 Dock 图标 |
+| `OVERLAY_HOST_PROCESS` | `DeepSeek Harness` | 小窗贴哪个宿主应用（改成别的应用名可让本工具服务其他客户端） |
+| `OVERLAY_HOST_BUNDLES` | `com.deepseek.dsh` | 算作「宿主在前台」的 bundle id，逗号分隔多个 |
+| `OVERLAY_HOST_TITLE_SUFFIX` | `DeepSeek Harness` | 宿主窗口标题后缀，用来判断「当前会话是不是召唤它的那个」 |
+| `OVERLAY_SESSION_RECENT_MS` | `60000` | 会话数到上限时，最近这么多毫秒内活动过的会话不回收（保护正在被任务用的窗口） |
+| `OVERLAY_CAPTURE_FAIL_TOLERANCE` | `4` | 连续抓帧失败多少次判定为「目标窗口已失效」并触发自动找回/解绑 |
 
 ---
 
