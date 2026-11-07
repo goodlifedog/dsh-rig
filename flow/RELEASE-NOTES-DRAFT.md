@@ -25,7 +25,7 @@
 - 清理脚本只关自己拉起的应用；你在用电脑时不会去动后台服务
 
 **控制面有了真边界**
-daemon 与 overlay 的接口都要本机 token（`~/.desktop-agent/api-token`，600 权限）；
+daemon 与 overlay 的接口都要本机 token（`~/.desktop-agent/api-token`，600 权限；daemon 的 `GET /` 存活探测除外，只回 pid/uptime）；
 拒绝浏览器来源与伪造 Host（挡 DNS rebinding）；CDP 端口会校验主人，拿不到就拒绝连接。
 
 ## 修复
@@ -45,5 +45,5 @@ daemon 与 overlay 的接口都要本机 token（`~/.desktop-agent/api-token`，
 
 ## 升级提示
 
-- 从 0.7.0 升级：先 `npm run service:uninstall` 再 `npm run service:install`，让 launchd 用新的入口
+- 从 0.7.0 升级：`npm run service:restart` 让新代码生效即可（服务路径没变，不用卸载重装）；`npm run service:status` 会报「代码新鲜度」，落后就提示重启
 - 数据目录权限会自动收紧到 700（`hardenDataDir`），不需要手动处理
