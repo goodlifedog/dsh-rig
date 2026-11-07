@@ -63,6 +63,22 @@ touch core/agentd.mjs && npm run service:status
 git checkout -- core/agentd.mjs   # 撤销 touch
 ```
 
+## 4. `patch-chromium-applescript.diff`（37 行 / 2 个文件）
+
+**实测发现的问题**：`npm run app:resolve -- "Google Chrome"` 在 CDP 与 AX 都不可用时，
+协商结果是「画面 + 坐标」，但 Chrome 的 AppleScript 字典是**可用**的（23 条命令、已授权）。
+原因是 `RUNTIME_CHAINS.chromium` 里没有 applescript（electron / native / qt 都有），
+于是可用脚本通道被静默跳过，直接落到本仓库并没有实现自动坐标点击的 visual。
+
+补丁给 chromium 链加上 applescript（排在 visual 之前），并补一条断言：
+CDP/AX 都不通时应退到 applescript，而不是直接画面坐标。
+
+验证：
+```bash
+npm run app:resolve -- "Google Chrome"   # 协商结果应变成 AppleScript（若字典可用）
+node --test test/driver-resolution.test.mjs
+```
+
 ## 已作废（不要再应用）
 
 `patch-p1.diff`、`patch-classify.diff`、`patch-electron-task-test.diff`、`patch-ensure-app-window-test.diff`
