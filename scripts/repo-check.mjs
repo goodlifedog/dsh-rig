@@ -38,6 +38,17 @@ try {
 const junk = tracked.filter((f) => /node_modules\/|^logs\/|^reports\/|^dist\/|\.DS_Store$|^overlay\/node_modules/.test(f));
 add('没有提交依赖与运行时产物', junk.length === 0, junk.slice(0, 3).join(', '));
 
+// 3b. 文档截图不能是孤儿：提交了却没有任何 md/html 引用，就是白占体积的死重量
+// （评审实测 overlay/docs 里有一批早期截图，20 张没被引用、占 2.8MB）
+const imageFiles = tracked.filter((f) => /^(docs|overlay\/docs)\/.*\.(png|jpe?g|gif|webp)$/i.test(f));
+const imageDocFiles = tracked.filter((f) => /\.(md|html)$/i.test(f) && !f.startsWith('reports/'));
+let docCorpus = '';
+for (const f of imageDocFiles) {
+  try { docCorpus += await fsp.readFile(path.join(ROOT, f), 'utf8'); } catch {}
+}
+const orphanImages = imageFiles.filter((img) => !docCorpus.includes(path.basename(img)));
+add('文档截图都有引用（没有孤儿图）', orphanImages.length === 0, orphanImages.slice(0, 3).join(', '));
+
 // 4. 大文件
 const big = [];
 for (const f of tracked) {
