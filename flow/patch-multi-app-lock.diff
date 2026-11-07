@@ -19,3 +19,15 @@ index 1c65e02..d81fd6f 100644
    await overlay.status('并行读取 ' + TARGETS.length + ' 个应用');
    const t0 = Date.now();
  
+diff --git a/test/tasks-lock-skip.test.mjs b/test/tasks-lock-skip.test.mjs
+index 173232c..c5c5b88 100644
+--- a/test/tasks-lock-skip.test.mjs
++++ b/test/tasks-lock-skip.test.mjs
+@@ -17,6 +17,7 @@ const TASKS = [
+   'parallel-real-demo',
+   'user-chrome-demo',
+   'human-demo',
++  'multi-app',
+ ];
+ 
+ function runTask(name) {
