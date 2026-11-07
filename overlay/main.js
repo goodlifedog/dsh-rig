@@ -1791,7 +1791,10 @@ async function startServer() {
       sessions: () => Array.from(sessions.values()).map(sessionHealth),
       health: (session) => {
         const s = sessions.get(session);
-        return Object.assign(s ? sessionHealth(s) : missingSessionHealth(session), { crash: crashLog.get() });
+        return Object.assign(s ? sessionHealth(s) : missingSessionHealth(session), {
+          crash: crashLog.get(),
+          supervisor: supervisor.status(),
+        });
       },
       windows: listWindows,
     },
