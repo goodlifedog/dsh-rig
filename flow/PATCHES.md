@@ -1,7 +1,7 @@
 # 外部评审提供的补丁（按需应用）
 
 > 这些不是必须打的。每个都独立可应用、互不冲突，打过之后 `npm test` 全绿。
-> 最后更新：2026-11-08 03:55。**当前剩 6 个**，其余都已被主会话自行实现并删除。
+> 最后更新：2026-11-08 03:52。**当前剩 4 个**，其余都已被主会话自行实现并删除。
 
 ## 应用程序
 
@@ -70,19 +70,6 @@ node --test test/front-watch.test.mjs   # 7 项全过
 node --test test/text-edit-guard.test.mjs
 ```
 
-## 6. `patch-formfill-restore.diff`（78 行 / 2 个文件）
-
-**数据安全问题**：`form-fill` 注入到页面的脚本里，「恢复用户原值」不在 `finally`——
-`setNew` 之后任何一步抛异常（AX 超时、页面跳转、CDP 断开），用户的搜索框内容就停在测试关键词上。
-
-补丁：恢复移进 `finally`，并给恢复本身加独立 `catch`（失败记 `out.restoreError`、`restored=false`，不让它炸掉整段脚本）；
-顺带把 `buildFill()` 导出，配 3 条测试断言生成脚本的结构（有 finally、恢复在 finally 之后、恢复失败被单独捕获）。
-
-验证：
-```bash
-node --test test/form-fill-script.test.mjs
-```
-
 ## 已采纳并删除的补丁（留档，不要再找）
 
 | 补丁 | 落地情况 |
@@ -97,3 +84,4 @@ node --test test/form-fill-script.test.mjs
 | `patch-dialog-i18n.diff` | 主会话改成结构判定 + `unknown` 不点，比补丁更稳 |
 | `patch-retry-unify.diff` | `retry-policy` 已复用 `ENV_RULES` |
 | `patch-health-queue.diff` | `health` 队列显示已改读 `queueLength` |
+| `patch-formfill-restore.diff` | 主会话改成「catch 里补一次 restore-after-error」，语义等价且不会在成功路径重复写 |
