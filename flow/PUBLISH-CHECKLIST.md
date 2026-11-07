@@ -37,6 +37,21 @@ node core/cli.mjs foo; echo $? # 应为 2（P1 已实现，无需打补丁）
 
 全部通过就可以建仓库、推代码、打 tag 了。
 
+## 彩排结果（2026-11-08 04:30，外部评审执行）
+
+在干净副本里完整走了一遍发布链路，全部通过：
+
+```
+1) git apply patch-publish.diff     OK
+2) npm test                          507 项 / 506 过 / 0 失败
+3) npm run repo:check                全部通过
+4) npm pack                          145 文件 / 1.1 MB
+5) npm i -g --prefix /tmp/… 后跑 CLI   status / tasks 正常
+6) npm publish --dry-run             Publishing to https://registry.npmjs.org … public access
+```
+
+剩下的只有「换成你的真实名字/仓库地址」和四个决定，链路本身已经验证过一遍。
+
 ## A. 必须先决定的两件事
 
 - [ ] **A1. BOSS 直聘那部分要不要出现在公开仓库**（**执行方案已写好：[`flow/BOSS-EXTRACT.md`](BOSS-EXTRACT.md)**，含要删的 5 个脚本 / 3 份文档 / 3 处代码引用 / 10 个文档引用、验收替代方案、npm 包复查命令、预计 2-3 小时）
