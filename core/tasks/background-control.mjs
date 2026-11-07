@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { overlayBase } from '../ports.mjs';
 /**
  * 后台控制验收：启动软件、点击、写入，全程不抢前台，并把真实窗口回显到小窗。
  *
@@ -15,7 +16,7 @@ import { localHeaders } from '../local-token.mjs';
 import { fileURLToPath } from 'node:url';
 import { foreignAcceptanceOwner } from '../acceptance-lock.mjs';
 
-const OVERLAY = process.env.OVERLAY_URL || 'http://127.0.0.1:7788';
+const OVERLAY = overlayBase();
 const ACCEPTANCE_LOCK = fileURLToPath(new URL('../../reports/.acceptance.lock', import.meta.url));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const S_NOTES = 'bg-notes';

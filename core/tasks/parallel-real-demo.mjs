@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { overlayBase } from '../ports.mjs';
 /**
  * 双应用并行回显：同时操作两个真实软件，并把它们各自的窗口实时回显到两个小窗。
  *
@@ -10,7 +11,7 @@ import { execFileSync } from 'node:child_process';
 import { ocu, withAppLock } from '../agentd.mjs';
 import { localHeaders } from '../local-token.mjs';
 
-const OVERLAY = process.env.OVERLAY_URL || 'http://127.0.0.1:7788';
+const OVERLAY = overlayBase();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const S_A = 'real-calc';
 const S_B = 'real-text';

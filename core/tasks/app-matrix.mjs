@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { overlayBase } from '../ports.mjs';
 /**
  * 应用能力矩阵：逐个真实应用探明后台能力，全程检查前台有没有被抢占。
  *
@@ -27,7 +28,7 @@ import { decideRestore } from '../front-restore.mjs';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ACCEPTANCE_LOCK = fileURLToPath(new URL('../../reports/.acceptance.lock', import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
-const OVERLAY = process.env.OVERLAY_URL || 'http://127.0.0.1:7788';
+const OVERLAY = overlayBase();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // 可用 MATRIX_APPS_JSON 覆盖默认列表，方便按门类分批探测

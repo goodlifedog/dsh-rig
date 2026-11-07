@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { overlayBase } from '../core/ports.mjs';
 /**
  * 通道协商：控制某个应用之前，先看现在哪条通道真的能用、该按什么顺序降级。
  *
@@ -19,7 +20,7 @@ import { checkAutomationPermission } from '../core/applescript-driver.mjs';
 import { closeOcuMcp } from '../core/ocu-mcp.mjs';
 import { localHeaders } from '../core/local-token.mjs';
 
-const OVERLAY = process.env.OVERLAY_URL || 'http://127.0.0.1:7788';
+const OVERLAY = overlayBase();
 
 function appPid(app) {
   const candidates = [app.processName, app.appName].filter(Boolean);

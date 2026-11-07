@@ -21,7 +21,10 @@ const WRITES = new Set([
 ]);
 
 export function taskDescription(source) {
-  const m = /^(?:#![^\n]*\n)?\s*\/\*\*([\s\S]*?)\*\//.exec(String(source || ''));
+  // 文件头可能是 shebang，也可能先有 import（迁移脚本会把 import 插到前面），
+  // 所以在前 2000 字符里找第一段块注释，不要求从第 1 行开始。
+  const head = String(source || '').slice(0, 2000);
+  const m = /\/\*\*([\s\S]*?)\*\//.exec(head);
   if (!m) return '';
   for (const raw of m[1].split('\n')) {
     const line = raw.trim().replace(/^\*+\s?/, '').trim();

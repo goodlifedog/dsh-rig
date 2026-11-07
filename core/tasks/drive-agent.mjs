@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { overlayBase } from '../ports.mjs';
 /**
  * 驱动另一个 agent 工具：把一个提示词送进桌面 agent 应用，等它回复，再读回来。
  *
@@ -16,7 +17,7 @@ import { localHeaders } from '../local-token.mjs';
 const APP = process.env.AGENT_APP || 'ChatGPT';
 const PROMPT = process.env.AGENT_PROMPT || '只回复两个字：收到';
 const SESSION = 'agent-drive';
-const OVERLAY = process.env.OVERLAY_URL || 'http://127.0.0.1:7788';
+const OVERLAY = overlayBase();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function front() {

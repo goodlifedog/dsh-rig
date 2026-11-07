@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { overlayBase } from '../ports.mjs';
 /**
  * 通过后台终端驱动 agent CLI（opencode / codex / claude 等），并把结果读回来。
  *
@@ -23,7 +24,7 @@ const PROMPT = process.env.CLI_PROMPT || '只回复两个字：收到';
 const CUSTOM_CMD = process.env.CLI_CMD || '';
 const TIMEOUT_MS = Math.max(10000, Number(process.env.CLI_TIMEOUT_MS) || 240000);
 const SESSION = 'agent-cli';
-const OVERLAY = process.env.OVERLAY_URL || 'http://127.0.0.1:7788';
+const OVERLAY = overlayBase();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function front() {

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { overlayBase } from '../ports.mjs';
 /**
  * 浏览器后台控制：独立实例 + CDP，全程不碰用户前台。
  *
@@ -15,7 +16,7 @@ import { launch } from '../browser.mjs';
 import { isScreenLocked } from '../platform.mjs';
 import { localHeaders } from '../local-token.mjs';
 
-const OVERLAY = process.env.OVERLAY_URL || 'http://127.0.0.1:7788';
+const OVERLAY = overlayBase();
 const SESSION = 'bg-browser';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 

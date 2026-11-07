@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { overlayBase } from '../ports.mjs';
 /**
  * 并行演示：同时驱动两个独立后台浏览器，各自把画面推到自己那一路小窗。
  *
@@ -13,7 +14,7 @@ import { execFileSync } from 'node:child_process';
 import { launch } from '../browser.mjs';
 import { localHeaders } from '../local-token.mjs';
 
-const OVERLAY = process.env.OVERLAY_URL || 'http://127.0.0.1:7788';
+const OVERLAY = overlayBase();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const SESSION_A = 'parallel-a';
