@@ -105,6 +105,27 @@ test('daemon：队列串行、环境失败不重试、临时失败重试一次',
   });
   assert.equal(fromBrowser.status, 403, '带 Origin 的请求必须拒绝');
 
+  // 请求体格式/大小：超限 413、坏 JSON 400、非对象 400；而且坏请求之后服务必须还活着
+  const tooBig = await fetch(BASE + '/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...TOKEN_HEADERS },
+    body: 'x'.repeat(1024 * 1024 + 10),
+  }).catch(() => ({ status: 0 }));
+  assert.equal(tooBig.status, 413, '超大请求体应 413');
+  const badJson = await fetch(BASE + '/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...TOKEN_HEADERS },
+    body: '{bad json',
+  });
+  assert.equal(badJson.status, 400, '坏 JSON 应 400');
+  const arrayBody = await fetch(BASE + '/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...TOKEN_HEADERS },
+    body: '[1,2]',
+  });
+  assert.equal(arrayBody.status, 400, '非对象 JSON 应 400');
+  assert.equal((await gets('/status')).status, 200, '坏请求之后服务必须还活着');
+
   // 安全边界：Host 不是本机回环一律拒绝（挡 DNS rebinding：evil.com 解析到 127.0.0.1）
   const spoofedHost = await new Promise((resolve) => {
     const rq = http.request({ host: '127.0.0.1', port: PORT, path: '/', method: 'GET', headers: { Host: 'evil.example:' + PORT } }, (res) => {

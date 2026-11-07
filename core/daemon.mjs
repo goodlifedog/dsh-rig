@@ -139,11 +139,59 @@ function json(res, code, body) {
   res.end(data);
 }
 
+const MAX_BODY_BYTES = 1024 * 1024;
+
+/**
+ * 读 JSON 请求体：超限给 413、坏 JSON 给 400。
+ *
+ * 之前是「超 1MB 直接 req.destroy() + JSON 解析失败静默当 {}」：前者让调用方拿不到任何响应、
+ * 请求挂住；后者会把「垃圾数据」当合法空对象继续走，/run 只会回一句「缺少 task」，看不出是格式错。
+ */
 function readBody(req) {
-  return new Promise((resolve) => {
-    let buf = '';
-    req.on('data', (c) => { buf += c; if (buf.length > 1e6) req.destroy(); });
-    req.on('end', () => { try { resolve(JSON.parse(buf || '{}')); } catch { resolve({}); } });
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    let done = false;
+    const fail = (message, statusCode) => {
+      if (done) return;
+      done = true;
+      const error = new Error(message);
+      error.statusCode = statusCode;
+      reject(error);
+    };
+    req.on('data', (chunk) => {
+      if (done) return;
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) {
+        // 不要立刻 destroy：那会把还没发出去的 413 响应一起掐断。把剩余数据丢掉，
+        // 让上层把 413 写回去（客户端可能仍收到提前结束，但状态码是可读的）。
+        fail('请求体超过 ' + MAX_BODY_BYTES + ' 字节', 413);
+        try { req.resume(); } catch {}
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      if (done) return;
+      done = true;
+      const raw = Buffer.concat(chunks).toString('utf8').trim();
+      if (!raw) return resolve({});
+      let parsed;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        const error = new Error('请求体不是合法 JSON');
+        error.statusCode = 400;
+        return reject(error);
+      }
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        const error = new Error('请求体必须是 JSON 对象');
+        error.statusCode = 400;
+        return reject(error);
+      }
+      resolve(parsed);
+    });
+    req.on('error', (error) => fail('读取请求体失败：' + String((error && error.message) || error), 400));
   });
 }
 
@@ -314,7 +362,7 @@ function assertLocalClient(req) {
   }
 }
 
-const server = http.createServer(async (req, res) => {
+async function handleRequest(req, res) {
   const url = new URL(req.url, 'http://localhost');
   const p = url.pathname.replace(/\/+$/, '') || '/';
   try {
@@ -396,7 +444,27 @@ const server = http.createServer(async (req, res) => {
   }
 
   return json(res, 404, { ok: false, error: 'not found', path: p });
+}
+
+const server = http.createServer(async (req, res) => {
+  try {
+    await handleRequest(req, res);
+  } catch (error) {
+    // 任何请求级异常都要变成 JSON 响应：之前 readBody 抛错会变成未处理 rejection，
+    // 调用方只看到连接挂着，日志里也只有一行堆栈。
+    if (res.headersSent) {
+      try { res.end(); } catch {}
+      return;
+    }
+    json(res, error && error.statusCode ? error.statusCode : 500, {
+      ok: false,
+      error: String((error && error.message) || error).slice(0, 200),
+    });
+  }
 });
+// 本地控制面不该被慢请求/半截请求拖住（默认 300s 太长）
+server.requestTimeout = 20000;
+server.headersTimeout = 15000;
 
 // 端口被占时给一条能直接照做的错误，不要静默崩在 launchd 里反复重试
 server.on('error', (error) => {
