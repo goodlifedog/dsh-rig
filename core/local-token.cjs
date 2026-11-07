@@ -21,17 +21,48 @@ function newToken() {
   return crypto.randomBytes(32).toString('hex');
 }
 
-/** 已有就复用，没有就生成一个写进 600 文件 */
+function chmodSafe(target, mode) {
+  try { fs.chmodSync(target, mode); } catch {}
+}
+
+/**
+ * 收紧数据目录权限（幂等）。
+ *
+ * 坑：mkdirSync 的 mode 只在“新建”时生效，目录已存在（比如早期版本以 755 建的）就完全不修正，
+ * 于是文档里“目录 700”的保证是假的——本机别的用户能列目录、能读 644 的 profile 文件
+ * （浏览器 profile 里可能有登录态 cookie）。所以每次启动都要显式 chmod 一遍。
+ *
+ * @param {string} [dir] 数据目录，默认 ~/.desktop-agent
+ * @returns {string} 实际处理的目录
+ */
+function hardenDataDir(dir) {
+  const base = dir || path.dirname(tokenPath());
+  chmodSafe(base, 0o700);
+  // 已知的敏感子目录（浏览器 profile 可能带登录态）；不存在就跳过，不报错
+  for (const name of ['bin', 'smoke', 'chrome-profile', 'headless-profile', 'headless-profile-p1', 'headless-profile-p2']) {
+    chmodSafe(path.join(base, name), 0o700);
+  }
+  chmodSafe(path.join(base, 'api-token'), 0o600);
+  return base;
+}
+
+/** 已有就复用，没有就生成一个写进 600 文件（每次都会顺手把目录/文件权限修正到 700/600） */
 function ensureTokenSync(target) {
   const file = target || tokenPath();
+  const dir = path.dirname(file);
+  try { fs.mkdirSync(dir, { recursive: true, mode: 0o700 }); } catch {}
+  chmodSafe(dir, 0o700);   // 已存在时上面的 mode 不生效，必须显式补
+  if (path.resolve(file) === path.resolve(tokenPath())) hardenDataDir(dir);
   try {
     const existing = String(fs.readFileSync(file, 'utf8')).trim();
-    if (/^[0-9a-f]{32,}$/i.test(existing)) return existing;
+    if (/^[0-9a-f]{32,}$/i.test(existing)) {
+      chmodSafe(file, 0o600);   // 被备份/恢复成 644 时也要纠正回来
+      return existing;
+    }
   } catch {}
   const token = newToken();
-  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
   fs.writeFileSync(file, token + '\n', { mode: 0o600 });
-  try { fs.chmodSync(file, 0o600); } catch {}
+  chmodSafe(file, 0o600);
   return token;
 }
 
@@ -82,4 +113,4 @@ function isAuthorized(headers, token, queryToken, settings = {}) {
   return allowQuery && Boolean(queryToken) && safeEqual(queryToken, token);
 }
 
-module.exports = { TOKEN_HEADER, tokenPath, newToken, ensureTokenSync, readTokenSync, withTokenHeaders, isAuthorized };
+module.exports = { TOKEN_HEADER, tokenPath, newToken, ensureTokenSync, readTokenSync, withTokenHeaders, isAuthorized, hardenDataDir };

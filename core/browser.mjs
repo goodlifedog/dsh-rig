@@ -268,6 +268,8 @@ export async function launch(opts = {}) {
   if (screenLocked) console.log('[browser] 检测到锁屏，启动超时放宽到 ' + timeoutMs + 'ms');
   const attempts = Math.max(1, Number(opts.retries == null ? 2 : opts.retries));
   await fsp.mkdir(userDataDir, { recursive: true });
+  // profile 里可能有登录态 cookie：目录必须只有本用户可进（Chrome 新建文件是 644，靠目录挡）
+  try { await fsp.chmod(userDataDir, 0o700); } catch {}
 
   const logLine = (text) => { overlay.log(text).catch(() => {}); };
   const args = buildArgs(opts, userDataDir);

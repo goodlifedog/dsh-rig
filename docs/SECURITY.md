@@ -20,6 +20,8 @@
 
 以上每一条都有单测或集成测试钉住（见 `test/security-boundaries.test.mjs`、`test/local-token.test.mjs`、`test/overlay-server.test.mjs`、`test/daemon-integration.test.mjs`）。
 票据校验用定长比较，长度不同直接拒；token 文件被写坏（不是 32 字节 hex）会重新生成，不会把坏值当 token。
+每次启动都会幂等修正数据目录权限（`~/.desktop-agent` 与浏览器 profile 目录 700、token 文件 600）——
+`mkdirSync` 的 mode 对已存在的 755 目录不生效，早期版本建出来的目录会被这一步纠正。
 
 ## 二、刻意不做的（授权和越权）
 

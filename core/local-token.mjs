@@ -16,6 +16,7 @@ export const TOKEN_HEADER = token.TOKEN_HEADER;
 export const tokenPath = token.tokenPath;
 export const newToken = token.newToken;
 export const withTokenHeaders = token.withTokenHeaders;
+export const hardenDataDir = token.hardenDataDir;
 
 /** 确保 token 文件存在（服务端启动时调用） */
 export async function ensureToken(options = {}) {

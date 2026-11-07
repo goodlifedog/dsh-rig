@@ -57,6 +57,38 @@ test('token 文件：首次生成 600 权限、内容够长；再次调用复用
   }
 });
 
+test('权限修正：已存在的 755 目录和 644 token 文件会被纠正成 700/600', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'token-'));
+  const file = path.join(dir, 'api-token');
+  try {
+    fs.chmodSync(dir, 0o755);
+    fs.writeFileSync(file, cjs.newToken() + '\n', { mode: 0o644 });
+    fs.chmodSync(file, 0o644);
+    const token = cjs.ensureTokenSync(file);
+    assert.match(token, /^[0-9a-f]{64}$/);
+    assert.equal(fs.statSync(dir).mode & 0o777, 0o700, '目录已存在时 mkdir 的 mode 不生效，必须显式 chmod');
+    assert.equal(fs.statSync(file).mode & 0o777, 0o600, 'token 合法也要把权限纠正回来');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('hardenDataDir：存在的敏感子目录收紧到 700，不存在的不报错', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'harden-'));
+  try {
+    const profile = path.join(dir, 'chrome-profile');
+    fs.mkdirSync(profile, { recursive: true });
+    fs.chmodSync(dir, 0o755);
+    fs.chmodSync(profile, 0o755);
+    cjs.hardenDataDir(dir);
+    assert.equal(fs.statSync(dir).mode & 0o777, 0o700);
+    assert.equal(fs.statSync(profile).mode & 0o777, 0o700, '浏览器 profile 可能带登录态，也要 700');
+    assert.doesNotThrow(() => cjs.hardenDataDir(path.join(dir, '不存在')));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('token 文件内容被写坏时重新生成，不会把坏值当 token 用', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'token-'));
   const file = path.join(dir, 'api-token');
