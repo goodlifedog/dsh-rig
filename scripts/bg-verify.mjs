@@ -42,7 +42,9 @@ function classify(result, name) {
     // 取最后一段 JSON 里的关键数字；锁屏时部分断言被跳过要标注出来，别让人以为全验了
     const summary = (result.out.match(/汇总:\s*(\{[^}]+\})/) || [])[1] || '';
     const partial = /前台断言跳过/.test(result.out) ? '（锁屏：前台断言跳过）' : '';
-    return { status: 'PASS', detail: (summary ? summary.replace(/"/g, '') : '通过') + partial };
+    const skipMatch = result.out.match(/"skipped":\s*(\d+)/);
+    const skipNote = skipMatch && Number(skipMatch[1]) > 0 ? '（' + skipMatch[1] + ' 个应用因安全原因跳过）' : '';
+    return { status: 'PASS', detail: (summary ? summary.replace(/"/g, '') : '通过') + partial + skipNote };
   }
   const failLine = (result.out.match(/❌[^\n]{0,80}/) || [])[0] || '有项未通过';
   return { status: 'FAIL', detail: failLine };
