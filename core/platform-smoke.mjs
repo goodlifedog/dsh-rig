@@ -8,6 +8,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMac, isWindows, platform, controlBackend, resolveOcu, dataDir } from './platform.mjs';
+import { localHeaders } from './local-token.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -57,7 +58,8 @@ add('数据目录可写', dirOk, dir);
 let overlayOk = false;
 let overlayInfo = '';
 try {
-  const r = await fetch('http://127.0.0.1:7788/health', { signal: AbortSignal.timeout(2000) });
+  // overlay 也要 token（2026-11-08 起），不带票会被 401，doctor 会误报小窗不可用
+  const r = await fetch('http://127.0.0.1:7788/health', { headers: localHeaders(), signal: AbortSignal.timeout(2000) });
   const d = await r.json();
   overlayOk = Boolean(d.ok);
   overlayInfo = 'pid=' + d.pid + ' sessions=' + (d.session || 'default');

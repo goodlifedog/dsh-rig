@@ -54,6 +54,7 @@
     "humanize:live": "node scripts/humanize-live.mjs",
     "matrix": "node core/tasks/app-matrix.mjs",
     "apps:inventory": "node scripts/app-inventory.mjs",
+    "dialogs:guard": "node core/dialog-guard.mjs",
     "apps:probe": "node scripts/apps-probe.mjs",
     "app:runtime": "node scripts/app-runtime.mjs",
     "app:resolve": "node scripts/app-resolve.mjs",

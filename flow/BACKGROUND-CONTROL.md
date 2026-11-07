@@ -9,6 +9,7 @@
 | frontName() | 当前前台应用名（System Events，约 120ms） |
 | isAppRunning({bundleId, appName, processName}) | 应用是否在运行（优先英文可执行名 pgrep -x） |
 | ensureAppRunning({...}) | 后台启动：已在跑就直接返回，没跑才 `open -g -j`（连窗口都不显示；旧行为设 `AGENT_LAUNCH_HIDDEN=0`） |
+| launchFlags({env}) | 返回后台启动参数：默认 `['-g','-j']`，`AGENT_LAUNCH_HIDDEN=0` 时 `['-g']`（纯函数） |
 | state(app) | 读界面树文本（裸读，某些应用会被顶前台，探索性场景用 readSafe） |
 | find(app, {role, text, limit}) | 按角色/文字查元素（同上，探索性场景用 findSafe） |
 | click(app, elementIndex) | AX 语义点击 |
@@ -324,6 +325,21 @@ npm run user:active  # 你在用 A 时，后台控 B，A 的界面与前台都�
 **验证状态**：逻辑由 5 项单测覆盖（单次抢占还原 / 反复切换认账 / 还原失败不崩 / 停止后不再轮询）。
 真实抢占目前在测试机上无法稳定复现——DSH 处于全屏时其他应用顶不上来（`open -a` 不生效），
 所以只能等实际遇到抢占时再看 `frontSteals` 是否记录。
+
+### 弹窗守卫：自家软件的崩溃/更新弹窗别挡路（2026-11-08）
+
+`core/dialog-guard.mjs` 扫我们自己的进程（默认只有 overlay 的 Electron 和 Desktop Agent，**不碰用户的 Chrome**），
+把崩溃报告/更新提示这类弹窗点掉「确定/好/关闭/稍后」；**权限类弹窗（辅助功能/屏幕录制/自动化/登录项）绝不代点**，
+只打印提醒让用户自己处理——代点授权违反本项目的安全约定。
+
+```bash
+node core/dialog-guard.mjs --dry-run   # 演练：只看不点
+node core/dialog-guard.mjs             # 扫一轮
+node core/dialog-guard.mjs --watch     # 常驻，每 5 秒一次
+```
+
+数据源走项目自己的 AX 层（`dialogs()` + System Events 点按钮），不用 ocu CLI——
+ocu 没有 dialogs 工具，走它只会静默失效。
 
 ### 窗口就绪、首启弹窗、收尾（2026-11-07 实测）
 
