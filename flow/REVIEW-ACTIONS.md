@@ -78,6 +78,15 @@ flow/patch-deploy-freshness.diff     代码新鲜度检查（service:status 能�
 
 ## P2 · 打磨（按需，不阻塞发布）
 
+### 2.7 看门狗判定「用户意图」只看次数，不看人有没有真的在动
+
+- `core/front-watch.mjs`：同一个应用在 `userIntentMs`（默认 1500ms）内把前台抢走 3 次以上，就认账「这是用户自己在切」，从此不再还原
+- 问题：**应用自己连续 activate 3 次，和用户手动切 3 次，在代码里长得一模一样**。某些应用在启动、弹窗、收到消息时会在短时间反复激活自己，看门狗会误判成用户意图然后放弃——用户感受到的就是「焦点被抢走了，而且不管了」
+- 现有测试也是这么模拟的：`getFront` 连续返回同一个别家应用，断言应认账。它证明的是「这个启发式按设计工作」，证明不了「真实场景下判得对」
+- 建议：结合 `ioreg` 的 `HIDIdleTime` 判真伪——**最近 2 秒内用户没有任何键鼠输入，就不可能是用户切换的**，应继续还原（仍受 `maxRestores` 上限约束）。`core/acceptance.mjs` 已经在用 HIDIdleTime 判「用户是否在用电脑」，可以复用同一套
+- 收益：既不会把「应用自己跳」误判成用户意图，也不会真的跟用户抢（用户一动鼠标就认账）
+
+
 ### 2.9 `core/prune.mjs` 是死代码，和 `scripts/prune.mjs` 逻辑重复（**补丁已备**：`flow/patch-prune-consolidate.diff`）
 
 - `core/prune.mjs`（58 行）导出 `logTimestamp` / `selectStaleLogs` / `selectExcessReports` / `isPrunablePath`，**全仓零引用**（含测试）
