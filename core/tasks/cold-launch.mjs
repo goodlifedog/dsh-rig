@@ -71,6 +71,13 @@ async function main() {
     row.launchFrontUnchanged = locked ? true : row.frontAfterLaunch === row.frontAfterQuit;
     row.running = await isAppRunning({ appName: app.name, processName: app.process });
 
+    // 自己拉起来的自己收掉：否则每跑一次冷启动验收，桌面就多一个计算器/系统设置/备忘录
+    if (launch.launched) {
+      row.cleanup = (await quitApp(app)) ? 'quit' : 'needs-confirm';
+      if (row.cleanup !== 'quit') row.cleanupDetail = '应用未能安全退出（可能有未保存内容），已留在后台';
+      row.runningAfterCleanup = await isAppRunning({ appName: app.name, processName: app.process });
+    }
+
     rows.push(row);
     console.log(JSON.stringify(row));
   }
