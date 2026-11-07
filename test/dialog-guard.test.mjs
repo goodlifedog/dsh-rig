@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyDialog, pickSafeButton } from '../core/dialog-guard.mjs';
+import { classifyDialog, classifyDialogWithButtons, hasGrantButton, pickSafeButton } from '../core/dialog-guard.mjs';
 
 test('权限类弹窗不自动点，交给人处理', () => {
   const v = classifyDialog('“Desktop Agent”想要控制您的电脑 辅助功能');
@@ -28,6 +28,32 @@ test('默认只处理自家进程，不去点用户的 Chrome', async () => {
 test('权限文案覆盖「想要控制」「想要录制」这类系统弹窗', () => {
   assert.equal(classifyDialog('“X”想要控制您的电脑').kind, 'permission');
   assert.equal(classifyDialog('“X”想要录制屏幕内容').kind, 'permission');
+});
+
+test('非中英文系统的权限弹窗也不能被当成普通弹窗点掉', () => {
+  // 德语：无障碍权限，文案含 Bedienungshilfen，按钮叫 OK/Systemeinstellungen öffnen
+  const de = classifyDialogWithButtons('App möchte Ihren Computer steuern. Bedienungshilfen OK', ['OK', 'Systemeinstellungen öffnen']);
+  assert.equal(de.kind, 'permission');
+  // 法语：Accessibilité
+  assert.equal(classifyDialog('Autoriser la commande ? Accessibilité').kind, 'permission');
+  // 日语：アクセシビリティ
+  assert.equal(classifyDialog('このコンピュータの制御を許可しますか？ アクセシビリティ').kind, 'permission');
+});
+
+test('文案不认识、但按钮是授权类 → 也不点（结构判定，不依赖语言）', () => {
+  assert.equal(hasGrantButton(['OK', '取得']), true);
+  assert.equal(hasGrantButton(['許可']), true);
+  assert.equal(hasGrantButton(['Erlauben']), true);
+  assert.equal(hasGrantButton(['关闭']), false);
+  assert.equal(classifyDialogWithButtons('某段看不懂的提示', ['Erlauben', 'Später']).kind, 'permission');
+  assert.equal(classifyDialogWithButtons('某段看不懂的提示', ['关闭', '稍后']).kind, 'unknown');
+  assert.equal(classifyDialogWithButtons('某段看不懂的提示', ['关闭'], 'SecurityAgent').kind, 'permission', '系统进程弹窗一律不点');
+});
+
+test('陌生弹窗默认不动（宁可少点一个提示，也不代点授权）', () => {
+  const v = classifyDialog('Some application wants something');
+  assert.equal(v.kind, 'unknown');
+  assert.equal(v.autoClick, false);
 });
 
 test('点按钮前做安全校验：危险名字不执行', async () => {
