@@ -1,6 +1,6 @@
 # 外部评审提供的补丁
 
-> 最后更新：2026-11-08 04:50。**3 个待应用补丁**，其余都已被主会话实现并删除。
+> 最后更新：2026-11-08 05:00。**4 个待应用补丁**，其余都已被主会话实现并删除。
 
 ## 待应用
 
@@ -95,6 +95,17 @@ NOTICE.md 里只记了版本/许可/仓库，**没有二进制指纹**——发�
 node --test test/bundle-ocu.test.mjs
 node scripts/bundle-ocu.mjs --with-binary && cat third_party/open-computer-use/NOTICE.md | grep sha256
 ```
+
+### patch-doc-refs.diff（58 行 / 1 个文件）
+
+**问题**：文档里写死的文件名会腐烂——`THIRD-PARTY.md` 引用已删除的 `frames.mjs`、
+`flow/CDP-FALLBACK.md` 引用带 `desktop-agent/` 前缀的路径，都没人发现。
+
+补丁：`repo:check` 增加「文档引用的源文件都存在」——扫描 README/ARCHITECTURE/THIRD-PARTY/docs/flow 里
+反引号中的 `xxx.mjs|js|cjs|ps1|html|yml`，带路径的按仓库根判断、只写名字的按已知文件名集合判断。
+排除历史文档（REVIEW/HANDOFF）与补丁索引（写的是应用后才有的文件）。
+
+实测：在 README 里加一句引用 `core/deleted-file.mjs` 立刻报红；恢复后全绿。
 
 ## 已采纳并删除的补丁
 
