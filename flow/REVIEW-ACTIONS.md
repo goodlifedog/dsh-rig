@@ -78,6 +78,16 @@ flow/patch-deploy-freshness.diff     代码新鲜度检查（service:status 能�
 
 ## P2 · 打磨（按需，不阻塞发布）
 
+### 2.9 `core/prune.mjs` 是死代码，和 `scripts/prune.mjs` 逻辑重复
+
+- `core/prune.mjs`（58 行）导出 `logTimestamp` / `selectStaleLogs` / `selectExcessReports` / `isPrunablePath`，**全仓零引用**（含测试）
+- 真正在用的是 `scripts/prune.mjs` 自己的 `planPrune`（`npm run prune` 和 `test/prune.test.mjs` 都走它）
+- 两个文件写的是一回事：一套在 core 里没人用，一套在 scripts 里带测试
+- 建议二选一：① 直接删 `core/prune.mjs`；② 更好——把 `planPrune` 移进 `core/prune.mjs`，`scripts/prune.mjs` 只做 CLI 壳和输出（core 放逻辑、scripts 放入口，和仓库其它地方一致）
+
+顺带：`core/driver-resolution.mjs` 的 `DRIVER_ORDER_NOTE` 常量、`core/tasks/greet-verify.mjs` 的 `readChatList` 也是零引用（后者随 BOSS 内容一起走）
+
+
 ### 3.05 `service:status` 的「部署状态」只查游离进程，不查代码新旧（**补丁已备**：`flow/patch-deploy-freshness.diff`）
 
 - 现在 `deploymentDrift({listenerPid, managedPid})` 只判断「端口是不是被 launchd 受管进程占着」
