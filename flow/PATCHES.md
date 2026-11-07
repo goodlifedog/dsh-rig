@@ -155,6 +155,18 @@ node --test test/retry-policy.test.mjs   # 6 项全过
 npm test                                  # 全量全绿
 ```
 
+## 8. `patch-health-queue.diff`（15 行 / 1 个文件）
+
+**发现**：`npm run health` 那行「后台 daemon 7789 pid=… **队列=undefined**」——`health.mjs` 读 `daemon.queued`，
+但 `/status` 返回的是 `queue`（数组）+ `queueLength`，从来没有 `queued` 字段。这条从早期一直错到现在。
+
+补丁：用 `queueLength` 兜底、再退到 `queue.length`，显示 `队列=0` 而不是 `undefined`。
+
+验证：
+```bash
+npm run health | grep '后台 daemon'   # 应为 队列=0
+```
+
 ## 已作废（不要再应用）
 
 `patch-token-permissions.diff`：权限校正已由主会话自行实现（`hardenDataDir`，更完整——连 chrome-profile 等敏感子目录一起收紧），
