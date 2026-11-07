@@ -8,7 +8,7 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ensureAppRunning, frontName, state, find } from '../background.mjs';
+import { ensureAppRunning, frontName, state, find, windowControls } from '../background.mjs';
 import { isScreenLocked } from '../platform.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
 
@@ -105,8 +105,11 @@ async function main() {
       row.buttons = (await find(app.name, { role: 'AXButton', limit: 60 })).length;
       row.textAreas = (await find(app.name, { role: 'AXTextArea', limit: 10 })).length;
       row.textFields = (await find(app.name, { role: 'AXTextField', limit: 10 })).length;
+      // 菜单命令：很多关键动作只在菜单里（保存/新建/切换标签）
+      row.menuItems = (await find(app.name, { role: 'AXMenuItem', limit: 40 })).length;
+      row.windowControls = (await windowControls(app.name)).length;
     } catch (e) {
-      row.buttons = -1; row.textAreas = -1; row.textFields = -1;
+      row.buttons = -1; row.textAreas = -1; row.textFields = -1; row.menuItems = -1; row.windowControls = -1;
     }
 
     steps.elements = await frontName();
@@ -156,12 +159,13 @@ async function main() {
     '- 汇总：' + summary.readable + '/' + summary.total + ' 可读界面，' + summary.clickable + '/' + summary.total +
       ' 有可点击元素，' + summary.liveCapture + '/' + summary.total + ' 画面可直接回显',
     '',
-    '| 应用 | 启动 | 读界面 | 节点 | 按钮 | 文本区 | 画面 | 前台未变 |',
-    '| --- | --- | --- | --- | --- | --- | --- | --- |',
+    '| 应用 | 启动 | 读界面 | 节点 | 按钮 | 文本区 | 菜单项 | 窗口按钮 | 画面 | 前台未变 |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
   ];
   for (const r of rows) {
     lines.push('| ' + r.app + ' | ' + r.launch + ' | ' + (r.readable ? 'yes' : 'no') + ' | ' + r.nodes +
-      ' | ' + r.buttons + ' | ' + r.textAreas + ' | ' + r.capture + ' | ' + (r.frontUnchanged ? 'yes' : 'NO') + ' |');
+      ' | ' + r.buttons + ' | ' + r.textAreas + ' | ' + (r.menuItems === undefined ? '-' : r.menuItems) +
+      ' | ' + (r.windowControls === undefined ? '-' : r.windowControls) + ' | ' + r.capture + ' | ' + (r.frontUnchanged ? 'yes' : 'NO') + ' |');
   }
   lines.push('');
   lines.push('offscreen = 窗口在别的桌面、系统返回纯色帧（仍可后台操作，只是画面抓不到）。');

@@ -201,3 +201,48 @@ export async function smartType(app, options = {}) {
 
   return { ok: false, method: 'none', verified: false, attempts };
 }
+
+/**
+ * 菜单栏命令：很多应用的关键动作（保存、新建、切换标签）只在菜单里，
+ * 按钮遍历不到。这里用 AXMenuItem 语义查找 + accessibility 点击，不截图、不抢前台。
+ *
+ * @param {string} app
+ * @param {{item:string, deps?:object}} options item 为菜单项文字（如「保存」「新建窗口」）
+ * @returns {{ok:boolean, index?:number|string, frontUnchanged?:boolean, reason?:string}}
+ */
+export async function clickMenuItem(app, options = {}) {
+  const opts = options || {};
+  const item = String(opts.item == null ? '' : opts.item).trim();
+  const deps = Object.assign({ find, click }, opts.deps || {});
+  if (!item) return { ok: false, reason: '没有指定菜单项文字' };
+
+  let matches = [];
+  try {
+    matches = await deps.find(app, { role: 'AXMenuItem', text: item, limit: 12 });
+  } catch (error) {
+    return { ok: false, reason: '菜单查询失败：' + String(error && error.message || error).slice(0, 80) };
+  }
+  // 优先完全匹配，其次包含
+  const exact = matches.find((m) => String(m.title || '').trim() === item);
+  const partial = matches.find((m) => String(m.title || '').includes(item));
+  const hit = exact || partial;
+  if (!hit) return { ok: false, reason: '菜单项没找到：' + item };
+
+  const r = await deps.click(app, hit.index);
+  return { ok: Boolean(r && r.ok), index: hit.index, frontUnchanged: r ? r.frontUnchanged !== false : true };
+}
+
+/** 窗口控制按钮（关闭 / 最小化 / 缩放）：不同应用角色名不完全一样，两者都找 */
+export async function windowControls(app, options = {}) {
+  const opts = options || {};
+  const deps = Object.assign({ find }, opts.deps || {});
+  const buttons = [];
+  try {
+    const found = await deps.find(app, { role: 'AXButton', limit: 80 });
+    for (const b of found) {
+      const title = String(b.title || '');
+      if (/关闭|close|最小化|minimi[sz]e|缩放|zoom/i.test(title)) buttons.push({ index: b.index, title });
+    }
+  } catch {}
+  return buttons;
+}
