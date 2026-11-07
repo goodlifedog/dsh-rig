@@ -28,7 +28,26 @@ flow/patch-deploy-freshness.diff     代码新鲜度检查（service:status 能�
 
 其余补丁已作废删除（对应实现已在代码里）。
 
-## P0 · 公开前必须处理（4 条）
+## P0 · 公开前必须处理（5 条）
+
+### 0.5 【工作区当前是红的】8 个文件把 `import` 插到了 shebang 上面
+
+`npm run verify` 现在报「8 个文件有语法错误」，`node --check` 逐个确认：
+
+```
+core/tasks/app-matrix.mjs:2      #!/usr/bin/env node
+                                ^ SyntaxError: Invalid or unexpected token
+```
+
+受影响：app-matrix / background-control / browser-background / drive-agent / drive-agent-cli /
+parallel-demo / parallel-real-demo / scripts/app-resolve.mjs。
+
+原因：批量把 overlay 地址换成 `overlayBase()` 时，脚本把
+`import { overlayBase } from '../ports.mjs';` 插在了第一行，把 `#!/usr/bin/env node` 挤到第二行——
+**shebang 必须第 1 行，出现在第 2 行就是语法错误**。
+
+修法：把 import 移到 shebang 之后（或去掉这些脚本的 shebang，它们都由 `node xxx.mjs` 调用）；
+改完跑 `npm run verify`，这 8 个应恢复全绿。
 
 ### 0.5 ✅ 已解决：`HARD_FAIL` 优先于环境规则（`d49be81`）
 
