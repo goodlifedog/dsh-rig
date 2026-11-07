@@ -94,7 +94,7 @@ core/browser.mjs        19 行：注释「首次使用需要在离屏窗口里�
 - 保留 `browser-demo`（离屏 Chrome 读页面）
 - 新增一个中性任务：读一个公开网页（如 example.com）并断言标题，覆盖「真实网络 + 页面解析」
 - 填表那项直接用现成的 `form-fill-local.mjs`（本地 HTML 表单 + Electron accessory 窗口），链路一样是 AX 设值
-- 这样验收项数不变（当前 13 项：overlay 两项 + 11 个任务），不需要重新洗牌
+- 这样验收项数不变（当前 13 项：overlay 3 项 + 10 个任务），不需要重新洗牌
 
 ## 六、做完怎么验
 
