@@ -10,6 +10,7 @@
 | isAppRunning({bundleId, appName, processName}) | 应用是否在运行（优先英文可执行名 pgrep -x） |
 | ensureAppRunning({...}) | 后台启动：已在跑就直接返回，没跑才 `open -g -j`（连窗口都不显示；旧行为设 `AGENT_LAUNCH_HIDDEN=0`） |
 | launchFlags({env}) | 返回后台启动参数：默认 `['-g','-j']`，`AGENT_LAUNCH_HIDDEN=0` 时 `['-g']`（纯函数） |
+| ensureAppWindow(app, {timeoutMs}) | 组合动作：确保应用在跑（`ensureAppRunning`）并等到它有可用窗口（`waitForWindow`），返回窗口信息；任务不再各自拼这两步 |
 | state(app) | 读界面树文本（裸读，某些应用会被顶前台，探索性场景用 readSafe） |
 | find(app, {role, text, limit}) | 按角色/文字查元素（同上，探索性场景用 findSafe） |
 | click(app, elementIndex) | AX 语义点击 |

@@ -333,9 +333,12 @@ curl -s -H "X-Agent-Token: $TOKEN" http://127.0.0.1:7788/health | head -c 400   
    去 系统设置 → 隐私与安全性 → 屏幕录制，勾选启动小窗的终端/Electron/App，然后重启小窗。
    判定：`curl -s -H "X-Agent-Token: $TOKEN" http://127.0.0.1:7788/windows` 返回 500 也说明权限缺失。
 2. **绑定的窗口 ID 失效 / 窗口在别的 Space / 已最小化**：`/health` 的 `thumbnail.state` 是 error。
-   - 重新拿窗口列表：`curl -s -H "X-Agent-Token: $TOKEN" http://127.0.0.1:7788/windows`（带 `self:true` 的是我们自己的窗口，别绑）
+   - **先等一下，一般会自己恢复**：绑定的窗口被关掉后约 0.5 秒内会自动解绑（状态变 `no-window`，不是错误）；
+     同一应用又开了新窗口时，约 1 秒内会自动重新绑定。也就是说「窗口关掉重开」通常不用你管。
+   - 自动恢复没接住时再手动：重新拿窗口列表 `curl -s -H "X-Agent-Token: $TOKEN" http://127.0.0.1:7788/windows`（带 `self:true` 的是我们自己的窗口，别绑）
    - 重新绑：`curl -s -X POST http://127.0.0.1:7788/window -H "X-Agent-Token: $TOKEN" -H 'Content-Type: application/json' -d '{"windowId":123456}'`
    - 或者直接点小窗上的 **重试** 按钮。
+   - 验证自动恢复链路（不会弹窗打扰用户）：`OVERLAY_CAPTURE_WHILE_HIDDEN=1 npm run overlay` 后关掉被绑窗口，看 `/health` 是否从 `live` 变 `no-window`。
 3. **headless 推帧没到**：headless 模式屏幕本来没有窗口，画面只能靠 `POST /frame`。
    - 看 `/health` 的 `frames` 是否在涨、`frameBytes` 是否非 0。
    - 自己手推一帧验证链路：`POST /frame` 的 `dataUrl` 必须是 `data:image/jpeg;base64,...` 或 PNG；body 上限 8MB。
