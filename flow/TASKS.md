@@ -30,7 +30,7 @@
 | `headless-demo` | 当前前台：应用名（读 ocu list_apps 的 [frontmost] 行）+ 前台进程 pid |
 | `human-demo` | （文件头没写用途说明） |
 | `mcp-demo` | （文件头没写用途说明） |
-| `multi-app` | （文件头没写用途说明） |
+| `multi-app` | 并行结果判定（纯函数）：fulfilled 不等于成功——快照可能是空树（节点 0）， |
 | `parallel-demo` | 并行演示：同时驱动两个独立后台浏览器，各自把画面推到自己那一路小窗 |
 | `parallel-real-demo` | 双应用并行回显：同时操作两个真实软件，并把它们各自的窗口实时回显到两个小窗 |
 | `platform-demo` | （文件头没写用途说明） |

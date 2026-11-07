@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { summarizeApplescriptRows } from '../core/tasks/applescript-channel.mjs';
 import { summarizeMatrixVerdict } from '../core/tasks/app-matrix.mjs';
+import { summarizeMultiApp } from '../core/tasks/multi-app.mjs';
 
 test('applescript：至少一个应用真的执行成功才算通道可用', () => {
   const ok = summarizeApplescriptRows([
@@ -66,6 +67,32 @@ test('矩阵：前台被抢 → 失败', () => {
   const v = summarizeMatrixVerdict([{ readable: true }], false);
   assert.equal(v.ok, false);
   assert.match(v.problem, /前台/);
+});
+
+test('多应用并行：fulfilled 但节点 0 不算成功', () => {
+  const v = summarizeMultiApp([
+    { status: 'fulfilled', value: { nodes: 25 } },
+    { status: 'fulfilled', value: { nodes: 0 } },
+  ], 2);
+  assert.equal(v.ok, false);
+  assert.equal(v.success, 1);
+  assert.match(v.problem, /1\/2/);
+});
+
+test('多应用并行：全部读到内容才通过', () => {
+  const v = summarizeMultiApp([
+    { status: 'fulfilled', value: { nodes: 10 } },
+    { status: 'fulfilled', value: { nodes: 3 } },
+  ], 2);
+  assert.equal(v.ok, true);
+  assert.equal(v.problem, '');
+});
+
+test('多应用并行：有 rejected 就失败；空输入安全', () => {
+  const v = summarizeMultiApp([{ status: 'rejected', reason: new Error('x') }], 1);
+  assert.equal(v.ok, false);
+  assert.equal(summarizeMultiApp([], 0).ok, false);
+  assert.doesNotThrow(() => summarizeMultiApp(null, 2));
 });
 
 test('两条汇总结论对空/异常输入安全', () => {

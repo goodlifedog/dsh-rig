@@ -4,6 +4,21 @@ import { ocu, overlay, guard, withAppLock, countElements } from '../agentd.mjs';
 // 同时控制两个应用：每个应用独立加锁，互不阻塞。
 const TARGETS = (process.env.TARGETS || 'Finder,Calculator').split(',').map((s) => s.trim());
 
+/**
+ * 并行结果判定（纯函数）：fulfilled 不等于成功——快照可能是空树（节点 0），
+ * 只有真的读到节点才算这个应用成功；任何一个失败都不能 exit 0（评审 false-green 类问题）。
+ * @param {Array<{status:string, value?:{nodes?:number}, reason?:any}>} results
+ * @param {number} total 目标应用数
+ */
+export function summarizeMultiApp(results, total) {
+  const list = Array.isArray(results) ? results : [];
+  const expected = Number(total) > 0 ? Number(total) : list.length;
+  const success = list.filter((r) => r && r.status === 'fulfilled' && Number(r.value && r.value.nodes) > 0).length;
+  let problem = '';
+  if (success < expected) problem = '并行控制只有 ' + success + '/' + expected + ' 个应用真的读到内容';
+  return { ok: success === expected && expected > 0, success, total: expected, problem };
+}
+
 async function probe(app) {
   return withAppLock(app, async () => {
     const { result, before, after } = await guard(
@@ -40,12 +55,21 @@ async function main() {
     }
   }
 
-  const ok = results.filter((r) => r.status === 'fulfilled').length;
-  await overlay.status('并行完成：' + ok + '/' + TARGETS.length + ' 个应用，用时 ' + ((Date.now() - t0) / 1000).toFixed(1) + 's');
+  const verdict = summarizeMultiApp(results, TARGETS.length);
+  await overlay.status('并行完成：' + verdict.success + '/' + TARGETS.length + ' 个应用，用时 ' + ((Date.now() - t0) / 1000).toFixed(1) + 's');
   console.log('用时', ((Date.now() - t0) / 1000).toFixed(1), 's');
+  if (!verdict.ok) {
+    console.log('❌ ' + verdict.problem);
+    process.exitCode = 1;
+  }
 }
 
-main().catch((e) => {
-  console.error('FAIL:', e.message);
-  process.exit(1);
-});
+const invokedDirectly = Boolean(process.argv[1])
+  && (await import('node:path')).resolve(process.argv[1]) === (await import('node:url')).fileURLToPath(import.meta.url);
+
+if (invokedDirectly) {
+  main().catch((e) => {
+    console.error('FAIL:', e.message);
+    process.exit(1);
+  });
+}
