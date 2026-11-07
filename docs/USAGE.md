@@ -463,6 +463,11 @@ curl -s -H "X-Agent-Token: $TOKEN" http://127.0.0.1:7788/health | head -c 400   
 | `npm run monitor` | `node scripts/monitor.mjs` | 一键巡检：健康+小窗回归、会话隔离、帧率，汇总成 reports/monitor-*.md（`MONITOR_FAST=1` 跳过回归约 30 秒） |
 | `npm run fps:check` | `node scripts/fps-check.mjs` | 帧率压测：持续推帧 20 秒，量实际帧率/单帧体积/推帧耗时（`FPS_CHECK_EXPANDED=1` 测放大态） |
 
+> 验收类命令（`accept` / `bg:verify` / 矩阵 / 后台控制 / 稳定性）要**解锁、且用户离开**才有意义：
+> 锁屏时任务会如实标「环境跳过」，不会假绿。人离开了但系统会自动锁屏时，先 `caffeinate -d -i` 再跑，
+> 例如 `caffeinate -d -i npm run accept`——否则跑到一半锁屏，后半程全是环境跳过。
+> 另外**不要和别的会话同时跑验收**：bg:verify/acceptance 会检测并拒绝，单个任务也会检查验收锁。
+
 ### 5.2 直接跑 node（npm 不覆盖的参数）
 
 ```bash
