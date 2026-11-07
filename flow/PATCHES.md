@@ -1,11 +1,12 @@
 # 外部评审提供的补丁
 
-> 最后更新：2026-11-08 05:45。**只剩 1 个待应用补丁**，其余都已被主会话实现并删除。
+> 最后更新：2026-11-08 06:00。**2 个待应用补丁**，其余都已被主会话实现并删除。
 
 ## 待应用
 
 ```bash
 git apply flow/patch-publish.diff        # 发布配置（发布前必打）
+git apply flow/patch-ports.diff          # 端口配置单一来源（AGENTD_PORT 现在真的全生效）
 # repocheck-zip / packaging-files 已应用（ZIP 降级 + 打包白名单），文件已删
 ```
 
@@ -130,6 +131,23 @@ node scripts/bundle-ocu.mjs --with-binary && cat third_party/open-computer-use/N
 
 验证：应用后跑 `npm run accept`，日志里每个任务后应出现「（已把前台还给 …）」，
 `background-control` 的起点前台应是用户应用而不是 Calculator。
+
+### patch-ports.diff（191 行 / 6 个文件）
+
+**问题（实测）**：文档写着 `AGENTD_PORT` 可改 daemon 端口，但只有 `daemon.mjs` / `cli.mjs` /
+`service.mjs` 读它；`health` / `status` / `doctor` / `restart-check` 里写死 7789。
+用户改了端口后，daemon 在新端口监听，而所有诊断工具仍去敲 7789，全体报「服务未启动」。
+
+补丁：新增 `core/ports.mjs`（`daemonPort()` / `overlayPort()` / `daemonUrl()` / `overlayUrl()`，
+非法值回退默认），四个诊断入口改为从它取端口。实测：`AGENTD_PORT=7799 node core/platform-smoke.mjs`
+现在会如实报「后台 daemon 7799 未启动」，而不是显示 7789 上那台服务；默认端口下一切不变。
+
+验证：
+```bash
+node --test test/ports.test.mjs
+AGENTD_PORT=7799 npm run doctor   # 应报 7799 未启动
+npm run doctor                     # 应全绿
+```
 
 ## 已采纳并删除的补丁
 
