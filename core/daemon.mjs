@@ -15,6 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { overlay } from './agentd.mjs';
 import { decideRetry } from './retry-policy.mjs';
+import { frontAppFast, startFrontWatch } from './front-watch.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -155,8 +156,23 @@ function runTask(name, attempt = 0) {
     const startedAt = Date.now();
     const child = spawn(process.execPath, [file], { cwd: ROOT, env: { ...process.env, AGENTD_DAEMON: '1' } });
     state.current = { name, attempt, startedAt: new Date().toISOString(), pid: child.pid, logFile };
+    // 备注：看门狗在下面启动，状态里只暴露"有没有在守"
     state.pendingRetry = null;
     state.cancelled = false;
+
+    // 前台看门狗：任务期间前台被抢就还原（用户反复切同一应用 3 次以上则认账）
+    // FRONT_GUARD=0 可整体关闭（调试或特殊场景用）
+    let frontWatch = null;
+    if (process.env.FRONT_GUARD !== '0') frontAppFast().then((expect) => {
+      if (!expect) return;
+      frontWatch = startFrontWatch({
+        expect,
+        onSteal: (e) => {
+          if (e.userSwitched) return;
+          overlay.log('前台被 ' + e.to + ' 抢占，已还原到 ' + e.from).catch(() => {});
+        },
+      });
+    }).catch(() => {});
     overlay.status('后台任务：' + name + (attempt ? '（第 ' + (attempt + 1) + ' 次）' : '')).catch(() => {});
     overlay.log('开始执行 ' + name).catch(() => {});
 
@@ -175,6 +191,7 @@ function runTask(name, attempt = 0) {
     const failEarly = (err) => {
       clearInterval(beat);
       clearTimeout(timer);
+      if (frontWatch) frontWatch.stop();
       try { out.end(); } catch {}
       const entry = { name, attempt, ok: false, code: null, error: String(err && err.message || err), startedAt: new Date(startedAt).toISOString(), durationMs: Date.now() - startedAt, logFile };
       state.current = null;
@@ -195,7 +212,9 @@ function runTask(name, attempt = 0) {
       const ok = code === 0;
       // 用户主动停止不是失败：单独标记，健康统计和自动重试都不该把它算进去
       const cancelled = state.cancelled === true;
-      const entry = { name, attempt, ok, code, cancelled, startedAt: new Date(startedAt).toISOString(), durationMs, logFile };
+      const guard = frontWatch ? frontWatch.stats() : null;
+      if (frontWatch) frontWatch.stop();
+      const entry = { name, attempt, ok, code, cancelled, frontSteals: guard ? guard.steals : 0, startedAt: new Date(startedAt).toISOString(), durationMs, logFile };
       state.current = null;
       state.history.unshift(entry);
       state.history = state.history.slice(0, 200);

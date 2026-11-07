@@ -121,6 +121,14 @@ async function main() {
       add('自动重试', true, '最近 ' + hist.length + ' 次未触发重试');
     }
 
+    // 前台保护：任务期间有没有应用试图抢前台，被看门狗拦下几次
+    const guardHits = hist.filter((h) => h && (h.frontSteals || 0) > 0);
+    const guardTotal = guardHits.reduce((sum, h) => sum + (h.frontSteals || 0), 0);
+    add('前台保护', true,
+      guardTotal
+        ? '最近 ' + hist.length + ' 次里拦截 ' + guardTotal + ' 次前台抢占（用户重切 3 次以上会认账）'
+        : '最近 ' + hist.length + ' 次未发生前台抢占');
+
     // 耗时趋势：按任务聚合，能看出哪个任务在拖后腿
     const stats = await getJson('http://127.0.0.1:7789/stats');
     if (stats && stats.runs) {
