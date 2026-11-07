@@ -113,3 +113,51 @@ test('带缓存：成功方式写回缓存，下次优先用它', async () => {
   assert.deepEqual(saved['应用C'].type[0], 'type_text', '成功方式应排在缓存最前');
   fs.rmSync(dir, { recursive: true, force: true });
 });
+test('读回失败时不再降级重输（避免内容重复）', async () => {
+  let typeCalls = 0;
+  const r = await smartType('某应用', {
+    elementIndex: 3,
+    text: '要写的字',
+    deps: {
+      state: async () => { throw new Error('AX 读取失败'); },
+      setValue: async () => ({ ok: true, frontUnchanged: true }),
+      typeText: async () => { typeCalls += 1; return { ok: true, frontUnchanged: true }; },
+    },
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.method, 'set_value');
+  assert.equal(r.verified, null, '读不出来时不该声称校验通过');
+  assert.equal(typeCalls, 0, '不能再键入一遍，否则内容会重复');
+});
+
+test('verify:false 时 verified 为 null 而不是 true', async () => {
+  const r = await smartType('某应用', {
+    elementIndex: 1,
+    text: 'abc',
+    verify: false,
+    deps: {
+      state: async () => '',
+      setValue: async () => ({ ok: true, frontUnchanged: true }),
+      typeText: async () => ({ ok: false }),
+    },
+  });
+  assert.equal(r.method, 'set_value');
+  assert.equal(r.verified, null);
+});
+
+test('读得出来但内容确实没进去：仍然降级', async () => {
+  let typeCalls = 0;
+  let tree = '旧内容';
+  const r = await smartType('某应用', {
+    elementIndex: 2,
+    text: '新内容',
+    deps: {
+      state: async () => tree,
+      setValue: async () => ({ ok: true, frontUnchanged: true }),
+      typeText: async () => { typeCalls += 1; tree = '新内容'; return { ok: true, frontUnchanged: true }; },
+    },
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.method, 'type_text');
+  assert.equal(typeCalls, 1, '内容真没写进去时才降级');
+});

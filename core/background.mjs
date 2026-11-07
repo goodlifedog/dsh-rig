@@ -172,12 +172,14 @@ export async function smartType(app, options = {}) {
     ? opts.order.slice()
     : (opts.elementIndex != null ? ['set_value', 'type_text'] : ['type_text']);
 
+  // 读回校验：要区分「内容没写进去」和「读不出来」——后者如果继续降级再输入一遍，
+  // 很可能造成重复内容（设值其实成功了）。
   const check = async () => {
     try {
       const tree = await deps.state(app);
-      return String(tree || '').includes(text);
+      return { readable: true, seen: String(tree || '').includes(text) };
     } catch {
-      return false;
+      return { readable: false, seen: false };
     }
   };
 
@@ -188,8 +190,10 @@ export async function smartType(app, options = {}) {
         const r = await deps.setValue(app, opts.elementIndex, text);
         attempts.push({ method: 'set_value', ok: Boolean(r && r.ok), frontUnchanged: r ? r.frontUnchanged !== false : true });
         if (r && r.ok) {
-          const seen = verify ? await check() : true;
-          if (seen) return { ok: true, method: 'set_value', verified: true, attempts };
+          if (!verify) return { ok: true, method: 'set_value', verified: null, attempts };
+          const c = await check();
+          if (c.seen) return { ok: true, method: 'set_value', verified: true, attempts };
+          if (!c.readable) return { ok: true, method: 'set_value', verified: null, note: '读回失败，按成功处理以免重复输入', attempts };
         }
       } catch (error) {
         attempts.push({ method: 'set_value', ok: false, error: String(error && error.message || error).slice(0, 80) });
@@ -201,8 +205,10 @@ export async function smartType(app, options = {}) {
         const r = await deps.typeText(app, text);
         attempts.push({ method: 'type_text', ok: Boolean(r && r.ok), frontUnchanged: r ? r.frontUnchanged !== false : true });
         if (r && r.ok) {
-          const seen = verify ? await check() : true;
-          if (seen) return { ok: true, method: 'type_text', verified: true, attempts };
+          if (!verify) return { ok: true, method: 'type_text', verified: null, attempts };
+          const c = await check();
+          if (c.seen) return { ok: true, method: 'type_text', verified: true, attempts };
+          if (!c.readable) return { ok: true, method: 'type_text', verified: null, note: '读回失败，按成功处理以免重复输入', attempts };
         }
       } catch (error) {
         attempts.push({ method: 'type_text', ok: false, error: String(error && error.message || error).slice(0, 80) });
@@ -213,14 +219,6 @@ export async function smartType(app, options = {}) {
   return { ok: false, method: 'none', verified: false, attempts };
 }
 
-/**
- * 菜单栏命令：很多应用的关键动作（保存、新建、切换标签）只在菜单里，
- * 按钮遍历不到。这里用 AXMenuItem 语义查找 + accessibility 点击，不截图、不抢前台。
- *
- * @param {string} app
- * @param {{item:string, deps?:object}} options item 为菜单项文字（如「保存」「新建窗口」）
- * @returns {{ok:boolean, index?:number|string, frontUnchanged?:boolean, reason?:string}}
- */
 /**
  * 菜单栏命令：分两步——先点开菜单栏项（File / 文件），再点菜单项（保存）。
  * 为什么必须两步：菜单不展开时，系统根本不会把菜单项放进无障碍树
