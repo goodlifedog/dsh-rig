@@ -72,7 +72,8 @@ for (const f of tracked) {
   // 手机号要独立成数，避免把 13 位时间戳误判
   if (/(?<!\d)1[3-9]\d{9}(?!\d)/.test(text.replace(/https?:\/\/\S+/g, ''))) leaks.push(f + ' 疑似手机号');
 }
-add('没有绝对路径/手机号泄漏', leaks.length === 0, leaks.slice(0, 3).join(', '));
+add('没有绝对路径/手机号泄漏', hasGit ? leaks.length === 0 : true,
+  hasGit ? leaks.slice(0, 3).join(', ') : '跳过（非 git 目录，没有文件列表）', !hasGit);
 
 // 6. 文档里提到的 npm run 命令必须真实存在（文档漂移最容易发生在这里）
 // overlay 有自己的 package.json（打包用），它文档里的命令要在 overlay 的 scripts 里找
@@ -204,7 +205,8 @@ try {
     const firstLines = text.split('\n', 3);
     if (firstLines.some((line) => line.startsWith('#!'))) shebangBad.push(f);
   }
-  add('shebang 都在第一行', shebangBad.length === 0, shebangBad.slice(0, 3).join(', '));
+  add('shebang 都在第一行', hasGit ? shebangBad.length === 0 : true,
+    hasGit ? shebangBad.slice(0, 3).join(', ') : '跳过（非 git 目录，没有文件列表）', !hasGit);
 } catch (error) {
   add('shebang 都在第一行', false, '检查失败：' + String(error.message).slice(0, 60));
 }
