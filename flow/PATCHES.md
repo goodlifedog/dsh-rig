@@ -1,11 +1,12 @@
 # 外部评审提供的补丁
 
-> 最后更新：2026-11-08 07:45。**2 个待应用补丁**，其余都已被主会话实现并删除。
+> 最后更新：2026-11-08 08:00。**2 个待应用补丁**，其余都已被主会话实现并删除。
 
 ## 待应用
 
 ```bash
 git apply flow/patch-publish.diff        # 发布配置（发布前必打）
+git apply flow/patch-env-doc.diff        # 环境变量清单自动生成 + 同步检查
 # patch-scope-lock 已应用（锁屏时 scope:check 环境跳过），文件已删
 # patch-ports 已应用（端口单一来源 core/ports.mjs），文件已删
 # repocheck-zip / packaging-files 已应用（ZIP 降级 + 打包白名单），文件已删
