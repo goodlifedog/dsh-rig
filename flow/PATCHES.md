@@ -14,13 +14,15 @@ npm test && npm run repo:check
 
 三个一起打之后实测：424 项测试全过、`repo:check` 全绿。
 
-## 1. `patch-publish.diff`（72 行 / 3 个文件）
+## 1. `patch-publish.diff`（78 行 / 3 个文件）
 
 **发布前必打。**一次性解决六件事：
 
 - 包名换成 scoped（`@goodlifedog/desktop-agent`，原名字在 npm 上被占用）
-- 补 `bin`（`desktop-agent` 命令）、`files` 白名单（打包 249 文件 4.3MB → **139 文件 1.1MB**）
-- 白名单额外排除评审/补丁类文档（`flow/REVIEW-*.md`、`flow/patch-*.diff`、`flow/BOSS-EXTRACT.md` 等 9 个文件 / 108KB）——这些是开发产物，尤其 `BOSS-EXTRACT.md` 是「怎么把招聘平台内容摘出去」的方案，随包公开很尴尬
+- 补 `bin`（`desktop-agent` 命令）、`files` 白名单（打包 249 文件 4.3MB → **138 文件 1.1MB**）
+- 白名单额外排除评审/补丁类文档（`flow/REVIEW-*.md`、`flow/patch-*.diff`、`flow/BOSS-EXTRACT.md`、`flow/INDEX.md`、`docs/HANDOFF-*.md`）——这些是开发产物，尤其 `BOSS-EXTRACT.md` 是「怎么把招聘平台内容摘出去」的方案，随包公开很尴尬
+- 同时**把根目录 `ARCHITECTURE.md` 加进白名单**：它是用户要读的架构说明，之前漏掉导致包内 `docs/USAGE.md` 的链接 404
+- 排除后实测包内 9 处相对链接全部有效
 - 补 `repository` 字段
 - 补 `publishConfig`：`registry` 指官方源 + `access: public`（本机 npm 默认指向淘宝镜像，不加这条会发到镜像站，官方源上装不到）
 - CI 矩阵收窄到 macOS（项目只支持 macOS，三平台会让徽章常年红）
@@ -31,7 +33,7 @@ npm test && npm run repo:check
 验证：
 ```bash
 npm publish --dry-run   # 必须显示 Publishing to https://registry.npmjs.org ... public access
-npm pack --dry-run      # 应显示 139 files / 1.1 MB
+npm pack --dry-run      # 应显示 138 files / 1.1 MB
 ```
 
 ## 2. `patch-prune-consolidate.diff`（120 行 / 3 个文件）

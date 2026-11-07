@@ -7,7 +7,7 @@
    "version": "0.7.0",
    "private": false,
    "type": "module",
-@@ -73,5 +73,38 @@
+@@ -73,5 +73,41 @@
      "bg:verify": "node scripts/bg-verify.mjs",
      "ui:check": "node scripts/ui-check.mjs",
      "health": "node scripts/health.mjs"
@@ -43,10 +43,13 @@
 +    "!flow/PUBLISH-VERDICT.md",
 +    "!flow/PUBLISH-CHECKLIST.md",
 +    "!flow/PATCHES.md",
++    "!flow/INDEX.md",
++    "!docs/HANDOFF-2026-11-07.md",
 +    "README.md",
 +    "LICENSE",
 +    "THIRD-PARTY.md",
-+    "CHANGELOG.md"
++    "CHANGELOG.md",
++    "ARCHITECTURE.md"
 +  ]
 +}
 --- a/.github/workflows/ci.yml
