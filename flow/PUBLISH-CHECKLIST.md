@@ -15,8 +15,8 @@
 cat flow/PUBLISH-VERDICT.md
 
 # 1. 应用两个补丁（发布配置 + P1 七项修复）
+# 只应用发布配置补丁；P1 的 7 项修复主会话已自行实现（patch-p1.diff 已作废，别再应用）
 git apply flow/patch-publish.diff
-git apply flow/patch-p1.diff
 
 # 2. 把两处占位换成自己的
 #    package.json:      @goodlifedog/desktop-agent        -> @<你的npm名>/desktop-agent
@@ -32,6 +32,7 @@ npm run verify                 # 语法 + 单测 + 体检
 node core/cli.mjs foo; echo $? # 应为 2
 npm pack --dry-run             # 应为 143 文件 / 1.1MB
 npm publish --dry-run          # 必须显示 registry.npmjs.org + public access
+node core/cli.mjs foo; echo $? # 应为 2（P1 已实现，无需打补丁）
 ```
 
 全部通过就可以建仓库、推代码、打 tag 了。

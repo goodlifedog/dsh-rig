@@ -2,7 +2,9 @@
 
 > 只列**还没做**的。已修好的沉到底部，不复述。
 > 详细理由见 [`REVIEW-2026-11-07.md`](REVIEW-2026-11-07.md)，发布流程见 [`PUBLISH-CHECKLIST.md`](PUBLISH-CHECKLIST.md)。
-> 更新：2026-11-08 15:00（`flow/patch-p1.diff` = **232 行 / 7 个文件**，新增 `core/runner.mjs`：日志写入从 `void fd.write()` 改为同步写，避免退出时末行丢失。**`docs/REVIEW.md` 那份 18 条旧审查，现在全部要么已验证修复、要么已进补丁。**）
+> 更新：2026-11-08 15:20（**P1 全部由主会话自行实现并有测试，`patch-p1.diff` 已作废、不要再应用**；单测 381→398。下面 P1 段落保留为历史记录。）
+>
+> 旧记录：2026-11-08 15:00（`flow/patch-p1.diff` = **232 行 / 7 个文件**，新增 `core/runner.mjs`：日志写入从 `void fd.write()` 改为同步写，避免退出时末行丢失。**`docs/REVIEW.md` 那份 18 条旧审查，现在全部要么已验证修复、要么已进补丁。**）
   ① `node core/cli.mjs foo` → 退出码 2，用法输出到 stderr
   ② 死进程旧锁 → 抢锁成功且内容改写成本进程；活进程旧锁 → 拒绝抢
   ③ `cli stop` 在 launchd 托管下 → 打印暂停/卸载/重启指引，**daemon 未被杀**（7789 仍 200）
@@ -28,34 +30,34 @@
 - 现状：`core/note-cleanup.mjs` 删除行时不看标题（靠「只删顶部 N 条 + `--force`」挡着）
 - 建议：删除前读 `name of rr`，只删 `[AGENT-TEST]` 前缀；写入时统一加该前缀
 
-## P1 · 影响正确性 / 用户信任（5 条）
+## P1 · ✅ 已全部由主会话实现（保留记录，勿再照做）
 
-### 4. overlay 会话回收缺「最近活动」保护（**补丁已备：`flow/patch-p1.diff`**）
+### 4. ✅ overlay 会话回收的「最近活动」保护（已实现：`overlay/session-policy.js`，有测试）
 
 - 现状：到上限 12 时回收「不可见 + 最久没活动」的会话；但 **DSH 不在前台时所有会话都不可见**
 - 正在被任务使用的会话可能被误回收。建议：`Date.now() - at < 60_000` 的不回收
 
-### 5. 资源清理外包给调用方（**复查后降级**，见下）
+### 5. ✅ 资源清理外包给调用方（复查后判定不用改，见下）
 
 - 原判断：9 个任务里 `closeOcuMcp()` 在 finally 出现 0 次，担心泄漏
 - **实测推翻了**：父进程正常 exit 或被 SIGTERM 杀掉时，MCP 子进程都自己退出了（stdio 关闭触发），打了 exit 钩子和没打补丁的对照结果一样干净
 - 结论：这条**不用改**。真正需要 finally 的是「进程不退出但资源要释放」的场景，这里不适用
 
-### 6. `npm stop` 谎报「已停止」（**补丁已备**：托管时给指引、非托管时杀完复查）
+### 6. ✅ `npm stop` 谎报（已实现：launchd 托管给指引）（**✅ 已实现**）
 
 - launchd 托管时 `logs/daemon.pid` 不存在 → kill 静默跳过 → 仍打印「已停止」；且 `KeepAlive` 会立刻拉回
 - 建议：先判断是否 launchd 托管，托管时明确提示用 `service:uninstall`/`launchctl bootout`
 
-### 7. `npm start` 会开出两个小窗（**补丁已备**：探 7788 有响应就跳过，401 也算活着）
+### 7. ✅ `npm start` 双开小窗（已实现：探测 7788）（**✅ 已实现**）
 
 - `start-all.mjs` 对 daemon 有复用判断，对小窗没有；已装服务时再跑 `npm start` → 第二个 Electron 绑 7788 失败但窗口照样显示
 - 注意：探 7788 必须带 `localHeaders()`，否则 401 会误判成「没在跑」
 
-### 8. 常驻进程没有兜底异常处理（**补丁已备：`flow/patch-p1.diff`**）
+### 8. ✅ 常驻进程兜底异常（已实现：daemon 两个 handler）（**✅ 已实现**）
 
 - `daemon.mjs` / `runner.mjs` 无 `uncaughtException`/`unhandledRejection`；`overlay/main.js` 无 `render-process-gone`
 
-### 8.5 `ocu` 缺失时任务会崩在未捕获异常上（**补丁已备**，实测）
+### 8.5 ✅ `ocu` 缺失时的可读报错（已实现，配 `test/ocu-mcp-start.test.mjs`）
 
 - 老审查（`docs/REVIEW.md` 1.4）提过 `ocu-mcp.mjs` 的 spawn 没有 `error` 监听，至今未修
 - 实测：`new OcuMcp({ bin: '/nonexistent/ocu' }).start()` → `UNCAUGHT: spawn ... ENOENT`，任务进程直接崩
@@ -65,14 +67,21 @@
 
 ## P2 · 打磨（按需，不阻塞发布）
 
-### 8.6 overlay 折叠路径把「前台」写死成宿主 bundle（**补丁已备**）
+### 3.5 会话「真的可见」这条判断还没进单测（`b931e02` 修的）
+
+- `b931e02` 把「正在显示」从 `state.visible` 改成 `state.visible && win.isVisible()`，方向对：窗口刚建好时 `showInactive` 会先把 `state.visible` 置 true，只看状态会把上限顶死
+- 但这条逻辑留在 `overlay/main.js` 里，纯函数测试覆盖不到——而它恰恰是刚修的一个坑，容易回归
+- 建议抽成纯函数放进 `session-policy.js`：`isTrulyVisible(session, windowVisible)`，main 传 `sess.win && !sess.win.isDestroyed() && sess.win.isVisible()`，再补一条「state.visible=true 但窗口不可见 → 可回收」的测试
+
+
+### 8.6 ✅ overlay 折叠路径读真实前台（已实现）
 
 - `overlay/main.js:1810`（从放大态还原成小窗时）调用 `attachToDsh(s, 'com.deepseek.dsh', ...)`，硬编码宿主 bundle
 - 后果：`frontOk` 恒为 true，即使用户已经切到别的应用，折叠后小窗仍按「宿主在前台」处理 → 该隐藏时没隐藏
 - 也绕过了 `OVERLAY_HOST_BUNDLES` 环境变量（换宿主时不生效）
 - 补丁改为折叠时读真实前台：`readFrontmostBundle().then((frontNow) => attachToDsh(s, frontNow, dshBounds))`
 
-### 9. 验收锁三个小洞（**补丁已备：`flow/patch-p1.diff`**）
+### 9. ✅ 验收锁三个小洞（已实现：`core/acceptance-lock.mjs` + 测试）
 
 - `existsSync` + `writeFileSync` 非原子（改 `{ flag: 'wx' }`）
 - 无 SIGINT/SIGTERM 释放（Ctrl-C 留锁，pid 复用时会误判）
@@ -83,7 +92,7 @@
 - `README` 写「本机 27 个应用」，实测已 32 个
 - 建议措辞改成「跑 `npm run apps:inventory` 看当前值」，并在 `repo:check` 里加一条数字比对
 
-### 11. CLI 未知子命令退出码 0（**补丁已备：`flow/patch-p1.diff`**）
+### 11. CLI 未知子命令退出码 0（**✅ 已实现**）
 
 - `desktop-agent foo` 打印用法但 `exit=0`，脚本里 `|| die` 会误判；建议返回 2
 
