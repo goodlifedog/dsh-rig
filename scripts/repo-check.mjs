@@ -192,6 +192,23 @@ try {
   add('任务清单与 core/tasks 同步', false, '清单过期：跑 npm run tasks:doc 重新生成');
 }
 
+// 11. 带 shebang 的可执行脚本，shebang 必须在第一行（import 插到它前面 = node 直接语法错）
+// 真实事故：批量把 import 加到文件顶部，8 个带 #!/usr/bin/env node 的脚本全被写坏。
+try {
+  const scriptFiles = tracked.filter((f) => /\.(mjs|js|cjs)$/.test(f));
+  const shebangBad = [];
+  for (const f of scriptFiles) {
+    let text = '';
+    try { text = await fsp.readFile(path.join(ROOT, f), 'utf8'); } catch { continue; }
+    if (text.startsWith('#!')) continue;
+    const firstLines = text.split('\n', 3);
+    if (firstLines.some((line) => line.startsWith('#!'))) shebangBad.push(f);
+  }
+  add('shebang 都在第一行', shebangBad.length === 0, shebangBad.slice(0, 3).join(', '));
+} catch (error) {
+  add('shebang 都在第一行', false, '检查失败：' + String(error.message).slice(0, 60));
+}
+
 const width = Math.max(...rows.map((r) => r.name.length)) + 2;
 console.log('\n仓库体检\n');
 for (const r of rows) console.log((r.skipped ? '  ⏭️  ' : (r.ok ? '  ✅ ' : '  ❌ ')) + r.name.padEnd(width) + r.detail);
