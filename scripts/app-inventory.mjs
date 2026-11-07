@@ -11,6 +11,26 @@ import { fileURLToPath } from 'node:url';
 import { PRESETS, presetNames, SPECIAL_APP_HANDLING } from '../core/app-presets.mjs';
 import { flattenPresets, mergeInventory, renderInventoryMarkdown, normalizeName, nextProbeCommands } from '../core/app-inventory.mjs';
 import { scanDirs, readBundleInfo } from '../core/app-scan.mjs';
+import { profileApp } from '../core/app-profile.mjs';
+
+/**
+ * 给每个已安装应用补运行时族（只看包结构，不启动应用）。
+ * 有了它，「界面树读不到的 electron 应用」才能被正确归类成「专用方案（CDP）」而不是「限制」。
+ * 想跳过这步（老机器上很慢时）：APP_INVENTORY_RUNTIME=0。
+ */
+async function withRuntime(apps) {
+  if (process.env.APP_INVENTORY_RUNTIME === '0') return apps;
+  const out = [];
+  for (const app of apps) {
+    let runtime = '';
+    try {
+      const profile = await profileApp(app.appPath);
+      runtime = profile.type;
+    } catch {}
+    out.push(Object.assign({}, app, { runtime }));
+  }
+  return out;
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -52,6 +72,34 @@ function matrixHistory() {
   return { file: lastFile, rows: Array.from(byKey.values()) };
 }
 
+/**
+ * 合并全部 CDP 通道验证报告（reports/cdp-driver-*.json，从旧到新，同一 bundle 以最近一次为准）。
+ * 作用：把「electron 族但调试端口根本起不来」的应用如实标成限制，而不是标成听起来能用的专用方案。
+ */
+function cdpHistory() {
+  const dir = path.join(ROOT, 'reports');
+  let files = [];
+  try {
+    files = fs.readdirSync(dir).filter((f) => /^cdp-driver-.*\.json$/.test(f)).sort();
+  } catch {
+    return {};
+  }
+  const map = {};
+  for (const name of files) {
+    let data = null;
+    try {
+      data = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8'));
+    } catch {
+      continue;
+    }
+    for (const row of data.rows || []) {
+      if (!row || !row.bundle) continue;
+      map[row.bundle] = { status: String(row.status || ''), detail: String(row.detail || ''), report: 'reports/' + name };
+    }
+  }
+  return map;
+}
+
 async function main() {
   const presetApps = flattenPresets(PRESETS);
   const presetBundles = new Set(presetApps.map((a) => a.bundle));
@@ -64,13 +112,14 @@ async function main() {
   const finder = finderInfo.bundle
     ? { name: finderInfo.display || 'Finder', bundle: finderInfo.bundle, process: finderInfo.exe || 'Finder' }
     : null;
-  const installed = [...userApps, ...sysApps, ...(finder ? [finder] : [])];
+  const installed = await withRuntime([...userApps, ...sysApps, ...(finder ? [finder] : [])]);
   const matrix = matrixHistory();
   const rows = mergeInventory({
     installed,
     presetApps,
     tested: matrix ? matrix.rows : [],
     special: SPECIAL_APP_HANDLING,
+    cdpByBundle: cdpHistory(),
   });
   const now = new Date();
   const markdown = renderInventoryMarkdown(rows, { now, matrixReport: matrix ? 'reports/app-matrix-*.json（合并全部历史）' : '还没有矩阵报告' });

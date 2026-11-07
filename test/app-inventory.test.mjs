@@ -44,6 +44,49 @@ test('状态判定：读不到树但有画面 → 可只用画面；连画面都
   assert.equal(classifyApp({ tested: { readable: true, nodes: 12 } }), '已适配');
 });
 
+test('状态判定：electron/chromium 读不到树，只有 CDP 实测可用才算专用方案', () => {
+  const row = { readable: false, capture: 'none', launch: 'launched' };
+  assert.equal(classifyApp({ tested: row, runtime: 'electron', cdpStatus: 'ok' }), '专用方案');
+  assert.equal(classifyApp({ tested: row, runtime: 'chromium', cdpStatus: 'ok' }), '专用方案');
+  assert.equal(classifyApp({ tested: row, runtime: 'electron' }), '限制', '没验证过 CDP 只能是限制');
+  assert.equal(classifyApp({ tested: row, runtime: 'electron', cdpStatus: 'cdp-unavailable' }), '限制', '端口没起来就是不可控');
+  assert.equal(classifyApp({ tested: row, runtime: 'native' }), '限制');
+  assert.equal(classifyApp({ tested: row, runtime: 'qt' }), '限制');
+});
+
+test('状态判定：启动就退/根本起不来，运行时再对也还是限制', () => {
+  assert.equal(classifyApp({ tested: { readable: false, capture: 'none', selfExited: true }, runtime: 'electron', cdpStatus: 'ok' }), '限制');
+  assert.equal(classifyApp({ tested: { readable: false, capture: 'none', launch: 'error' }, runtime: 'electron', cdpStatus: 'ok' }), '限制');
+});
+
+test('合并：运行时族与 CDP 实测结果都要带到行里，状态与策略不矛盾', () => {
+  const tested = [{ app: 'Antigravity', bundle: 'com.google.antigravity', readable: false, capture: 'none', launch: 'launched', nodes: 0 }];
+  const presetApps = [{ name: 'Antigravity', bundle: 'com.google.antigravity', process: 'Antigravity', preset: 'dev' }];
+  const installed = [{ name: 'Antigravity', bundle: 'com.google.antigravity', runtime: 'electron' }];
+  const rows = mergeInventory({
+    installed,
+    presetApps,
+    tested,
+    cdpByBundle: { 'com.google.antigravity': { status: 'cdp-unavailable', detail: '端口没起来' } },
+  });
+  assert.equal(rows[0].runtime, 'electron');
+  assert.equal(rows[0].cdpStatus, 'cdp-unavailable');
+  assert.equal(rows[0].status, '限制');
+  assert.equal(rows[0].strategy, 'blocked');
+  assert.ok(rows[0].detail.includes('端口没起来'), 'CDP 实测结果要写进说明，不能只给个「限制」');
+  assert.deepEqual(checkStrategyConsistency(rows), []);
+  // CDP 真跑通的才算专用方案
+  const okRows = mergeInventory({
+    installed,
+    presetApps,
+    tested,
+    cdpByBundle: { 'com.google.antigravity': { status: 'ok' } },
+  });
+  assert.equal(okRows[0].status, '专用方案');
+  assert.equal(okRows[0].strategy, 'dedicated');
+  assert.deepEqual(checkStrategyConsistency(okRows), []);
+});
+
 test('合并：包名对得上，测过的行带节点与画面', () => {
   const rows = mergeInventory({
     installed: [{ name: 'FastZip', bundle: 'cn.better365.FastZip' }],
@@ -98,7 +141,7 @@ test('报告渲染：有表头、有状态列、汇总按顺序', () => {
     { name: 'B', preset: '', status: '不动', detail: '代理工具' },
     { name: 'C', preset: 'dev', status: '已适配', detail: '节点 9' },
   ], { matrixReport: 'reports/app-matrix-x.json' });
-  assert.ok(md.includes('| 应用 | 门类 | 状态 | 建议控法 | 说明 |'));
+  assert.ok(md.includes('| 应用 | 门类 | 运行时 | 状态 | 建议控法 | 说明 |'));
   assert.ok(md.indexOf('已适配') < md.indexOf('不动'), '汇总按 已适配→不动 排序');
   assert.ok(md.includes('汇总：已适配 1，不动 1，未测 1'));
 });

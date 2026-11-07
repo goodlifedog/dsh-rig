@@ -24,7 +24,7 @@ export const STRATEGY_LABELS = Object.freeze({
 
 /**
  * @param {object|null} row 探测结果行（readable/nodes/buttons/capture/windowReady/launch...）
- * @param {{special?:{status:string,detail?:string}|null, installed?:boolean, tested?:boolean}} [options]
+ * @param {{special?:{status:string,detail?:string}|null, installed?:boolean, tested?:boolean, runtime?:string}} [options]
  * @returns {{mode:string, label:string, reasons:string[], canType:boolean}}
  */
 export function recommendStrategy(row, options = {}) {
@@ -71,7 +71,27 @@ export function recommendStrategy(row, options = {}) {
     reasons.push('启动成功但随后自行退出（应用侧行为），没法接管');
     return { mode: 'blocked', label: STRATEGY_LABELS.blocked, reasons, canType: false };
   }
-  if (row.launch === 'error' || !windowReady) {
+  if (row.launch === 'error') {
+    reasons.push('启动失败，连进程都没起来');
+    return { mode: 'blocked', label: STRATEGY_LABELS.blocked, reasons, canType: false };
+  }
+  // 界面树读不到 ≠ 没救：electron/chromium 族还有 CDP 通道（不依赖 AX 树）。
+  // 但「有通道」不等于「通道能用」——端口可能没起来（实测 OpenCode/抖音），
+  // 所以只有 CDP 实测通过才给「专用通道」，否则如实按当前不可控处理，并把可尝试的路线写进理由。
+  const runtime = String(opts.runtime || '');
+  const cdpStatus = String(opts.cdpStatus || '');
+  if (runtime === 'electron' || runtime === 'chromium') {
+    if (cdpStatus === 'ok') {
+      reasons.push('运行时是 ' + runtime + '：界面树读不到，但 CDP 调试通道实测可用');
+      reasons.push('走带调试端口的专用实例（--remote-debugging-port）操作页面，不需要界面树');
+      return { mode: 'dedicated', label: STRATEGY_LABELS.dedicated, reasons, canType: false };
+    }
+    reasons.push('运行时是 ' + runtime + '：界面树读不到（常见于自绘界面/窗口没就绪）'
+      + (cdpStatus ? '；CDP 调试通道实测也不可用（' + cdpStatus + '）' : '；CDP 专用通道还没验证过'));
+    reasons.push('下一步可带 --remote-debugging-port 试专用实例，端口真起来并读到页面才算适配');
+    return { mode: 'blocked', label: STRATEGY_LABELS.blocked, reasons, canType: false };
+  }
+  if (!windowReady) {
     reasons.push('启动后窗口起不来（应用侧限制）');
     return { mode: 'blocked', label: STRATEGY_LABELS.blocked, reasons, canType: false };
   }

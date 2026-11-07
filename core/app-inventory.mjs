@@ -8,6 +8,7 @@
  *   未测       —— 装了，但最近的矩阵报告里没有它
  *   限制       —— 测过，但读不到界面树、也抓不到画面，或者启动即退（应用侧问题）
  *   可只用画面 —— 测过、画面能回显，但 AX 元素为空（只能坐标操作）
+ *   专用方案   —— 界面树读不到，但运行时是 electron/chromium：可带调试端口走 CDP 专用实例
  *   已适配     —— 测过，界面树可读
  */
 
@@ -44,10 +45,10 @@ export function flattenPresets(presets) {
 
 /**
  * 单条状态判定。
- * @param {{tested?: object|null, installed?: boolean}} input
- * @returns {'未安装'|'未测'|'限制'|'可只用画面'|'已适配'}
+ * @param {{tested?: object|null, installed?: boolean, special?: object|null, runtime?: string, cdpStatus?: string}} input
+ * @returns {'未安装'|'未测'|'限制'|'可只用画面'|'专用方案'|'已适配'}
  */
-export function classifyApp({ tested, installed = true, special = null }) {
+export function classifyApp({ tested, installed = true, special = null, runtime = '', cdpStatus = '' }) {
   if (special && special.status) return special.status;
   if (!installed) return '未安装';
   if (!tested) return '未测';
@@ -55,6 +56,11 @@ export function classifyApp({ tested, installed = true, special = null }) {
   if (!tested.readable) {
     // 有画面但读不到界面树：只能画面+坐标
     if (tested.capture === 'live' || tested.capture === 'offscreen') return '可只用画面';
+    // 连进程都没起来/启动即退：这是应用侧问题，跟运行时族无关，先判这个
+    if (tested.selfExited || tested.launch === 'error') return '限制';
+    // 界面树读不到、但运行时是 electron/chromium 且 CDP 实测通过：才算「专用方案」。
+    // 只是「这一族有 CDP 通道」不算——实测 OpenCode/抖音的调试端口根本没起来。
+    if ((runtime === 'electron' || runtime === 'chromium') && cdpStatus === 'ok') return '专用方案';
     return '限制';
   }
   return '已适配';
@@ -67,14 +73,15 @@ export function classifyApp({ tested, installed = true, special = null }) {
  * 这种不一致会在 detail 里如实写出来，提示去修预设。
  *
  * @param {{
- *   installed: Array<{name:string, bundle:string, process?:string}>,
+ *   installed: Array<{name:string, bundle:string, process?:string, runtime?:string}>,
  *   presetApps: Array<{name:string,bundle:string,process:string,preset?:string}>,
  *   tested: Array<{app:string, bundle:string, readable?:boolean, capture?:string, skipped?:boolean}>,
  *   special?: Record<string, {status:string, detail?:string}>,
+ *   cdpByBundle?: Record<string, {status:string, detail?:string}>,
  * }} input
  * @returns {Array<{name:string, bundle:string, process:string, preset:string, installed:boolean, status:string, detail:string}>}
  */
-export function mergeInventory({ installed = [], presetApps = [], tested = [], special = {} } = {}) {
+export function mergeInventory({ installed = [], presetApps = [], tested = [], special = {}, cdpByBundle = {} } = {}) {
   const installedByBundle = new Map();
   const installedByName = new Map();
   for (const app of installed) {
@@ -106,7 +113,10 @@ export function mergeInventory({ installed = [], presetApps = [], tested = [], s
       (installedApp ? testedByName.get(normalizeName(installedApp.name)) : null) ||
       null;
     const specialInfo = special[installedApp?.bundle || bundle] || special[bundle] || null;
-    const status = classifyApp({ tested: testedRow, installed: Boolean(installedApp), special: specialInfo });
+    const runtime = String((installedApp && installedApp.runtime) || '');
+    const cdpInfo = cdpByBundle[installedApp?.bundle || bundle] || cdpByBundle[bundle] || null;
+    const cdpStatus = cdpInfo ? String(cdpInfo.status || '') : '';
+    const status = classifyApp({ tested: testedRow, installed: Boolean(installedApp), special: specialInfo, runtime, cdpStatus });
     const notes = [];
     if (specialInfo && specialInfo.detail) notes.push(specialInfo.detail);
     if (installedApp && installedApp.bundle !== bundle) {
@@ -118,13 +128,18 @@ export function mergeInventory({ installed = [], presetApps = [], tested = [], s
       notes.push(installedApp ? '装了但还没测' : '预设里有、本机没装');
     }
     if (specialInfo && !specialInfo.detail) notes.push('按特殊规则处理');
-    const strategy = recommendStrategy(testedRow, { special: specialInfo, installed: Boolean(installedApp) });
+    const strategy = recommendStrategy(testedRow, { special: specialInfo, installed: Boolean(installedApp), runtime, cdpStatus });
+    if (runtime && !testedRow) notes.push('运行时 ' + runtime + '（未测）');
+    if (cdpInfo) notes.push('CDP 实测 ' + cdpStatus + (cdpInfo.detail ? '：' + cdpInfo.detail : ''));
+    else if (runtime === 'electron' || runtime === 'chromium') notes.push('可试 CDP 专用通道（未验证）');
     rows.push({
       name: installedApp?.name || presetApp.name,
       bundle: installedApp?.bundle || bundle,
       process: installedApp?.process || presetApp.process,
       preset: presetApp.preset || '',
       installed: Boolean(installedApp),
+      runtime,
+      cdpStatus,
       status,
       strategy: strategy.mode,
       strategyLabel: strategy.label,
@@ -137,22 +152,32 @@ export function mergeInventory({ installed = [], presetApps = [], tested = [], s
     if (usedInstalled.has(bundle)) continue;
     const testedRow = testedByBundle.get(bundle) || testedByName.get(normalizeName(app.name)) || null;
     const specialInfo = special[bundle] || null;
-    const strategy = recommendStrategy(testedRow, { special: specialInfo, installed: true });
+    const runtime = String(app.runtime || '');
+    const cdpInfo = cdpByBundle[bundle] || null;
+    const cdpStatus = cdpInfo ? String(cdpInfo.status || '') : '';
+    const strategy = recommendStrategy(testedRow, { special: specialInfo, installed: true, runtime, cdpStatus });
     rows.push({
       name: app.name,
       bundle,
       process: app.process || '',
       preset: '',
       installed: true,
-      status: classifyApp({ tested: testedRow, installed: true, special: specialInfo }),
+      runtime,
+      cdpStatus,
+      status: classifyApp({ tested: testedRow, installed: true, special: specialInfo, runtime, cdpStatus }),
       strategy: strategy.mode,
       strategyLabel: strategy.label,
       canType: strategy.canType,
-      detail: specialInfo && specialInfo.detail
-        ? specialInfo.detail
-        : (testedRow
-          ? '不在预设里，但测过（节点 ' + (testedRow.nodes ?? '-') + ' / 画面 ' + (testedRow.capture || '-') + '）'
-          : '不在预设里，未测'),
+      detail: [
+        specialInfo && specialInfo.detail
+          ? specialInfo.detail
+          : (testedRow
+            ? '不在预设里，但测过（节点 ' + (testedRow.nodes ?? '-') + ' / 画面 ' + (testedRow.capture || '-') + '）'
+            : '不在预设里，未测'),
+        cdpInfo
+          ? 'CDP 实测 ' + cdpStatus + (cdpInfo.detail ? '：' + cdpInfo.detail : '')
+          : ((runtime === 'electron' || runtime === 'chromium') ? '可试 CDP 专用通道（未验证）' : ''),
+      ].filter(Boolean).join('；'),
     });
   }
   return rows;
@@ -214,8 +239,8 @@ export function renderInventoryMarkdown(rows, meta = {}) {
     '- 数据来源：/Applications 与 /System/Applications 扫描 + core/app-presets.mjs + ' + (meta.matrixReport || '最近一次矩阵报告'),
     '- 合计：' + rows.length + ' 个应用',
     '',
-    '| 应用 | 门类 | 状态 | 建议控法 | 说明 |',
-    '| --- | --- | --- | --- | --- |',
+    '| 应用 | 门类 | 运行时 | 状态 | 建议控法 | 说明 |',
+    '| --- | --- | --- | --- | --- | --- |',
   ];
   const order = ['已适配', '可只用画面', '专用方案', '不动', '限制', '未测', '未安装'];
   const sorted = [...rows].sort((a, b) => {
@@ -223,7 +248,8 @@ export function renderInventoryMarkdown(rows, meta = {}) {
     return d !== 0 ? d : String(a.name).localeCompare(String(b.name));
   });
   for (const row of sorted) {
-    lines.push('| ' + row.name + ' | ' + (row.preset || '-') + ' | ' + row.status + ' | ' + (row.strategyLabel || '-') + ' | ' + row.detail + ' |');
+    lines.push('| ' + row.name + ' | ' + (row.preset || '-') + ' | ' + (row.runtime || '-') + ' | ' + row.status
+      + ' | ' + (row.strategyLabel || '-') + ' | ' + row.detail + ' |');
   }
   lines.push('');
   lines.push('汇总：' + order.filter((s) => counts.has(s)).map((s) => s + ' ' + counts.get(s)).join('，'));

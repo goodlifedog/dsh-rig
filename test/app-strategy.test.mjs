@@ -55,6 +55,37 @@ test('启动失败 / 窗口起不来 / 什么都拿不到：应用侧限制', ()
   assert.equal(recommendStrategy({ readable: false, capture: 'none', launch: 'launched', windowReady: true }).mode, 'blocked');
 });
 
+test('electron/chromium 读不到树：CDP 实测可用才给专用通道', () => {
+  const row = { readable: false, capture: 'none', launch: 'launched', windowReady: false };
+  for (const runtime of ['electron', 'chromium']) {
+    const r = recommendStrategy(row, { runtime, cdpStatus: 'ok' });
+    assert.equal(r.mode, 'dedicated', runtime);
+    assert.ok(r.reasons.some((x) => x.includes('CDP')), runtime + ' 要说明走 CDP');
+  }
+});
+
+test('electron/chromium 但 CDP 没验证或端口没起来：按当前不可控处理，理由里写清下一步', () => {
+  const row = { readable: false, capture: 'none', launch: 'launched', windowReady: false };
+  const unverified = recommendStrategy(row, { runtime: 'electron' });
+  assert.equal(unverified.mode, 'blocked');
+  assert.ok(unverified.reasons.some((x) => x.includes('还没验证')), '要说清是没验证，不是永远不行');
+  assert.ok(unverified.reasons.some((x) => x.includes('--remote-debugging-port')), '要给出可尝试的路线');
+  const failed = recommendStrategy(row, { runtime: 'electron', cdpStatus: 'cdp-unavailable' });
+  assert.equal(failed.mode, 'blocked');
+  assert.ok(failed.reasons.some((x) => x.includes('cdp-unavailable')));
+});
+
+test('原生/Qt 读不到树也没画面：仍是应用侧限制', () => {
+  const row = { readable: false, capture: 'none', launch: 'launched', windowReady: false };
+  assert.equal(recommendStrategy(row, { runtime: 'native' }).mode, 'blocked');
+  assert.equal(recommendStrategy(row, {}).mode, 'blocked');
+});
+
+test('启动失败或自行退出：运行时族再好也判定限制', () => {
+  assert.equal(recommendStrategy({ readable: false, capture: 'none', launch: 'error' }, { runtime: 'electron' }).mode, 'blocked');
+  assert.equal(recommendStrategy({ readable: false, capture: 'none', launch: 'launched', selfExited: true }, { runtime: 'electron' }).mode, 'blocked');
+});
+
 test('启动后自行退出：判定为应用侧限制，理由写清楚', () => {
   const r = recommendStrategy({ readable: false, capture: 'none', launch: 'launched', windowReady: true, selfExited: true });
   assert.equal(r.mode, 'blocked');
