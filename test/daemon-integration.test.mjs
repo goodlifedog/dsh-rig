@@ -11,6 +11,10 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
 const PORT = 7791;
+import { readToken } from '../core/local-token.mjs';
+
+const TOKEN = await readToken();
+const TOKEN_HEADERS = TOKEN ? { 'X-Agent-Token': TOKEN } : {};
 const BASE = 'http://127.0.0.1:' + PORT;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -61,11 +65,19 @@ test('daemon：队列串行、环境失败不重试、临时失败重试一次',
   }, 15000);
   assert.ok(up, 'daemon 没能在 15 秒内起来');
 
+  // 控制面票据：会动东西的接口都必须带 token，否则 401
+  const noToken = await fetch(BASE + '/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ task: 'ok-task' }),
+  });
+  assert.equal(noToken.status, 401, '没带 token 的 /run 必须拒绝');
+
   // 目录穿越：不存在的任务名必须被拒，且不能真的去执行目录外脚本
   for (const evil of ['../core/runner', '../../etc/passwd', 'ok-task/../../x', 'ok-task.mjs']) {
     const res = await fetch(BASE + '/run', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...TOKEN_HEADERS },
       body: JSON.stringify({ task: evil }),
     });
     assert.equal(res.status, 400, '应拒绝可疑任务名：' + evil);
@@ -90,7 +102,7 @@ test('daemon：队列串行、环境失败不重试、临时失败重试一次',
   // 队列上限：上限 3 时一次塞 4 个应当被 429 拒绝（且不会真的入队）
   const overflow = await fetch(BASE + '/run', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...TOKEN_HEADERS },
     body: JSON.stringify({ tasks: ['ok-task', 'ok-task', 'ok-task', 'ok-task'] }),
   });
   assert.equal(overflow.status, 429, '超过队列上限应返回 429');
@@ -100,7 +112,7 @@ test('daemon：队列串行、环境失败不重试、临时失败重试一次',
   const started = Date.now();
   await fetch(BASE + '/run', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...TOKEN_HEADERS },
     body: JSON.stringify({ tasks: ['ok-task', 'flaky-task', 'hard-fail'] }),
   });
 

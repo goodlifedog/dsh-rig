@@ -3,6 +3,7 @@
 //   node scripts/soak.mjs            默认 6 轮
 //   SOAK_ROUNDS=12 node scripts/soak.mjs
 import { execFileSync } from 'node:child_process';
+import { readToken, withTokenHeaders } from '../core/local-token.mjs';
 
 const DAEMON = process.env.AGENTD_URL || 'http://127.0.0.1:7789';
 const OVERLAY = process.env.OVERLAY_URL || 'http://127.0.0.1:7788';
@@ -17,7 +18,9 @@ const getJson = async (url, timeout = 3000) => {
 };
 const postJson = async (url, body) => {
   try {
-    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}), signal: AbortSignal.timeout(5000) });
+    const token = await readToken();
+    const headers = withTokenHeaders(token, { 'Content-Type': 'application/json' });
+    const r = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body || {}), signal: AbortSignal.timeout(5000) });
     return await r.json();
   } catch { return null; }
 };

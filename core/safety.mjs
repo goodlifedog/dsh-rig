@@ -65,8 +65,10 @@ export function pidMatchesProcess(psComm, processName) {
   const comm = String(psComm || '').trim();
   const want = String(processName || '').trim();
   if (!comm || !want) return false;
+  // 只认最后一段完全相等：不能用 startsWith 放宽，
+  // 否则 "Google Chrome Helper" 会被当成 "Google Chrome"（外部评审实测指出的误判）。
   const base = comm.split('/').pop();
-  return base === want || comm === want || base.startsWith(want + ' ') || base.endsWith('/' + want);
+  return base === want;
 }
 
 /**

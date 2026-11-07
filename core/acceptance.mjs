@@ -14,7 +14,7 @@ const RESULTS = [];
 
 function run(cmd, args, opts = {}) {
   return new Promise((resolve) => {
-    execFile(cmd, args, { timeout: opts.timeout || 180000, maxBuffer: 64 * 1024 * 1024, cwd: ROOT }, (err, stdout, stderr) => {
+    execFile(cmd, args, { timeout: opts.timeout || 180000, maxBuffer: 64 * 1024 * 1024, cwd: ROOT, env: opts.env ? { ...process.env, ...opts.env } : process.env }, (err, stdout, stderr) => {
       resolve({ code: err ? 1 : 0, stdout: stdout || '', stderr: stderr || '' });
     });
   });
@@ -61,8 +61,8 @@ function frontmostBundle() {
   } catch { return null; }
 }
 
-async function runTask(name, timeoutMs = 180000) {
-  const r = await run('node', ['core/runner.mjs', 'run', name, '--timeout', String(timeoutMs)]);
+async function runTask(name, timeoutMs = 180000, env) {
+  const r = await run('node', ['core/runner.mjs', 'run', name, '--timeout', String(timeoutMs)], env ? { env } : {});
   const out = r.stdout + r.stderr;
   // 环境原因跳过不算失败；规则与健康面板共用一份（core/run-classify.mjs）
   const reason = envSkipReason(out);
@@ -83,6 +83,17 @@ async function main() {
   const platformOk = await runTask('platform-demo');
   const browserOk = await runTask('browser-demo');
   const electronOk = await runTask('electron-demo');
+  // 新通道也要过验收闸门：否则等于"写完就算完成"（外部评审 P0）
+  const cdpOk = await runTask('cdp-channel', 120000);
+  const asOk = await runTask('applescript-channel', 120000);
+  const bgOk = await runTask('background-control', 150000);
+  const matrixOk = await runTask('app-matrix', 420000, {
+    // 样本挑"不抢前台"的两个：Steam 会短暂抢前台（矩阵能兜住，但它不该当验收样本）
+    MATRIX_APPS_JSON: JSON.stringify([
+      { name: 'FastZip', bundle: 'cn.better365.FastZip', process: 'FastZip' },
+      { name: 'iRightMouse', bundle: 'cn.better365.iRightMouse', process: 'iRightMouse' },
+    ]),
+  });
 
   const passed = RESULTS.filter((r) => r.ok && !r.skipped).length;
   const skipped = RESULTS.filter((r) => r.skipped).length;
@@ -105,7 +116,8 @@ async function main() {
   ];
   fs.writeFileSync(file, lines.join('\n') + '\n');
   console.log('报告：' + file);
-  process.exit(passed === total ? 0 : 1);
+  // 环境跳过不算失败：只有"没通过且不是跳过"才返回 1
+  process.exit(passed === total - skipped ? 0 : 1);
 }
 
 main().catch((e) => {

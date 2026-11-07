@@ -40,11 +40,17 @@ test('解析 lsof 输出里的 pid', () => {
   assert.equal(parseLsofPid('乱七八糟没有表头'), 0);
 });
 
-test('pid 还是不是那个进程：路径形式取 basename 比', () => {
+test('pid 还是不是那个进程：路径形式取 basename 且必须完全相等', () => {
   assert.equal(pidMatchesProcess('/Applications/ChatGPT.app/Contents/MacOS/ChatGPT\n', 'ChatGPT'), true);
   assert.equal(pidMatchesProcess('ChatGPT', 'ChatGPT'), true);
   assert.equal(pidMatchesProcess('/usr/bin/bash', 'ChatGPT'), false);
   assert.equal(pidMatchesProcess('', 'ChatGPT'), false);
+});
+
+test('pid 复核不能把 Helper 当成主应用（外部评审指出的误判）', () => {
+  assert.equal(pidMatchesProcess('Google Chrome Helper', 'Google Chrome'), false);
+  assert.equal(pidMatchesProcess('/Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Helper.app/Contents/MacOS/Google Chrome Helper', 'Google Chrome'), false);
+  assert.equal(pidMatchesProcess('Google Chrome', 'Google Chrome'), true);
 });
 
 test('调试端口主人判定：没人监听/不是目标应用都要拒绝', () => {

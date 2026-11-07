@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { overlay } from './agentd.mjs';
 import { decideRetry } from './retry-policy.mjs';
 import { frontAppFast, startFrontWatch } from './front-watch.mjs';
+import { ensureToken, isAuthorized } from './local-token.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -27,6 +28,10 @@ const LOGS = path.join(ROOT, 'logs', 'daemon');
 const MAX_RETRIES = Math.max(0, Number(process.env.AGENTD_MAX_RETRIES || 1));
 // 队列上限：本地程序狂刷 /run 时不能让队列无限增长（超了直接 429）
 const MAX_QUEUE = Math.max(1, Number(process.env.AGENTD_MAX_QUEUE || 50));
+
+// 控制面票据：只用于会真正动东西的接口（/run、/stop、/selftest）。
+// 没有它，本机任意进程都能让守护进程跑任务。
+const TOKEN = await ensureToken();
 
 const state = {
   pid: process.pid,
@@ -305,6 +310,11 @@ const server = http.createServer(async (req, res) => {
     assertLocalClient(req);
   } catch (error) {
     return json(res, error.statusCode || 403, { ok: false, error: String(error.message || error) });
+  }
+  // 只读的 /status、/tasks、/ 不需要票据；会动东西的接口必须带
+  const needsToken = (p === '/run' || p === '/stop' || p === '/selftest');
+  if (needsToken && !isAuthorized(req.headers, TOKEN, { allowQueryToken: url.searchParams.get('token') || '' })) {
+    return json(res, 401, { ok: false, error: '缺少或无效的 X-Agent-Token（从 ~/.desktop-agent/api-token 读取）' });
   }
 
   if (p === '/' && req.method === 'GET') {

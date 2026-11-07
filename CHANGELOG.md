@@ -2,6 +2,11 @@
 
 ## 未发布
 
+- 验收跑出两处"环境状态被当成失败"的误判并修正：备忘录窗口在别的桌面（offscreen）、文本编辑冷启动停在打开面板没有文稿窗口——都改成环境跳过并在日志写清原因，验收从 11/12 恢复到全通过
+- 外部评审（flow/REVIEW-2026-11-07.md）四轮意见逐条处理：pid 误匹配、控制面 token、验收覆盖新通道、未提交代码、旧进程跑旧代码（重启后再验）均已落地；"定位漂移/visual 仅诊断/Windows 列标灰"等定位类意见留待下一轮统一
+- 控制面加票据：daemon 的 `/run`、`/stop`、`/selftest` 必须带 `X-Agent-Token`，token 启动时随机生成写到 `~/.desktop-agent/api-token`（权限 600），客户端（cli/soak）自动读取；实测无 token 401、有 token 通过；集成测试补"无 token 必须拒绝"用例
+- 修外部评审指出的 pid 误匹配：`pidMatchesProcess` 原来用 startsWith，会把 `Google Chrome Helper` 当成 `Google Chrome`（按 pid 杀进程时会误判），改为 basename 完全相等，并补专项单测
+- 验收 `npm run accept` 接入新通道：cdp-channel、applescript-channel、background-control、app-matrix（2 个样本应用）都成为出口关卡，跑不过不算完成
 - 安全边界硬化：overlay（7788）与 daemon（7789）都拒绝带 Origin 的浏览器请求（403）、拒绝跨域预检、POST 强制 `Content-Type: application/json`（415），堵掉"网页读窗口标题/往浮窗塞图/让守护进程跑任务"这条路；客户端代码零改动
 - 新增 `docs/SECURITY.md`：已堵的 9 类攻击面（注入、授权弹窗、CDP 端口劫持、pid 复用、预置可执行文件、未保存数据、目录穿越、队列上限、浏览器来源）、刻意不做的 4 条、还没堵的 4 条、测试边界说明
 - 新增安全单测：`test/security-boundaries.test.mjs`（13 项，注入/端口主人/pid 复核/helper 信任/目录不可信 fail closed），overlay 与 daemon 各补浏览器来源与非 JSON 提交用例

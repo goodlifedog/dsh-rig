@@ -9,6 +9,7 @@
  */
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import { readToken, withTokenHeaders } from './local-token.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -22,7 +23,11 @@ const PID_FILE = path.join(ROOT, 'logs', 'daemon.pid');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function api(pathname, opts) {
-  const res = await fetch(BASE + pathname, { ...opts, signal: AbortSignal.timeout(5000) });
+  // 会动东西的接口要带票据；只读接口服务端不校验，带了也无害
+  const token = await readToken();
+  const options = Object.assign({}, opts || {});
+  options.headers = withTokenHeaders(token, (opts && opts.headers) || {});
+  const res = await fetch(BASE + pathname, { ...options, signal: AbortSignal.timeout(5000) });
   return await res.json();
 }
 

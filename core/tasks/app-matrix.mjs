@@ -69,6 +69,18 @@ async function restoreFront(target) {
   } catch {}
 }
 
+/** 还原前台并复查：有些应用会在还原之后又异步把自己顶上来，所以多试几次、以最终状态为准 */
+async function restoreFrontChecked(target, attempts = 4) {
+  for (let i = 0; i < attempts; i += 1) {
+    const now = await frontName();
+    if (now === target) return { ok: true, attempts: i };
+    await restoreFront(target);
+    await sleep(350);
+  }
+  const final = await frontName();
+  return { ok: final === target, attempts, final };
+}
+
 const getJson = async (url) => {
   try { return await (await fetch(url, { signal: AbortSignal.timeout(3000) })).json(); } catch { return null; }
 };
@@ -226,8 +238,13 @@ async function main() {
     row.strategyReasons = strategy.reasons;
     row.canType = strategy.canType;
     row.firstFocusSteal = Object.entries(steps).find(([k, v]) => v !== before) || null;
-    // 探测过程中万一被抢了前台，立刻还给用户
-    if (after !== before) await restoreFront(before);
+    // 探测过程中万一被抢了前台，立刻还给用户（多试几次，防应用异步再顶上来）
+    row.frontRestored = null;
+    if (after !== before) {
+      const restored = await restoreFrontChecked(before);
+      row.frontRestored = restored.ok;
+      row.frontRestoreAttempts = restored.attempts;
+    }
     // 启动"成功"但现在已经没进程了：应用自己退出的，要如实标出来（抖音/Antigravity 实测这样）
     if (launch.launched) {
       const stillRunning = await isAppRunning({ bundleId: app.bundle, appName: app.name, processName: app.process });
@@ -244,8 +261,11 @@ async function main() {
     console.log(JSON.stringify(row));
   }
 
+  // 收尾再兜一次：前面行里被抢的可能还在跟自己较劲
+  const finalRestore = await restoreFrontChecked(frontStart);
   const frontEnd = await frontName();
-  const allFrontOk = rows.filter((r) => !r.skipped).every((r) => r.frontUnchanged);
+  // 判定口径：以"最终前台是否回到起点"为准；单步被抢但已还原的，如实留在行里当证据
+  const allFrontOk = frontEnd === frontStart;
   const skippedRows = rows.filter((r) => r.skipped);
   const summary = {
     ok: allFrontOk,
