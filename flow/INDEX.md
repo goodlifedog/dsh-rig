@@ -39,7 +39,16 @@ npm run prune         # 日志/报告轮转（默认演练，--apply 真删）
 npm run service:status   # 服务是否由 launchd 管理、有没有游离进程占端口
 ```
 
+## 其它资料（上面表格放不下，但有用）
+
+- 写任务/验收判据：[TASK-OUTPUT.md](TASK-OUTPUT.md)（PASS / FAIL / 环境跳过 / ❌ 的语义）
+- 代码风格与工程约定：[CODEX-STANDARD.md](CODEX-STANDARD.md)；技术选型：[CODEX-TECH-STACK.md](CODEX-TECH-STACK.md)
+- 底层 ocu 怎么同步进来：[OCU-SYNC.md](OCU-SYNC.md)
+- 外部评审留下的补丁：[PATCHES.md](PATCHES.md)；发版文案草稿：[RELEASE-NOTES-DRAFT.md](RELEASE-NOTES-DRAFT.md)
+- 方法论与历史记录：[RECIPE.md](RECIPE.md)（踩坑总结）、[SCAN.md](SCAN.md)（扫描类任务）
+- 招聘平台相关内容（`BOSS-*.md`）：**公开发布前需要从公开面移除**，见 [BOSS-EXTRACT.md](BOSS-EXTRACT.md)
+
 ## 维护约定
 
 - 新增能力要同时更 [CHANGELOG.md](../CHANGELOG.md) 和对应文档；`npm run repo:check` 会检查后台 API 是否有文档。
-- 评测/外部评审记录放 `flow/REVIEW-*.md`，只读巡检脚本是 `flow/review-watch.mjs`。
+- 评测/外部评审记录放 `flow/REVIEW-*.md`（详细过程在 `REVIEW-2026-11-07.md`，结论与待办在 `REVIEW-ACTIONS.md`），只读巡检脚本是 `flow/review-watch.mjs`。

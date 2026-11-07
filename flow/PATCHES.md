@@ -6,8 +6,7 @@
 
 ```bash
 git apply flow/patch-publish.diff        # 发布配置（发布前必打）
-git apply flow/patch-repocheck-zip.diff  # repo:check 在非 git 目录（下载 ZIP）不再报红
-git apply flow/patch-packaging-files.diff # 打包白名单补齐 main.js require 的所有模块
+# repocheck-zip / packaging-files 已应用（ZIP 降级 + 打包白名单），文件已删
 ```
 
 ### `patch-publish.diff`（78 行 / 3 个文件）
@@ -27,7 +26,7 @@ npm publish --dry-run   # 必须显示 Publishing to https://registry.npmjs.org 
 npm pack --dry-run      # 约 138 files / 1.1 MB
 ```
 
-### `patch-repocheck-zip.diff`（59 行 / 1 个文件）
+### ✅ `patch-repocheck-zip.diff`（59 行 / 1 个文件）—— 已应用，补丁文件已删除
 
 **问题**：从 GitHub 下载 ZIP 的用户（没有 .git）跑 `npm run repo:check` 会看到
 `❌ git 仓库可用 / git ls-files 失败`，一共「1 项未通过」——这条红跟代码质量无关。
@@ -40,7 +39,7 @@ npm pack --dry-run      # 约 138 files / 1.1 MB
 rsync -a --exclude .git ./ /tmp/zipcheck/ && cd /tmp/zipcheck && node scripts/repo-check.mjs
 ```
 
-### patch-packaging-files.diff（82 行 / 2 个文件）
+### ✅ patch-packaging-files.diff（82 行 / 2 个文件）—— 已应用，补丁文件已删除
 
 **问题（打包版起不来）**：overlay/electron-builder.yml 的 files 只列了 9 个 js，
 而 main.js 实际 require 14 个本地模块——recover.js / host-select.js / session-policy.js /
