@@ -42,6 +42,7 @@ daemon 与 overlay 的接口都要本机 token（`~/.desktop-agent/api-token`，
 - Telegram 和部分 Electron 应用在被读取时会被系统短暂顶到前台（会自动还原）
 - 锁屏时 AX 与抓图整体不可用，任务会标「环境跳过」而不是假装成功
 - 少数自绘界面应用读不到界面树，只能回显画面（报告里会写明原因）
+- 打包成 .app 目前是 ad-hoc 签名（electron-builder 的 identity: "-"）：本机可用，但分发到别的机器会被 Gatekeeper 拦，需要 Developer ID 签名 + 公证才能免提示
 
 ## 升级提示
 
