@@ -478,10 +478,10 @@ node core/tasks/<任务>.mjs          # 单跑一个任务文件（不经 runner
 curl -s -H "X-Agent-Token: $TOKEN" http://127.0.0.1:7788/health | head -c 400
 curl -s -X POST http://127.0.0.1:7788/status -H "X-Agent-Token: $TOKEN" -H 'Content-Type: application/json' \
   -d '{"text":"手动验证一下","state":"running"}'
-curl -s -X POST http://127.0.0.1:7788/visible -H 'Content-Type: application/json' \
+curl -s -X POST -H "X-Agent-Token: $TOKEN" -H 'Content-Type: application/json' http://127.0.0.1:7788/visible \
   -d '{"visible":true}'
-curl -s http://127.0.0.1:7788/sessions
-curl -s -X POST http://127.0.0.1:7788/close -H 'Content-Type: application/json' -d '{"session":"alpha"}'
+curl -s -H "X-Agent-Token: $TOKEN" http://127.0.0.1:7788/sessions
+curl -s -X POST -H "X-Agent-Token: $TOKEN" -H 'Content-Type: application/json' http://127.0.0.1:7788/close -d '{"session":"alpha"}'
 ```
 
 ### 5.4 daemon HTTP（127.0.0.1:7789）
