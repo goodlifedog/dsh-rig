@@ -30,7 +30,7 @@ flow/patch-deploy-freshness.diff     代码新鲜度检查（service:status 能�
 
 ## P0 · 公开前必须处理（5 条）
 
-### 0.5 【工作区当前是红的】8 个文件把 `import` 插到了 shebang 上面
+### 0.5 ✅ 已解决：shebang 顺序修正 + `repo:check` 新增「shebang 都在第一行」检查
 
 `npm run verify` 现在报「8 个文件有语法错误」，`node --check` 逐个确认：
 
@@ -79,7 +79,7 @@ parallel-demo / parallel-real-demo / scripts/app-resolve.mjs。
 - 应用后替换两处占位：`@goodlifedog/desktop-agent`、`github.com/tester/desktop-agent`
 - 验证：`npm publish --dry-run` 必须显示 `Publishing to https://registry.npmjs.org ... public access`
 
-### 2.8 🚨 后台控制任务会**覆盖用户正在编辑的文本编辑文稿**（数据丢失，未做内容检查）
+### 2.8 ✅ 已解决：`core/text-edit-guard.mjs`（只写未命名空文稿）
 
 - `core/tasks/background-control.mjs:138-141`：`const textAreas = await find('文本编辑', { role: 'AXTextArea', limit: 5 })` → 直接 `setValue('文本编辑', textAreas[0].index, '后台写入：…')`
 - `setValue` 走 ocu 的 `set_value`，语义是**把该元素的值设成新值**——不追加、不询问，原来内容直接没了
@@ -87,14 +87,14 @@ parallel-demo / parallel-real-demo / scripts/app-resolve.mjs。
 - 同一份任务里备忘录那段是安全的（我们自己新建的笔记，标题带 `[AGENT-TEST]`），只有文本编辑这一步没有「这是不是我们的文稿」的判断
 - 建议二选一：① 写之前读一下该文本区内容，只有为空、或已包含我们写的 `后台写入：` 字样才写；否则 `recordSkipped('文本编辑里有用户内容，跳过写入以免覆盖')`；② 更稳：自己做一份文稿再写（`make new document` / 快捷键新建），写完关掉自己那份
 
-### 2.85 `form-fill` 恢复用户原值不在 `finally`，中途异常会让输入框停在测试值上
+### 2.85 ✅ 已解决：`catch` 里补一次 `restore-after-error`，语义等价
 
 - `core/tasks/form-fill.mjs` 的注入脚本里，顺序是：读原值 → `writeValue(NEWVAL)` → 重新读状态 → `writeValue(out.original)` 恢复
 - 但这段整体在一个 `try { … } catch (e) { out.error = … }` 里，**恢复不是 `finally`**：如果 `setNew` 之后、恢复之前有任何一步抛异常（`getAXState` 超时、页面跳转、CDP 断开），恢复就被跳过
 - 结果：用户自己的搜索框内容被换成了测试关键词，而且清理脚本不会去动 Chrome 里的输入框
 - 建议：把恢复放进 `finally`，并在恢复失败时至少再重试一次（照 `writeValue` 自带的 4 次重试即可）；同时把「恢复失败」当**真失败**上报，别混在环境跳过里
 
-### 2.95 `LEGACY_TEST_WORDS` 仍然默认参与删除（`[AGENT-TEST]` 标记层的缺口）
+### 2.95 ✅ 已解决：历史测试词改成 `--force-all` 才认，默认只删 `[AGENT-TEST]`
 
 - 现在的链路：`--force` → `deleteMarkedTestNotes` → `buildMarkedDeleteScript(limit)`，而它默认的词表是 `[TEST_NOTE_MARKER, ...LEGACY_TEST_WORDS]`
 - 也就是 `--force` 不只删带 `[AGENT-TEST]` 的笔记，**也会删标题里含「后台测试 / 后台写入 / pta 测试」的笔记**
@@ -184,7 +184,7 @@ parallel-demo / parallel-real-demo / scripts/app-resolve.mjs。
 - 建议：`launchWithDebug` 顺带取到应用 pid（已有 `findChromePid` 这类工具可复用），`attachPage({ port, expectedPid })`；拿不到 pid 时至少校验端口主人的可执行路径属于该应用 bundle
 
 
-### 2.7 看门狗判定「用户意图」只看次数，不看人有没有真的在动
+### 2.7 ✅ 已解决：看门狗改用键鼠空闲时间（`hidIdleMs`）判用户意图
 
 - `core/front-watch.mjs`：同一个应用在 `userIntentMs`（默认 1500ms）内把前台抢走 3 次以上，就认账「这是用户自己在切」，从此不再还原
 - 问题：**应用自己连续 activate 3 次，和用户手动切 3 次，在代码里长得一模一样**。某些应用在启动、弹窗、收到消息时会在短时间反复激活自己，看门狗会误判成用户意图然后放弃——用户感受到的就是「焦点被抢走了，而且不管了」
@@ -193,7 +193,7 @@ parallel-demo / parallel-real-demo / scripts/app-resolve.mjs。
 - 收益：既不会把「应用自己跳」误判成用户意图，也不会真的跟用户抢（用户一动鼠标就认账）
 
 
-### 2.9 `core/prune.mjs` 是死代码，和 `scripts/prune.mjs` 逻辑重复（**补丁已备**：`flow/patch-prune-consolidate.diff`）
+### 2.9 ✅ 已解决：`planPrune` 归位 `core/prune.mjs`，脚本改为 CLI，测试改 import
 
 - `core/prune.mjs`（58 行）导出 `logTimestamp` / `selectStaleLogs` / `selectExcessReports` / `isPrunablePath`，**全仓零引用**（含测试）
 - 真正在用的是 `scripts/prune.mjs` 自己的 `planPrune`（`npm run prune` 和 `test/prune.test.mjs` 都走它）
@@ -203,7 +203,7 @@ parallel-demo / parallel-real-demo / scripts/app-resolve.mjs。
 顺带：`core/driver-resolution.mjs` 的 `DRIVER_ORDER_NOTE` 常量、`core/tasks/greet-verify.mjs` 的 `readChatList` 也是零引用（后者随 BOSS 内容一起走）
 
 
-### 3.05 `service:status` 的「部署状态」只查游离进程，不查代码新旧（**补丁已备**：`flow/patch-deploy-freshness.diff`）
+### 3.05 ✅ 已解决：`core/deploy-freshness.mjs` + `service:status` 报「代码新鲜度」
 
 - 现在 `deploymentDrift({listenerPid, managedPid})` 只判断「端口是不是被 launchd 受管进程占着」
 - 容易误读成「部署的是最新代码」：实测此刻 `core/background.mjs`（02:53 改）比 daemon（02:42 启动）新，`service:status` 仍报 `ok`
@@ -227,7 +227,7 @@ parallel-demo / parallel-real-demo / scripts/app-resolve.mjs。
 - 补丁：`git apply flow/patch-electron-task-test.diff`（新增 5 条测试，69 行）。注意最后一条要写成环境无关——开发机装了 overlay 依赖时会静默退到随包 Electron，只有没装时才抛错
 
 
-### 3.3 `app-profile.mjs` 抽离后两条异常路径没有测试
+### 3.3 ✅ 已解决：`test/app-profile*.test.mjs` 已有覆盖
 
 - 抽离本身是对的（依赖注入 + 4 条分类测试），我实测 `npm run app:runtime -- --all` 结果正常：199 native / 5 electron / 3 chromium / 1 qt，Chrome 仍归 chromium、Antigravity 仍归 electron
 - 缺的是两条失败路径：① `otool` 不可用或超时 → `linkedFrameworks` 返回空（会把 electron 误判成 native）；② `hasJvm` 的正则 `libjvm|jdk|jre` 命中任意含这些字样的资源文件就会误判
