@@ -124,6 +124,22 @@ curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: evil.example' http://127.0.0.
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:7789/                          # 应 200
 ```
 
+## 6. `patch-dialog-i18n.diff`（79 行 / 2 个文件）
+
+**实测发现的风险**：`dialog-guard` 靠中文/英文关键词识别权限弹窗。德语「Bedienungshilfen」、
+法语「Accessibilité」、日语「アクセシビリティ」都匹配不到，会被判成普通弹窗；
+而白名单按钮里含 `OK`，这几种语言的权限弹窗按钮也叫「OK」/「許可」——有概率代点授权，
+违反 SECURITY.md 的红线「权限类弹窗绝不代点」。作者本机是中英文系统，测不到。
+
+补丁做两件事：① `PERMISSION_HINTS` 补齐德/法/日常见词条；
+② 加**结构兜底**——`classifyDialog(text, buttons)` 只要按钮里出现授予类动作（允许/許可/Erlauben/Autoriser/Allow…），
+不管文字认不认得出，一律按权限框处理不点。配 3 条多语言测试。
+
+验证：
+```bash
+node --test test/dialog-i18n.test.mjs
+```
+
 ## 已作废（不要再应用）
 
 `patch-token-permissions.diff`：权限校正已由主会话自行实现（`hardenDataDir`，更完整——连 chrome-profile 等敏感子目录一起收紧），

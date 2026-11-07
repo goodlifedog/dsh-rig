@@ -1,0 +1,79 @@
+diff --git a/core/dialog-guard.mjs b/core/dialog-guard.mjs
+index cdfe557..e5bee6f 100644
+--- a/core/dialog-guard.mjs
++++ b/core/dialog-guard.mjs
+@@ -23,15 +23,24 @@ import { promisify } from 'node:util';
+ 
+ const exec = promisify(execFile);
+ 
+-const PERMISSION_HINTS = /辅助功能|屏幕录制|自动化|完全磁盘|输入监控|登录项|Accessibility|Screen Recording|Automation|Full Disk|Input Monitoring|想要控制|想要录制/i;
++// 权限弹窗识别不能只覆盖中英文：德语/法语/日语的系统词条一个都不能漏，
++// 否则会被判成普通弹窗，进而用白名单按钮（含 OK）把它点掉——违反「权限弹窗绝不代点」。
++const PERMISSION_HINTS = /(辅助功能|屏幕录制|自动化|完全磁盘|输入监控|登录项|想要控制|想要录制|Accessibility|Screen Recording|Automation|Full Disk|Input Monitoring|Bedienungshilfen|Bildschirmaufnahme|Festplattenzugriff|Systemeinstellungen|Accessibilit[ée]|Enregistrement de l.?[eé]cran|R[ée]glages Syst[èe]me|Acc[èe]s complet au disque|アクセシビリティ|画面収録|システム設定|フルディスクアクセス)/i;
++// 授予类按钮：出现它就按权限框处理（这是结构判据，不依赖界面语言）
++const GRANT_BUTTON_HINTS = /^(允许|允许访问|許可|同意|Erlauben|Zulassen|Autoriser|Consenti|Accetta|Permitir|Allow)$/i;
+ const SAFE_BUTTONS = ['确定', '好', '关闭', '稍后', '以后再说', '取消', 'OK', 'Dismiss', 'Close', 'Later', 'Cancel'];
+ 
+ /** 默认只处理自家进程：别去点用户正在用的 Chrome/办公软件 */
+ export const DEFAULT_TARGETS = ['Electron', 'Desktop Agent'];
+ 
+-export function classifyDialog(text) {
++export function classifyDialog(text, buttons) {
+   const s = String(text || '');
+   if (PERMISSION_HINTS.test(s)) return { kind: 'permission', autoClick: false };
++  // 结构兜底：文字没认出来但按钮里出现授予类动作，一律按权限框处理（宁可不点）
++  const list = Array.isArray(buttons) ? buttons : [];
++  if (list.some((b) => GRANT_BUTTON_HINTS.test(String(b).trim()))) {
++    return { kind: 'permission', autoClick: false };
++  }
+   return { kind: 'benign', autoClick: true };
+ }
+ 
+@@ -80,7 +89,7 @@ export async function scanOnce(options = {}) {
+     }
+     for (const d of list) {
+       const text = [d.title, ...(d.texts || [])].join(' ');
+-      const verdict = classifyDialog(text);
++      const verdict = classifyDialog(text, d.buttons);
+       const button = verdict.autoClick ? pickSafeButton(d.buttons) : '';
+       let clicked = false;
+       if (verdict.autoClick && button && !opts.dryRun) {
+diff --git a/test/dialog-i18n.test.mjs b/test/dialog-i18n.test.mjs
+new file mode 100644
+index 0000000..ac5a715
+--- /dev/null
++++ b/test/dialog-i18n.test.mjs
+@@ -0,0 +1,33 @@
++'use strict';
++// 权限弹窗识别必须覆盖非中英文系统：漏一种语言就等于允许代点授权。
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { classifyDialog } from '../core/dialog-guard.mjs';
++
++const CASES = [
++  ['德语', 'Systemeinstellungen möchte Bedienungshilfen steuern. Erlauben?'],
++  ['法语', 'Réglages Système : Accessibilité — Autoriser ?'],
++  ['日语', 'システム設定がアクセシビリティへのアクセスを求めています。許可しますか？'],
++  ['英语', 'System Settings wants to control Accessibility. Allow?'],
++  ['中文', '系统设置想要控制「辅助功能」。允许？'],
++];
++
++test('多语言权限弹窗：一律不代点', () => {
++  for (const [name, text] of CASES) {
++    const r = classifyDialog(text, ['允许', 'Erlauben', 'OK']);
++    assert.equal(r.kind, 'permission', name);
++    assert.equal(r.autoClick, false, name);
++  }
++});
++
++test('文字认不出但出现授予类按钮：仍按权限处理（结构兜底）', () => {
++  const r = classifyDialog('Unbekannter Dialog', ['Erlauben', 'Abbrechen']);
++  assert.equal(r.kind, 'permission');
++  assert.equal(r.autoClick, false);
++});
++
++test('普通弹窗（只有安全按钮）仍可自动点', () => {
++  const r = classifyDialog('保存失败，请重试', ['确定']);
++  assert.equal(r.kind, 'benign');
++  assert.equal(r.autoClick, true);
++});
