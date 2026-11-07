@@ -1,6 +1,6 @@
 # 外部评审提供的补丁
 
-> 最后更新：2026-11-08 04:15。**3 个待应用补丁**，其余都已被主会话实现并删除。
+> 最后更新：2026-11-08 04:25。**4 个待应用补丁**，其余都已被主会话实现并删除。
 
 ## 待应用
 
@@ -52,6 +52,18 @@ capture-policy.js / frame-target.js / layout.js / image-meta.js / crash-log.js /
 验证：
 ```bash
 node --test test/overlay-packaging.test.mjs
+```
+
+### patch-index-coverage.diff（29 行 / 1 个文件）
+
+**问题**：`flow/` 下新写的文档经常忘记加进 `INDEX.md`（我自己就漏了三轮，累计 10 份没入口）。
+
+补丁：`repo:check` 增加一条「flow 文档都能从 INDEX 找到」——列出未收录的文档名，
+`INDEX.md` 与 `BOSS-*.md`（公开前要移除）豁免。实测：新建一个未收录文档立刻报红，加进 INDEX 后恢复绿。
+
+验证：
+```bash
+npm run repo:check   # 应显示「29 份文档都有入口」
 ```
 
 ## 已采纳并删除的补丁

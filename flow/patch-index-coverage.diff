@@ -1,0 +1,29 @@
+diff --git a/scripts/repo-check.mjs b/scripts/repo-check.mjs
+index bf2759f..f389de2 100644
+--- a/scripts/repo-check.mjs
++++ b/scripts/repo-check.mjs
+@@ -121,6 +121,24 @@ try {
+   add('后台能力都有文档', false, '检查失败：' + String(error.message).slice(0, 60));
+ }
+ 
++
++// 9. flow/ 下每份文档都要能从 INDEX 找到（新写文档忘了加索引是反复出现的问题）
++try {
++  const flowDir = path.join(ROOT, 'flow');
++  const names = (await fsp.readdir(flowDir)).filter((f) => f.endsWith('.md'));
++  const index = await fsp.readFile(path.join(flowDir, 'INDEX.md'), 'utf8');
++  const EXEMPT = new Set(['INDEX.md']);   // 索引自己，以及公开发布前要移除的 BOSS-*
++  const missingDocs = names.filter((f) => {
++    if (EXEMPT.has(f)) return false;
++    if (/^BOSS-/.test(f)) return false;    // 见 BOSS-EXTRACT：公开前移除
++    return !index.includes(f);
++  });
++  add('flow 文档都能从 INDEX 找到', missingDocs.length === 0,
++    missingDocs.length ? '未收录：' + missingDocs.slice(0, 5).join(', ') : names.length + ' 份文档都有入口');
++} catch (error) {
++  add('flow 文档都能从 INDEX 找到', false, '检查失败：' + String(error.message).slice(0, 60));
++}
++
+ const width = Math.max(...rows.map((r) => r.name.length)) + 2;
+ console.log('\n仓库体检\n');
+ for (const r of rows) console.log((r.skipped ? '  ⏭️  ' : (r.ok ? '  ✅ ' : '  ❌ ')) + r.name.padEnd(width) + r.detail);
