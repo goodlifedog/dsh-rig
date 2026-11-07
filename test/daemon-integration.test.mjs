@@ -4,6 +4,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import http from 'node:http';
+import net from 'node:net';
+import { readToken } from '../core/local-token.mjs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -11,9 +13,24 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
-const PORT = 7791;
-import { readToken } from '../core/local-token.mjs';
 
+/**
+ * 起测试用 daemon 前先要一个空闲端口。
+ * 以前写死 7791：两个会话同时跑测试（实测有并行评审会话）会抢同一端口，
+ * 表现为「daemon 没能在 15 秒内起来」这种偶发失败。
+ */
+async function freePort() {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.once('error', reject);
+    srv.listen(0, '127.0.0.1', () => {
+      const port = srv.address().port;
+      srv.close(() => resolve(port));
+    });
+  });
+}
+
+const PORT = await freePort();
 const TOKEN = await readToken();
 const TOKEN_HEADERS = TOKEN ? { 'X-Agent-Token': TOKEN } : {};
 const BASE = 'http://127.0.0.1:' + PORT;
