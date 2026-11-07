@@ -6,7 +6,7 @@
  *
  * 结论以 JSON 输出：每个动作都带「操作前后前台是否一致」的证据。
  */
-import { ensureAppRunning, frontName, state, find, click, setValue, smartType } from '../background.mjs';
+import { ensureAppRunning, frontName, state, find, click, setValue, smartType, clickByText } from '../background.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
 
 const OVERLAY = process.env.OVERLAY_URL || 'http://127.0.0.1:7788';
@@ -67,15 +67,13 @@ async function main() {
   }
 
   // 3. 后台新建备忘录
-  const btns = await find('备忘录', { role: 'AXButton', limit: 25 });
-  const newBtn = btns.find((b) => String(b.title || '').includes('新建备忘录'));
-  if (newBtn) {
-    const r = await click('备忘录', newBtn.index);
-    record('后台点击「新建备忘录」', r.ok && r.frontUnchanged, { frontUnchanged: r.frontUnchanged, detail: r.error || '' });
-    await sleep(700);
-  } else {
-    record('后台点击「新建备忘录」', false, { detail: '找不到按钮' });
-  }
+  // 按文字点击：索引过期会自动重查一次（实机常见）
+  const newNote = await clickByText('备忘录', '新建备忘录');
+  record('后台点击「新建备忘录」', newNote.ok && newNote.frontUnchanged !== false, {
+    frontUnchanged: newNote.frontUnchanged !== false,
+    detail: newNote.ok ? ('尝试 ' + newNote.attempts + ' 次') : newNote.reason,
+  });
+  await sleep(700);
 
   // 4. 后台写入正文并校验
   const areas = await find('备忘录', { role: 'AXTextArea', limit: 5 });

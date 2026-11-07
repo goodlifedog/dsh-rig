@@ -246,3 +246,72 @@ export async function windowControls(app, options = {}) {
   } catch {}
   return buttons;
 }
+
+/**
+ * AX 层常见的瞬时错误：元素索引过期、查询失效、超时。
+ * 这类错误重试一次通常就好；断言类失败（找不到就是找不到）不该重试。
+ */
+export function isTransientAxError(message) {
+  return /expired|no longer available|stale|invalid element|timeout|timed out|超时|索引.*失效|无法.*响应/i.test(String(message || ''));
+}
+
+/**
+ * 通用重试封装：只对瞬时错误重试，非瞬时错误立即返回。
+ * @param {Function} fn 返回 {ok, ...} 或抛错
+ * @param {{retries?:number, delayMs?:number, isTransient?:Function}} [options]
+ */
+export async function withRetry(fn, options = {}) {
+  const retries = Number.isFinite(options.retries) ? options.retries : 1;
+  const delayMs = Number.isFinite(options.delayMs) ? options.delayMs : 150;
+  const isTransient = typeof options.isTransient === 'function' ? options.isTransient : isTransientAxError;
+  let last = null;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      last = await fn(attempt);
+      if (!last || last.ok !== false) return last;
+      const reason = last.reason || last.error || '';
+      if (!isTransient(reason)) return last;
+    } catch (error) {
+      last = { ok: false, reason: String(error && error.message || error).slice(0, 160) };
+      if (!isTransient(last.reason)) return last;
+    }
+    if (attempt < retries) await new Promise((r) => setTimeout(r, delayMs));
+  }
+  return last || { ok: false, reason: '未知失败' };
+}
+
+/**
+ * 按文字找元素并点击（找不到会重新查一次，应对索引过期）。
+ * 比"拿一个索引直接点"稳：索引在两次调用之间可能失效。
+ */
+export async function clickByText(app, text, options = {}) {
+  const opts = options || {};
+  const deps = Object.assign({ find, click }, opts.deps || {});
+  const target = String(text == null ? '' : text).trim();
+  if (!target) return { ok: false, reason: '没有指定元素文字' };
+
+  let lastReason = '没找到元素：' + target;
+  const attempts = 2;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    let matches = [];
+    try {
+      matches = await deps.find(app, { text: target, limit: 10 });
+    } catch (error) {
+      lastReason = '查询失败：' + String(error && error.message || error).slice(0, 80);
+    }
+    const exact = matches.find((m) => String(m.title || '').trim() === target);
+    const hit = exact || matches.find((m) => String(m.title || '').includes(target));
+    if (!hit) {
+      if (attempt < attempts - 1) await new Promise((r) => setTimeout(r, 150));
+      continue;
+    }
+    const r = await deps.click(app, hit.index);
+    if (r && r.ok) {
+      return { ok: true, index: hit.index, frontUnchanged: r.frontUnchanged !== false, attempts: attempt + 1 };
+    }
+    lastReason = (r && (r.error || r.reason)) || '点击失败';
+    if (!isTransientAxError(lastReason)) break;
+    if (attempt < attempts - 1) await new Promise((r2) => setTimeout(r2, 150));
+  }
+  return { ok: false, reason: lastReason };
+}
