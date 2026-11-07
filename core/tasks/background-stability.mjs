@@ -9,13 +9,22 @@
 import { frontName, state, find, click, ensureAppWindow, quitApp } from '../background.mjs';
 import { isScreenLocked } from '../platform.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
+import { fileURLToPath } from 'node:url';
+import { foreignAcceptanceOwner } from '../acceptance-lock.mjs';
 
 const ROUNDS = Math.max(1, Number(process.env.STABLE_ROUNDS) || 15);
+const ACCEPTANCE_LOCK = fileURLToPath(new URL('../../reports/.acceptance.lock', import.meta.url));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
   if (await isScreenLocked()) {
     console.log('环境跳过：屏幕已锁，后台操作链路不可用，等解锁后再跑 npm run stability');
+    return;
+  }
+  // 另一个验收正在跑时不要掺和：两边会互相抢前台/互关应用，报告全变假失败
+  const foreignAcc = await foreignAcceptanceOwner(ACCEPTANCE_LOCK);
+  if (foreignAcc) {
+    console.log('环境跳过：另一个验收正在进行（pid ' + foreignAcc.pid + '），避免互相干扰');
     return;
   }
   // 目标应用没开就自己拉起来（清理脚本会把测试应用关掉，任务不能假设它们已经开着）

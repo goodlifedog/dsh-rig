@@ -11,6 +11,9 @@ import {
   readLockPid,
   pidAlive,
   CORRUPT_LOCK_GRACE_MS,
+  parsePpidTable,
+  isDescendantOf,
+  foreignAcceptanceOwner,
 } from '../core/acceptance-lock.mjs';
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'acceptance-lock-'));
@@ -87,6 +90,43 @@ test('写锁失败时按未加锁继续，但必须给警告（fail-open 是有�
   const r = acquireLock(path.join(parent, 'lock'), { pid: 4321 });
   assert.equal(r.ok, true, '拿不到锁不该把验收直接卡死');
   assert.ok(r.warning && r.warning.length > 0, '但必须警告，否则用户不知道这次没加锁');
+});
+
+test('进程树判定：祖先链上的 pid 算自己人，旁支不算', () => {
+  const table = parsePpidTable(['  100  5', '  200 100', '  300 200', '  400   1'].join('\n'));
+  assert.equal(isDescendantOf(100, 300, table), true);
+  assert.equal(isDescendantOf(100, 100, table), true, '自己也算');
+  assert.equal(isDescendantOf(100, 400, table), false);
+  assert.equal(isDescendantOf(0, 300, table), false);
+  assert.equal(isDescendantOf(100, 300, null), false);
+});
+
+test('解析 ppid 表：坏行忽略', () => {
+  const table = parsePpidTable('100 1\nnot a line\n200 100\n');
+  assert.equal(table.get(100), 1);
+  assert.equal(table.get(200), 100);
+  assert.equal(table.size, 2);
+});
+
+test('验收锁：自己的祖先持锁不算冲突，外部进程持锁要报冲突', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'accept-lock-owner-'));
+  const file = path.join(dir, 'lock');
+  const self = { pid: 300 };
+  const table = parsePpidTable(['100 1', '200 100', '300 200'].join('\n'));
+  try {
+    fs.writeFileSync(file, '100 ' + new Date().toISOString());
+    assert.equal(await foreignAcceptanceOwner(file, { pid: self.pid, table }), null, '自己的祖先持锁=正常');
+    fs.writeFileSync(file, '999 ' + new Date().toISOString());
+    // 999 用自己这个活 pid 顶替（保证 pidAlive 为真），但进程树里不是 300 的祖先
+    fs.writeFileSync(file, process.pid + ' ' + new Date().toISOString());
+    const foreign = await foreignAcceptanceOwner(file, {
+      pid: self.pid,
+      table: parsePpidTable(['1 0', String(self.pid) + ' 1', String(process.pid) + ' 1'].join('\n')),
+    });
+    assert.equal(foreign && foreign.pid, process.pid);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('pidAlive：自己活着，0 和非法值、不存在的 pid 都是死', () => {

@@ -14,6 +14,7 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { foreignAcceptanceOwner } from '../acceptance-lock.mjs';
 import { ensureAppRunning, isAppRunning, frontName, state, find, windowControls, readSafe, findSafe, settleFront, waitForWindow, dismissOnboarding, quitApp } from '../background.mjs';
 import { isScreenLocked } from '../platform.mjs';
 import { presetApps } from '../app-presets.mjs';
@@ -24,6 +25,7 @@ import { localHeaders } from '../local-token.mjs';
 import { decideRestore } from '../front-restore.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ACCEPTANCE_LOCK = fileURLToPath(new URL('../../reports/.acceptance.lock', import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
 const OVERLAY = process.env.OVERLAY_URL || 'http://127.0.0.1:7788';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -130,6 +132,12 @@ async function probeCapture(session, pattern, titleHint) {
 }
 
 async function main() {
+  // 另一个验收正在跑时不要掺和：两边会互相抢前台/互关应用，报告全变假失败
+  const foreignAcc = await foreignAcceptanceOwner(ACCEPTANCE_LOCK);
+  if (foreignAcc) {
+    console.log('环境跳过：另一个验收正在进行（pid ' + foreignAcc.pid + '），避免互相干扰');
+    return;
+  }
   // 锁屏时 AX 整体不可用（已知系统限制），这时跑矩阵只会得到"全不可读"的假结论
   if (await isScreenLocked()) {
     console.log('环境跳过：屏幕已锁，锁屏下 AX/抓图都不可用，等解锁后再跑 npm run matrix');

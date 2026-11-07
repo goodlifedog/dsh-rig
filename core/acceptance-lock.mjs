@@ -87,7 +87,68 @@ export function acquireLock(file, options = {}) {
   return { ok: false, reason: 'busy', pid: readLockPid(file) };
 }
 
+/**
+ * 解析 ps 的 pid/ppid 表（ps -axo pid=,ppid= 的输出）→ Map<pid, ppid>
+ * @param {string} text
+ * @returns {Map<number, number>}
+ */
+function parsePpidTable(text) {
+  const table = new Map();
+  for (const raw of String(text || '').split('\n')) {
+    const m = /^\s*(\d+)\s+(\d+)\s*$/.exec(raw);
+    if (!m) continue;
+    const pid = Number(m[1]);
+    const ppid = Number(m[2]);
+    if (Number.isInteger(pid) && pid > 0) table.set(pid, ppid);
+  }
+  return table;
+}
+
+/**
+ * childPid 是否在 ancestorPid 的进程树里（沿 ppid 往上走，最多 20 层防环）。
+ * 用途：验收会拉起 runner→任务子进程，任务检查锁时要知道「这个锁是不是我爸的」。
+ */
+function isDescendantOf(ancestorPid, childPid, table) {
+  const ancestor = Number(ancestorPid) || 0;
+  let cur = Number(childPid) || 0;
+  if (!ancestor || !cur || !(table instanceof Map)) return false;
+  for (let depth = 0; depth < 20 && cur > 0; depth += 1) {
+    if (cur === ancestor) return true;
+    cur = table.get(cur) || 0;
+  }
+  return cur === ancestor;
+}
+
+/**
+ * 当前是否有「别的验收」持锁。自己（或自己的祖先）持锁时返回 null——那是正常的父子关系。
+ * @param {string} lockFile
+ * @param {{pid?:number, table?:Map<number,number>, reader?:Function}} [options]
+ * @returns {Promise<{pid:number}|null>}
+ */
+async function foreignAcceptanceOwner(lockFile, options = {}) {
+  const opts = options || {};
+  const owner = readLockPid(lockFile);
+  if (!owner || !pidAlive(owner)) return null;
+  const self = Number(opts.pid) || process.pid;
+  if (owner === self) return null;
+  const table = opts.table instanceof Map ? opts.table : parsePpidTable(await (opts.reader ? opts.reader() : defaultPpidTable()));
+  return isDescendantOf(owner, self, table) ? null : { pid: owner };
+}
+
+async function defaultPpidTable() {
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  try {
+    const { stdout } = await promisify(execFile)('/bin/ps', ['-axo', 'pid=,ppid='], { timeout: 3000, maxBuffer: 4 * 1024 * 1024 });
+    return String(stdout || '');
+  } catch {
+    return '';
+  }
+}
+
 /** 释放锁：只删自己的，避免把别人的锁删掉 */
+export { parsePpidTable, isDescendantOf, foreignAcceptanceOwner };
+
 export function releaseLock(file, pid = process.pid) {
   const owner = readLockPid(file);
   if (owner && owner !== Number(pid)) return false;

@@ -12,8 +12,11 @@ import { closeOcuMcp } from '../ocu-mcp.mjs';
 import { countNotes, deleteTopNotes } from '../note-cleanup.mjs';
 import { isScreenLocked } from '../platform.mjs';
 import { localHeaders } from '../local-token.mjs';
+import { fileURLToPath } from 'node:url';
+import { foreignAcceptanceOwner } from '../acceptance-lock.mjs';
 
 const OVERLAY = process.env.OVERLAY_URL || 'http://127.0.0.1:7788';
+const ACCEPTANCE_LOCK = fileURLToPath(new URL('../../reports/.acceptance.lock', import.meta.url));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const S_NOTES = 'bg-notes';
 const S_CALC = 'bg-calc';
@@ -44,6 +47,12 @@ async function main() {
   // 锁屏下 AX 整体不可用（ocu 会报 NSPOSIXErrorDomain Code=2），这是环境限制不是失败
   if (await isScreenLocked()) {
     console.log('环境跳过：屏幕已锁，锁屏下 AX/抓图都不可用，等解锁后再跑');
+    return;
+  }
+  // 另一个验收正在跑时不要掺和：两边会互相抢前台/互关应用，报告全变假失败
+  const foreignAcc = await foreignAcceptanceOwner(ACCEPTANCE_LOCK);
+  if (foreignAcc) {
+    console.log('环境跳过：另一个验收正在进行（pid ' + foreignAcc.pid + '），避免互相干扰');
     return;
   }
   const frontAtStart = await frontName();
