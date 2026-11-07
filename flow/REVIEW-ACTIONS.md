@@ -405,6 +405,14 @@ scripts/start-all.mjs:18,34          起服务后探活
 改法：全部换成 `daemonUrl()/overlayBase()`；`soak` 保留 URL 覆盖优先级。
 我没直接改，是因为主会话刚收口完、还在动这块，避免撞车——列在这里由主会话收尾。
 
+### 2.18 非 git 目录下「shebang 都在第一行」是空跑还显示 ✅
+
+- 新规则 `5007997` 依赖 `tracked`（来自 `git ls-files`）。下载 ZIP 的用户没有 `.git`，`tracked` 是空数组，
+  循环一次都不跑，但结果是 `✅ shebang 都在第一行`——**绿得没有依据**
+- 实测：在无 `.git` 的副本里人为把一个 shebang 顶到第二行，检查仍显示 ✅；补上 `git init && git add` 后立刻报红
+- 同一份 repo-check 里，「依赖产物 / 孤儿图 / 大文件」三条已经会用 `hasGit` 标 ⏭️ 跳过，这条漏了同样的处理
+- 改法：`hasGit` 为 false 时 `add('shebang 都在第一行', true, '跳过（非 git 目录）', true)`
+
 ## 已修好（复核过，不用再看）
 
 控制面 token（daemon + overlay 全接口）· Origin/跨域拦截 · pid Helper 误匹配 · 验收覆盖新通道（10 项）·
