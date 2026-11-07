@@ -20,7 +20,7 @@
 | 未保存数据被强杀 | 退出应用时如果卡在"要保存吗"，强杀会丢内容 | 退不掉时先查保存/删除类弹窗，有就返回 `needs-confirm` 且不发 TERM |
 | 任务名目录穿越 | `/run` 传 `../core/runner` 执行目录外脚本 | daemon 只接受白名单任务名，未知任务 400 |
 | 队列无限堆积 | 有人反复塞任务把内存/队列打爆 | 队列上限 50，满了 429 |
-| 超大/畸形请求体 | 1MB 以上的 JSON 把内存打爆；坏 JSON 静默当空对象继续走 | 请求体上限 1MB（超出 413）、坏 JSON/非对象 400、任何请求级异常都转成 JSON 响应；慢请求 20 秒超时，不会挂住 |
+| 超大/畸形请求体 | 大请求体把内存打爆；坏 JSON 静默当空对象继续走；超限时直接掐断连接、调用方拿不到状态码 | 请求体上限（daemon 1MB、overlay 推帧 8MB），超出 **413**（把剩余数据丢掉再回响应，不掐连接）；坏 JSON/非对象 400；任何请求级异常都转成 JSON 响应；daemon 慢请求 20 秒超时 |
 
 以上每一条都有单测或集成测试钉住（见 `test/security-boundaries.test.mjs`、`test/local-token.test.mjs`、`test/overlay-server.test.mjs`、`test/daemon-integration.test.mjs`）。
 票据校验用定长比较，长度不同直接拒；token 文件被写坏（不是 32 字节 hex）会重新生成，不会把坏值当 token。

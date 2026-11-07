@@ -204,6 +204,17 @@ async function withTokenServer(fn, token = 'test-token-123') {
   try { await fn(base, calls); } finally { await srv.close(); }
 }
 
+test('超大请求体给 413，而不是把连接掐成 ECONNRESET', async () => {
+  await withTokenServer(async (base) => {
+    const res = await fetch(base + '/frame', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Agent-Token': 'test-token-123' },
+      body: 'x'.repeat(9 * 1024 * 1024),
+    });
+    assert.equal(res.status, 413);
+  });
+});
+
 test('控制面票据：没带 token 的读写都拒绝', async () => {
   await withTokenServer(async (base) => {
     const get = await fetch(base + '/windows');

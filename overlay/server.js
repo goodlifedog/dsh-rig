@@ -92,18 +92,30 @@ function readBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
-
+    let done = false;
+    const fail = (statusCode, message) => {
+      if (done) return;
+      done = true;
+      reject(httpError(statusCode, message));
+    };
     req.on('data', (chunk) => {
+      if (done) return;
       size += chunk.length;
       if (size > MAX_BODY_BYTES) {
-        reject(httpError(413, '请求体超过 ' + MAX_BODY_BYTES + ' 字节'));
-        req.destroy();
+        // 立刻 destroy() 会把还没写出的 413 一起掐断（客户端只看到 ECONNRESET）。
+        // 丢掉剩余数据，让上层把 413 正常写回去。
+        fail(413, '请求体超过 ' + MAX_BODY_BYTES + ' 字节');
+        try { req.resume(); } catch {}
         return;
       }
       chunks.push(chunk);
     });
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-    req.on('error', (error) => reject(httpError(400, '读取请求体失败：' + error.message)));
+    req.on('end', () => {
+      if (done) return;
+      done = true;
+      resolve(Buffer.concat(chunks).toString('utf8'));
+    });
+    req.on('error', (error) => fail(400, '读取请求体失败：' + (error && error.message)));
   });
 }
 
