@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 修小窗画面卡死（外部评审第 57 轮）：抓帧连续失败到阈值后原来只切 error 状态、不解绑也不重新找窗口，目标窗口关掉重开后会一直红字；现在会按上次绑定的 owner/title 自动找回同一应用的新窗口，找不到就解绑（不再卡错误态）；新增 `overlay/recover.js` 纯函数 + 4 项单测
+- docs/SECURITY.md 去重（同一段"token 挡不住同用户恶意进程"写了两遍）并把测试数量更新到 372，补「测试不拿用户数据」的具体策略（计数差删除 + --force）
 - 锁屏跳过统一化：新增 `lockedSkipNotice()`，background-stability / cold-launch / terminal-control / user-active-demo 四个依赖 AX 的任务入口都加锁屏检查（锁屏直接标环境跳过、退出码 0）；实测四个任务锁屏下都正确跳过，出口分类认得出
 - 修后台控制任务锁屏时误报失败：任务入口加锁屏检查，锁屏直接标「环境跳过」并退出（之前会继续跑、所有 AX 调用报 NSPOSIXErrorDomain Code=2 被当失败）；实测排查确认锁屏下 ocu 报错属环境限制，不是工具损坏
 - ocu 客户端两处韧性改进：spawn 时统一用系统临时目录（避免 DSH 会话 TMPDIR 与 launchd agent 的 socket 路径不一致）、AX 调用遇到 NSPOSIX/No such file 瞬时错误自动重试（4 次，间隔 700ms）

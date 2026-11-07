@@ -26,6 +26,7 @@ const supervisor = require('./supervisor.js');
 const { normalizeDshTitle, matchesTitle } = require('./session-gate.js');
 const { createOverlayServer, DEFAULT_SESSION, SESSION_PATTERN } = require('./server.js');
 const { ensureTokenSync } = require('../core/local-token.cjs');
+const { pickReplacementWindow } = require('./recover.js');
 const { normalizeWindowId, resolveWindowId } = require('./window-id.js');
 const { computeFrameTarget } = require('./frame-target.js');
 const layout = require('./layout.js');
@@ -1225,6 +1226,7 @@ async function captureThumbnail(s) {
         pushLog(s, '缩略图捕获失败（连续 ' + s.captureFailStreak + ' 次）：' + message, 'system');
       }
       signalThumbState(s);
+      recoverTarget(s).catch(() => {});
     }
   } finally {
     pendingTempFiles.delete(file);
@@ -1335,7 +1337,42 @@ function setWindowId(s, raw, source, title) {
   pushLog(s, '缩略图目标窗口 → ' + id + (source ? '（' + source + '）' : ''), 'system');
   markActivity(s, 'window');
   startThumbnailLoop(s);
+  rememberTargetHint(s, id);
   return id;
+}
+
+/** 记下这次绑定窗口的 owner/title：窗口关掉重开后靠它找回同一个应用 */
+async function rememberTargetHint(s, id) {
+  try {
+    const list = await listWindows();
+    const hit = (list || []).find((w) => w.windowId === id);
+    if (hit) s.lastTargetHint = { windowId: id, owner: hit.owner, title: hit.title };
+  } catch {}
+}
+
+/**
+ * 抓帧连续失败时的恢复：先尝试按 owner/title 找回同一个应用的新窗口，
+ * 找不到就解绑（而不是一直卡在 error）。
+ */
+async function recoverTarget(s) {
+  if (s.recovering) return;
+  s.recovering = true;
+  try {
+    const list = await listWindows().catch(() => null);
+    if (!list) return;
+    const exclude = new Set();
+    if (s.state.windowId) exclude.add(s.state.windowId);
+    const cand = pickReplacementWindow(list, s.lastTargetHint, { excludeIds: exclude, selfIds: selfWindowIds });
+    if (cand && cand.windowId !== s.state.windowId) {
+      pushLog(s, '目标窗口失效，自动重新绑定到 ' + cand.windowId + '（' + (cand.owner || '') + '）', 'system');
+      setWindowId(s, cand.windowId, 'auto-recover', cand.title || '');
+      return;
+    }
+    pushLog(s, '目标窗口已失效，已解绑（窗口重开后请重新绑定）', 'system');
+    setWindowId(s, null, 'auto-recover');
+  } finally {
+    s.recovering = false;
+  }
 }
 
 async function refreshSelfWindows() {
