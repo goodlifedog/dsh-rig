@@ -65,6 +65,7 @@ async function main() {
     }
     const settled = await settleFront(before, { waitMs: 200, retries: 2 });
     row.frontStolen = settled.stolen;
+    row.frontRestoredOk = settled.restored;
     row.frontUnchanged = (await frontName()) === before;
     rows.push(row);
     console.log(JSON.stringify(row));

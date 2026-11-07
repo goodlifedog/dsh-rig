@@ -22,9 +22,7 @@ function pickReplacementWindow(windows, hint, options = {}) {
   if (!list.length || !hint) return null;
   const owner = String(hint.owner || '');
   const title = String(hint.title || '');
-  let best = null;
-  let bestScore = 0;
-  for (const w of list) {
+  const scored = list.map((w) => {
     let score = 0;
     const wo = String(w.owner || '');
     const wt = String(w.title || '');
@@ -37,9 +35,14 @@ function pickReplacementWindow(windows, hint, options = {}) {
       else if (wt && (wt.includes(title) || title.includes(wt))) score += 1;
     }
     if (hint.windowId && w.windowId === hint.windowId) score += 1;
-    if (score > bestScore) { bestScore = score; best = w; }
-  }
-  return best;
+    return { w, score };
+  });
+  const bestScore = scored.reduce((m, x) => Math.max(m, x.score), 0);
+  if (bestScore <= 0) return null;
+  const winners = scored.filter((x) => x.score === bestScore);
+  // 并列时不要盲选：两个都叫「备忘录」的窗口谁是谁分不清，宁可解绑让调用方重新绑定
+  if (winners.length !== 1) return null;
+  return winners[0].w;
 }
 
 module.exports = { pickReplacementWindow };

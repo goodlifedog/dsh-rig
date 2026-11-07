@@ -77,6 +77,7 @@ async function resolveOne(app, profile) {
   );
   const settled = await settleFront(before, { waitMs: 150, retries: 2 });
   result.frontStolen = settled.stolen;
+  result.frontRestoredOk = settled.restored;
   result.profile = { type: profile.type, evidence: profile.evidence, commands: profile.applescript.commands };
   return result;
 }

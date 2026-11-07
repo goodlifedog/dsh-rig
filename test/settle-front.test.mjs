@@ -33,3 +33,13 @@ test('第一次复查发现被抢：还原并标记', async () => {
   assert.equal(r.stolen, true);
   assert.ok(r.restores >= 1);
 });
+test('restored 只看最终状态：没被抢也算还原成功', async () => {
+  const r = await settleFront('DSH', { waitMs: 5, retries: 1, deps: { frontName: async () => 'DSH', restoreFront: async () => true } });
+  assert.equal(r.restored, true);
+});
+
+test('restored 如实反映还原失败', async () => {
+  const r = await settleFront('DSH', { waitMs: 5, retries: 2, deps: { frontName: async () => 'Calculator', restoreFront: async () => false } });
+  assert.equal(r.stolen, true);
+  assert.equal(r.restored, false);
+});

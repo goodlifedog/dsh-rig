@@ -225,6 +225,7 @@ async function main() {
     const cap = await probeCapture(session, pattern, titleHint);
     // 抓帧也可能触发应用异步激活（Gemini 实测）：延迟复查并还原
     const capSettle = await settleFront(before, { waitMs: 250, retries: 2 });
+    row.captureRestored = capSettle.restored;
     row.captureStoleFront = capSettle.stolen;
     steps.capture = await frontName();
     row.capture = cap.state;

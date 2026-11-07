@@ -25,6 +25,17 @@ test('排除自身窗口和旧窗口', () => {
   assert.equal(hit.windowId, 2);
 });
 
+test('并列（两个同名窗口）时不盲选，返回 null', () => {
+  const windows = [W(201, '备忘录', '备忘录'), W(202, '备忘录', '备忘录')];
+  assert.equal(pickReplacementWindow(windows, { windowId: 199, owner: '备忘录', title: '备忘录' }), null);
+});
+
+test('并列但有旧 windowId 偏好时按它选（不算歧义）', () => {
+  const windows = [W(201, '备忘录', '备忘录'), W(202, '备忘录', '备忘录')];
+  const hit = pickReplacementWindow(windows, { windowId: 202, owner: '备忘录', title: '备忘录' });
+  assert.equal(hit.windowId, 202);
+});
+
 test('没有任何匹配时返回 null（交给解绑，而不是乱绑别的窗口）', () => {
   assert.equal(pickReplacementWindow([W(3, 'Google Chrome', 'x')], { windowId: 1, owner: 'Notes', title: 'y' }), null);
   assert.equal(pickReplacementWindow([], { owner: 'Notes' }), null);

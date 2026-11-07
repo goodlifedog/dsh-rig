@@ -568,7 +568,8 @@ export async function settleFront(expect, options = {}) {
     await deps.restoreFront(expect);
     restores += 1;
   }
-  return { stolen, restores, finalFront };
+  // restored：最终前台是否真的回到了期望值。调用方不能只看"尝试过还原"，要看最终状态。
+  return { stolen, restores, finalFront, restored: Boolean(expect) && finalFront === expect };
 }
 
 

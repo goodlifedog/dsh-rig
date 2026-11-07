@@ -79,11 +79,13 @@ async function main() {
     }
     const settled = await settleFront(before, { waitMs: 250, retries: 2 });
     row.frontStolen = settled.stolen;
+    row.frontRestoredOk = settled.restored;
     const quit = await quitApp({ bundleId: app.bundle, appName: app.name, processName: app.process });
     row.cleanup = quit.mode;
     // 应用退出过程中也可能把自己顶到前台（异步激活），退出后再复查一次并还原
     const afterQuit = await settleFront(before, { waitMs: 250, retries: 2 });
     row.frontStolenAfterQuit = afterQuit.stolen;
+    row.frontRestoredOkAfterQuit = afterQuit.restored;
     row.frontUnchanged = (await frontName()) === before;
     rows.push(row);
     console.log(JSON.stringify(row));

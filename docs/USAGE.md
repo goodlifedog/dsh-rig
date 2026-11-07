@@ -7,6 +7,19 @@
 
 ---
 
+## 命令速查（一屏看完）
+
+| 场景 | 命令 |
+| --- | --- |
+| 一条命令起服务（daemon + 小窗，Ctrl+C 一起停） | `npm start` |
+| 日常看状态 | `npm run status`、`npm run health`、`npm run monitor` |
+| 端到端验收 | `npm run accept`（你在用电脑时会被拒绝；`ACCEPT_FORCE=1` 强跑） |
+| 排查服务/部署 | `npm run service:status`、`npm run service:restart`、`npm run doctor` |
+| 清理与轮转 | `npm run cleanup:test`（默认只报告，`--force` 才删笔记）、`npm run prune` |
+| 应用适配 | `npm run apps:inventory`、`npm run app:runtime -- <应用>`、`npm run app:resolve -- <应用>` |
+| 自家弹窗守卫 | `npm run dialogs:guard`（`--dry-run` 只报告） |
+| 其余都是内部/演示任务 | `package.json` 里的脚本，按需查 |
+
 ## 0. 先看这里
 
 三条铁律，违反任何一条都会出现「自作主张的操作」或「屏幕被抢」：

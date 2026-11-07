@@ -2,6 +2,10 @@
 
 ## 未发布
 
+- 前台还原加失败信号（外部评审）：`settleFront()` 现返回 `restored`（最终前台是否真的回到期望值），矩阵/CDP/AppleScript/通道协商报告都记录 `frontRestoredOk`；README 措辞改成「会尝试还原，还原失败会在报告里标出」，不再拿"尝试过"当"已还原"
+- 窗口自动重绑加歧义保护：两个同名候选并列时返回 null（解绑、由调用方重新绑定），不再按列表顺序盲选；补 2 项单测（并列→null、旧 windowId 偏好时按偏好选）
+- 修锁屏跳过留下的死代码：background-stability / terminal-control 去掉重复检查；cold-launch 恢复原设计——锁屏时照跑、只跳过前台断言（锁屏是常态，不能把后台启动验证整块跳过）
+- 文档：USAGE 开头加「命令速查」一屏表（日常/排查/清理/适配/内部工具，含 `npm start`、`dialogs:guard`）；AGENT-COORDINATION 说清清理默认不删、要删加 `--force`
 - 小窗自恢复两条路径都完成实机验证：绑定窗口关掉→0.5s 内 live 变 no-window（解绑路径）；关掉文稿再新建→约 1s 内 windowId 自动从旧窗口切到新窗口（找回路径）。测试全程后台，前台一直是 Google Chrome，没用可视小窗弹你屏幕
 - 新增自检开关 `OVERLAY_CAPTURE_WHILE_HIDDEN=1`：隐藏会话也抓帧，用于在不弹窗的前提下验证"目标窗口失效→自动找回/解绑"；默认关闭，正常路径仍然隐藏即暂停抓帧
 - 小窗宿主检测支持浏览器里的 Web 界面：原来只认 owner === 「DeepSeek Harness」的原生窗口，用户改用 Chrome 里的 Web 界面时找不到宿主、小窗按设计隐藏；现在优先原生窗口，找不到时退回「浏览器窗口标题含 DeepSeek Harness」的窗口（overlay/host-select.js 纯函数 + 5 项单测），健康信息新增 hostKind（native/browser）

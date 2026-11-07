@@ -7,14 +7,13 @@
  * 输出：轮数、失败步数、前台被抢次数、单轮耗时分布。
  */
 import { frontName, state, find, click } from '../background.mjs';
-import { isScreenLocked, lockedSkipNotice } from '../platform.mjs';
+import { isScreenLocked } from '../platform.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
 
 const ROUNDS = Math.max(1, Number(process.env.STABLE_ROUNDS) || 15);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
-  if (await isScreenLocked()) { console.log(lockedSkipNotice('background-stability.mjs')); return; }
   if (await isScreenLocked()) {
     console.log('环境跳过：屏幕已锁，后台操作链路不可用，等解锁后再跑 npm run stability');
     return;
