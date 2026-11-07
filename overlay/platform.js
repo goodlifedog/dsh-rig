@@ -154,12 +154,21 @@ function tempPath(ext) {
 }
 
 /** 屏幕是否锁屏（仅 macOS）：锁屏时抓帧会失败、应用启动变慢，健康检查里要能看出来 */
+/** 解析 ioreg 的锁屏标记（与 core/platform.mjs 的 parseScreenLocked 保持一致，带一致性单测） */
+function parseScreenLocked(output) {
+  const text = String(output || '');
+  if (/<key>CGSSessionScreenIsLocked<\/key>\s*<true\s*\/?>/i.test(text)) return true;
+  if (/<key>CGSSessionScreenIsLocked<\/key>\s*<false\s*\/?>/i.test(text)) return false;
+  const m = /CGSSessionScreenIsLocked"?\s*=\s*(Yes|No|true|false|1|0)/i.exec(text);
+  if (!m) return false;
+  return /^(yes|true|1)$/i.test(m[1]);
+}
+
 function isScreenLocked() {
   if (!isMac) return false;
   try {
     const out = require('node:child_process').execFileSync('/usr/sbin/ioreg', ['-n', 'Root', '-d1'], { encoding: 'utf8', timeout: 3000 });
-    const m = /CGSSessionScreenIsLocked"?\s*=\s*(Yes|No|true|false|1|0)/i.exec(out);
-    return m ? /^(yes|true|1)$/i.test(m[1]) : false;
+    return parseScreenLocked(out);
   } catch { return false; }
 }
 
@@ -201,4 +210,5 @@ module.exports = {
   readWindowTitle,
   captureWindow,
   isScreenLocked,
+  parseScreenLocked,
 };

@@ -58,14 +58,25 @@ export function requireOcu() {
  * 屏幕是否锁屏（仅 macOS）。
  * 锁屏后 Chrome 等 GUI 应用启动会慢一个数量级，任务超时需要相应放宽。
  */
+/**
+ * 解析 ioreg 输出里的锁屏标记（纯函数，便于单测）。
+ * 支持文本格式（"CGSSessionScreenIsLocked" = Yes）和 plist 格式（<key>…</key><true/>）；
+ * 键不存在时视为未锁屏。
+ */
+export function parseScreenLocked(output) {
+  const text = String(output || '');
+  if (/<key>CGSSessionScreenIsLocked<\/key>\s*<true\s*\/?>/i.test(text)) return true;
+  if (/<key>CGSSessionScreenIsLocked<\/key>\s*<false\s*\/?>/i.test(text)) return false;
+  const m = /CGSSessionScreenIsLocked"?\s*=\s*(Yes|No|true|false|1|0)/i.exec(text);
+  if (!m) return false;
+  return /^(yes|true|1)$/i.test(m[1]);
+}
+
 export function isScreenLocked() {
   if (!isMac) return false;
   try {
     const out = execFileSync('/usr/sbin/ioreg', ['-n', 'Root', '-d1'], { encoding: 'utf8', timeout: 3000 });
-    // ioreg 输出形如 "CGSSessionScreenIsLocked" = Yes / No，必须看值，不能只看键在不在
-    const m = /CGSSessionScreenIsLocked"?\s*=\s*(Yes|No|true|false|1|0)/i.exec(out);
-    if (!m) return false;
-    return /^(yes|true|1)$/i.test(m[1]);
+    return parseScreenLocked(out);
   } catch {
     return false;
   }
@@ -117,4 +128,4 @@ export function runPowerShell(script, timeout = 15000) {
   });
 }
 
-export default { isMac, isWindows, platform, controlBackend, resolveOcu, requireOcu, dataDir, runPowerShell, readFrontmostApp, isScreenLocked };
+export default { isMac, isWindows, platform, controlBackend, resolveOcu, requireOcu, dataDir, runPowerShell, readFrontmostApp, isScreenLocked, parseScreenLocked };
