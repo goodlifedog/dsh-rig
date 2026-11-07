@@ -231,6 +231,18 @@ async function main() {
   return allPass ? 0 : 1;
 }
 
+// 已知环境条件用显式「环境跳过」声明，由分类器按跳过处理；
+// 断言失败（页面结构变了/改不成关键词）仍然按 FAIL 报真失败，不许再借环境规则洗掉。
+const ENV_CONDITIONS = /当前就是前台|无法切回 BOSS 职位页|没有 BOSS 职位页标签/;
+
 main()
   .then((code) => process.exit(code))
-  .catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
+  .catch((e) => {
+    const message = String((e && e.message) || e);
+    if (ENV_CONDITIONS.test(message)) {
+      console.log('环境跳过：' + message);
+      process.exit(0);
+    }
+    console.error('FAIL:', message);
+    process.exit(1);
+  });
