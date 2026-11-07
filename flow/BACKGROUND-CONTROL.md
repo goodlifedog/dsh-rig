@@ -75,8 +75,11 @@ await app.getAXState({ windowPlacement: 'restore' });         // 还回去
 ## 四点六、应用能力矩阵（2026-11-07 实测）
 
 ```bash
-npm run matrix      # 逐个应用探明：能否后台启动/读界面/点击/设值/回显
-npm run stability   # 连续多轮后台操作，统计前台被抢次数与单轮耗时
+npm run bg:verify    # 一次跑完后端控制全部验收，输出 reports/bg-verify-*.md
+npm run matrix       # 逐个应用探明：能否后台启动/读界面/点击/设值/回显
+npm run stability    # 连续多轮后台操作，统计前台被抢次数与单轮耗时
+npm run cold:launch  # 退掉应用再后台拉起，验证启动不跳前台
+npm run user:active  # 你在用 A 时，后台控 B，A 的界面与前台都不受影响
 ```
 
 实测 7 个不同门类的应用，结果写 `reports/app-matrix-*.md`：

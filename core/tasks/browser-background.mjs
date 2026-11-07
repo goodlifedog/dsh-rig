@@ -12,6 +12,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { launch } from '../browser.mjs';
+import { isScreenLocked } from '../platform.mjs';
 
 const OVERLAY = process.env.OVERLAY_URL || 'http://127.0.0.1:7788';
 const SESSION = 'bg-browser';
@@ -34,6 +35,10 @@ function frontName() {
 }
 
 async function main() {
+  if (await isScreenLocked()) {
+    console.log('环境跳过：屏幕已锁，前台断言在锁屏下没有意义，等解锁后再跑');
+    return;
+  }
   const steps = [];
   const record = (name, ok, extra) => {
     steps.push(Object.assign({ name, ok }, extra || {}));

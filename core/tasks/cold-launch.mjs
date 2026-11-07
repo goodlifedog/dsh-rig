@@ -10,6 +10,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { ensureAppRunning, frontName, isAppRunning } from '../background.mjs';
+import { isScreenLocked } from '../platform.mjs';
 
 const exec = promisify(execFile);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -38,6 +39,10 @@ async function quitApp(app) {
 }
 
 async function main() {
+  if (await isScreenLocked()) {
+    console.log('环境跳过：屏幕已锁，锁屏下无法验证前台是否跳转，等解锁后再跑 npm run cold:launch');
+    return;
+  }
   const rows = [];
   const frontStart = await frontName();
   console.log('起点前台:', frontStart);
