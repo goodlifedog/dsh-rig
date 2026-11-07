@@ -54,7 +54,7 @@ capture-policy.js / frame-target.js / layout.js / image-meta.js / crash-log.js /
 node --test test/overlay-packaging.test.mjs
 ```
 
-### patch-index-coverage.diff（29 行 / 1 个文件）
+### ✅ patch-index-coverage.diff（29 行 / 1 个文件）—— 已应用，补丁文件已删除
 
 **问题**：`flow/` 下新写的文档经常忘记加进 `INDEX.md`（我自己就漏了三轮，累计 10 份没入口）。
 
