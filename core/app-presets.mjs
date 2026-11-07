@@ -11,7 +11,7 @@
 export const PRESETS = Object.freeze({
   // 办公文档
   office: [
-    { name: 'Pages Creator Studio', bundle: 'com.apple.iWork.Pages', process: 'Pages' },
+    { name: 'Pages Creator Studio', bundle: 'com.apple.Pages', process: 'Pages' },
     { name: 'Keynote Creator Studio', bundle: 'com.apple.Keynote', process: 'Keynote' },
     { name: 'Numbers Creator Studio', bundle: 'com.apple.Numbers', process: 'Numbers' },
     { name: 'WPS Office', bundle: 'com.kingsoft.wpsoffice.mac', process: 'wpsoffice' },
@@ -21,15 +21,15 @@ export const PRESETS = Object.freeze({
   im: [
     { name: 'QQ', bundle: 'com.tencent.qq', process: 'QQ' },
     { name: 'WeChat', bundle: 'com.tencent.xinWeChat', process: 'WeChat' },
-    { name: 'Telegram', bundle: 'com.tdesktop.Telegram', process: 'Telegram' },
-    { name: 'Gemini', bundle: 'com.google.Gemini', process: 'Gemini' },
+    { name: 'Telegram', bundle: 'ru.keepcoder.Telegram', process: 'Telegram' },
+    { name: 'Gemini', bundle: 'com.google.GeminiMacOS', process: 'Gemini' },
     { name: 'ChatGPT', bundle: 'com.openai.codex', process: 'ChatGPT' },
     { name: 'TencentMeeting', bundle: 'com.tencent.meeting', process: 'TencentMeeting' },
   ],
   // 开发 / 终端 / 虚拟机 / 游戏平台
   dev: [
     { name: 'Ghostty', bundle: 'com.mitchellh.ghostty', process: 'ghostty' },
-    { name: 'OrbStack', bundle: 'dev.kdrag0n.orbstack', process: 'OrbStack' },
+    { name: 'OrbStack', bundle: 'dev.kdrag0n.MacVirt', process: 'OrbStack' },
     { name: 'OpenCode', bundle: 'ai.opencode.desktop', process: 'OpenCode' },
     { name: 'Antigravity', bundle: 'com.google.antigravity', process: 'Antigravity' },
     { name: 'Steam', bundle: 'com.valvesoftware.steam', process: 'steam_osx' },
@@ -40,7 +40,7 @@ export const PRESETS = Object.freeze({
     { name: '计算器', bundle: 'com.apple.calculator', process: 'Calculator' },
     { name: '访达', bundle: 'com.apple.finder', process: 'Finder' },
     { name: '系统设置', bundle: 'com.apple.systempreferences', process: 'System Settings' },
-    { name: 'Clash Verge', bundle: 'com.nicenormalboy.clash-verge', process: 'clash-verge' },
+    { name: 'Clash Verge', bundle: 'io.github.clash-verge-rev.clash-verge-rev', process: 'clash-verge' },
   ],
   // 音视频
   media: [
@@ -54,6 +54,17 @@ export const PRESETS = Object.freeze({
     { name: 'iRightMouse', bundle: 'cn.better365.iRightMouse', process: 'iRightMouse' },
     { name: 'UURemote', bundle: 'com.netease.uuremote', process: 'UURemote' },
   ],
+});
+
+/**
+ * 不对其做后台探测的应用：要么是用户正在用的关键工具，要么是宿主自己。
+ * 清点报告里会标成「不动」/「专用方案」，而不是永远挂在「未测」。
+ */
+export const SPECIAL_APP_HANDLING = Object.freeze({
+  'io.github.clash-verge-rev.clash-verge-rev': { status: '不动', detail: '用户代理工具，只读状态，永不退出、不点按钮' },
+  'com.qeeyou.MobileGameAccelerator': { status: '不动', detail: '游戏加速器，同上，不接管' },
+  'com.deepseek.dsh': { status: '不动', detail: '宿主机应用（本工具运行在这个会话里），不控制自己' },
+  'com.google.Chrome': { status: '专用方案', detail: '会自己抢前台，走独立 profile 的 headless 实例（browser:bg）' },
 });
 
 /** 可用的预设名（排序后返回，便于报错时提示） */

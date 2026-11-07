@@ -8,6 +8,8 @@
 - 新增 `dialogs()` / `dismissOnboarding()`：首启欢迎弹窗是 app-modal，会把 Apple 事件整个卡住（Pages Creator Studio 连 count documents 都超时 -1712），但 System Events 仍能读到结构；只点「继续/开始使用/知道了」白名单按钮，见到「存储/删除/取消」一律不点
 - 新增 `quitApp()`：先优雅退出，退不掉（被弹窗卡住）再按进程 TERM，如实回报 quit/term/already-stopped
 - 新增 `windowCount()`、`parseDialogDump()`、`pickOnboardingButton()` 纯函数 + 10 项单测（窗口迟到、一直没窗口、-1 不当成功、坏行解析、破坏性按钮不点）
+- 新增 `npm run apps:inventory` 应用清点：扫描 /Applications 与系统应用目录，对照预设和**全部历史**矩阵报告，输出每个应用的适配状态（已适配/可只用画面/专用方案/不动/限制/未测/未安装）；包名过期按名字兜底并标注，特殊应用（Clash/奇游/宿主/Chrome）不挂在「未测」
+- 修预设里 5 个过期包名（Clash Verge/Gemini/Telegram/OrbStack/Pages Creator Studio），清点跑出来才发现的
 - 新增 `core/app-presets.mjs` 分门类预设（office/im/dev/system/media/tools）与 `MATRIX_PRESET` 环境变量：一条命令按门类批量探测，条目缺字段/bundle 写错/重复会被 5 项单测拦住
 - 文档补「本机已安装应用覆盖情况」：已适配 15 类、限制 5 类、明确不动的代理/加速器 2 个、待测 4 个
 - 应用启动判定放宽：`ensureAppRunning()` 默认等 8 秒（矩阵 15 秒，`waitMs` 可调），Keynote Creator Studio / 腾讯会议这类 5 秒以上才起来的应用不再被误判「启动后仍检测不到进程」

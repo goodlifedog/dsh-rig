@@ -51,6 +51,7 @@
     "verify": "npm run check && npm test && npm run repo:check",
     "humanize:live": "node scripts/humanize-live.mjs",
     "matrix": "node core/tasks/app-matrix.mjs",
+    "apps:inventory": "node scripts/app-inventory.mjs",
     "stability": "node core/tasks/background-stability.mjs",
     "browser:bg": "node core/tasks/browser-background.mjs",
     "cold:launch": "node core/tasks/cold-launch.mjs",
