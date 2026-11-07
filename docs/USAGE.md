@@ -566,6 +566,7 @@ plist 在 `~/Library/LaunchAgents/`：`com.desktop-agent.daemon.plist`、`com.de
 | `AGENTD_MAX_RETRIES` | `1` | 临时性失败（Chrome 启动慢/端口没起来）自动重跑次数；环境类失败不重试 |
 | `FRONT_GUARD` | 开启 | 任务期间前台看门狗：被抢自动还原；判定用户意图优先看键鼠空闲时间（刚动过键鼠=是你在切，不还原），读不到 HID 时才退回「同一应用被反复切走 3 次以上」的启发式 |
 | `AGENTD_MAX_QUEUE` | `50` | 任务队列上限，超过返回 429，防止本地程序狂刷把队列撑爆 |
+| `AGENT_FAKE_LOCKED` | — | 设为 `1` 时强制把「屏幕已锁」判为真（只影响 `isScreenLocked()`，不改系统状态）。用于在测试里验证锁屏跳过路径 |
 | `OCU_BIN` | 自动查找 | 指定 ocu 可执行文件 |
 | `CHROME_BIN` / `CHROME_APP` | 系统 Chrome | 指定浏览器二进制 / 应用名 |
 | `AGENT_CHROME_PROFILE` | `~/.desktop-agent/chrome-profile` | 离屏实例 profile |
