@@ -119,13 +119,13 @@ node scripts/bundle-ocu.mjs --with-binary && cat third_party/open-computer-use/N
 验证：应用后在真实仓库跑 `npm run accept`，这一项应稳定 PASS。
 （我在临时克隆里跑这个任务时 ocu 运行时缺失导致 MCP 崩溃，无法在克隆里端到端验证。）
 
-### patch-accept-front.diff（57 行 / 1 个文件）
+### patch-accept-front.diff（105 行 / 2 个文件，含 5 条单测）
 
 **问题（实测抓到的验收失败链）**：完整验收里 `background-control` 记录「全程前台未被抢占 Calculator → Calculator」——
 **任务开始时前台就已经是 Calculator**，不是用户的 Chrome。说明前面某个任务（multi-app 读 Finder/Calculator）
 把测试应用留在前台了。后果是后续任务的「起点前台」基线全歪，`app-matrix` 因此判失败。
 
-补丁：把结尾那段「还原用户前台」抽成 `restoreUserFront()`，并在 `runTask()` 每个任务之后调用一次，
+补丁：把「该不该还原」抽成纯函数 `shouldRestoreFront(current, frontAtStart)`（5 条单测覆盖），`runTask()` 每个任务之后调用一次，
 还原本人（用户自己切走的不动）。这样每个任务的判定基线都是用户原来的应用。
 
 验证：应用后跑 `npm run accept`，日志里每个任务后应出现「（已把前台还给 …）」，

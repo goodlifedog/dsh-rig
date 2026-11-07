@@ -1,8 +1,8 @@
 diff --git a/core/acceptance.mjs b/core/acceptance.mjs
-index cb6b653..1483c6e 100644
+index cb6b653..3282b79 100644
 --- a/core/acceptance.mjs
 +++ b/core/acceptance.mjs
-@@ -125,6 +125,22 @@ function frontmostBundle() {
+@@ -125,6 +125,34 @@ function frontmostBundle() {
    } catch { return null; }
  }
  
@@ -10,12 +10,24 @@ index cb6b653..1483c6e 100644
 +// 验收里有些 demo 会把目标应用留到前台：每个任务之后都还原一次，
 +// 否则后面任务的「起点前台」会是测试应用，判定链一路歪（实测踩过：multi-app 之后 Calculator 留前台）。
 +// 用户中途自己切走了（浏览器/终端）就不动，避免被硬拽。
-+const TEST_APPS = ['Calculator', 'Notes', 'TextEdit', 'DeepSeek Harness', 'iMovie', 'Steam', 'FastZip', 'iRightMouse', 'TencentMeeting', 'Keynote', 'Numbers', 'Pages'];
++export const TEST_APPS = ['Calculator', 'Notes', 'TextEdit', 'DeepSeek Harness', 'iMovie', 'Steam', 'FastZip', 'iRightMouse', 'TencentMeeting', 'Keynote', 'Numbers', 'Pages'];
++
++/**
++ * 该不该把前台还给用户（纯函数，便于单测）：
++ * current 是测试应用或用户原来的应用时才还；用户自己切到别处（浏览器/终端）就不动。
++ */
++export function shouldRestoreFront(current, frontAtStart, testApps = TEST_APPS) {
++  const cur = String(current || '');
++  const start = String(frontAtStart || '');
++  if (!start) return false;
++  if (!cur || cur === start) return false;
++  return (testApps || []).some((name) => cur === name || cur.includes(name)) || cur === start;
++}
++
 +function restoreUserFront() {
 +  if (process.platform !== 'darwin' || !FRONT_AT_START) return false;
 +  const current = frontmostApp();
-+  const isTouched = TEST_APPS.some((name) => current === name || current.includes(name)) || current === FRONT_AT_START;
-+  if (current === FRONT_AT_START || !isTouched) return false;
++  if (!shouldRestoreFront(current, FRONT_AT_START)) return false;
 +  try {
 +    execFileSync('/usr/bin/osascript', ['-e', 'tell application "System Events" to set frontmost of first process whose name is ' + JSON.stringify(FRONT_AT_START) + ' to true'], { timeout: 5000 });
 +    return true;
@@ -25,7 +37,7 @@ index cb6b653..1483c6e 100644
  async function runTask(name, timeoutMs = 180000, env) {
    const r = await run('node', ['core/runner.mjs', 'run', name, '--timeout', String(timeoutMs)], env ? { env } : {});
    const out = r.stdout + r.stderr;
-@@ -133,6 +149,8 @@ async function runTask(name, timeoutMs = 180000, env) {
+@@ -133,6 +161,8 @@ async function runTask(name, timeoutMs = 180000, env) {
    const skipped = Boolean(reason);
    const ok = r.code === 0 || skipped;
    record('任务 ' + name, ok, ok ? (reason ? '环境跳过（' + reason + '）' : '') : out.slice(-200).replace(/\n/g, ' '), skipped);
@@ -34,7 +46,7 @@ index cb6b653..1483c6e 100644
    return ok;
  }
  
-@@ -230,18 +248,8 @@ async function main() {
+@@ -230,18 +260,8 @@ async function main() {
      ]),
    });
  
@@ -55,3 +67,39 @@ index cb6b653..1483c6e 100644
  
    await cleanupAfterAcceptance();
  
+diff --git a/test/accept-front.test.mjs b/test/accept-front.test.mjs
+new file mode 100644
+index 0000000..536ce0e
+--- /dev/null
++++ b/test/accept-front.test.mjs
+@@ -0,0 +1,30 @@
++'use strict';
++// 验收任务间的前台还原：只在「当前是测试应用/用户原应用」时才还，用户自己切走的不动。
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { shouldRestoreFront, TEST_APPS } from '../core/acceptance.mjs';
++
++test('当前是测试应用：应该还给用户', () => {
++  assert.equal(shouldRestoreFront('Calculator', 'Google Chrome'), true);
++  assert.equal(shouldRestoreFront('Notes', 'Google Chrome'), true);
++});
++
++test('当前就是用户原应用：不用动', () => {
++  assert.equal(shouldRestoreFront('Google Chrome', 'Google Chrome'), false);
++});
++
++test('用户自己切到别处：不抢（leave-user）', () => {
++  assert.equal(shouldRestoreFront('Ghostty', 'Google Chrome'), false);
++  assert.equal(shouldRestoreFront('com.apple.Terminal', 'Google Chrome'), false);
++});
++
++test('缺少起点信息时不还', () => {
++  assert.equal(shouldRestoreFront('Calculator', ''), false);
++  assert.equal(shouldRestoreFront('', 'Google Chrome'), false);
++});
++
++test('测试应用清单包含验收会用到的那些', () => {
++  for (const app of ['Calculator', 'Notes', 'TextEdit', 'FastZip', 'iRightMouse']) {
++    assert.ok(TEST_APPS.includes(app), app);
++  }
++});
