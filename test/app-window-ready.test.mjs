@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ensureAppRunning,
+  ensureAppWindow,
   launchFlags,
   waitForWindow,
   parseDialogDump,
@@ -169,6 +170,99 @@ test('已经在跑：直接返回，不再 open', async () => {
   assert.equal(r.running, true);
   assert.equal(opened, 0);
 });
+// ---------- ensureAppWindow：进程在、窗口没了怎么办 ----------
+
+const APP = { bundleId: 'com.apple.TextEdit', appName: '文本编辑', processName: 'TextEdit' };
+
+test('窗口本来就正常：不 open、不唤起，直接返回就绪', async () => {
+  let opened = 0;
+  const r = await ensureAppWindow(APP, {
+    deps: {
+      ensureAppRunning: async () => ({ launched: false, running: true }),
+      waitForWindow: async () => ({ ok: true, windows: 2, attempts: 1, waitedMs: 0 }),
+      openApp: async () => { opened += 1; },
+      frontName: async () => 'DSH',
+      sleep: async () => {},
+    },
+  });
+  assert.equal(r.window, true);
+  assert.equal(r.viaProbe, false);
+  assert.equal(r.summoned, false);
+  assert.equal(opened, 0, '有窗口就不该再 open，免得打扰应用');
+  assert.equal(r.frontUnchanged, true);
+});
+
+test('系统窗口计数为 0 但 AX 界面树可读：按就绪处理（文本编辑实测状态）', async () => {
+  let opened = 0;
+  let probes = 0;
+  const r = await ensureAppWindow(APP, {
+    probe: async () => { probes += 1; return true; },
+    deps: {
+      ensureAppRunning: async () => ({ launched: true, running: true }),
+      waitForWindow: async () => ({ ok: false, windows: 0, attempts: 5, waitedMs: 2500 }),
+      openApp: async () => { opened += 1; },
+      frontName: async () => 'DSH',
+      sleep: async () => {},
+    },
+  });
+  assert.equal(r.window, true);
+  assert.equal(r.viaProbe, true, '要标出这是靠界面树判定的，报告不能含糊');
+  assert.equal(opened, 0);
+  assert.equal(probes, 1);
+});
+
+test('进程在但真没窗口：open 唤起一次，仍然没有就如实说没有', async () => {
+  const opened = [];
+  const r = await ensureAppWindow(APP, {
+    windowMs: 6000,
+    deps: {
+      ensureAppRunning: async () => ({ launched: false, running: true }),
+      waitForWindow: async () => ({ ok: false, windows: 0, attempts: 3, waitedMs: 10 }),
+      openApp: async (args) => { opened.push(args.join(' ')); },
+      frontName: async () => 'DSH',
+      sleep: async () => {},
+    },
+  });
+  assert.equal(r.window, false);
+  assert.equal(r.summoned, true);
+  assert.ok(r.error.includes('可读窗口'));
+  assert.ok(opened.length >= 1, '应该试着唤起过');
+  assert.equal(opened[0], '-b com.apple.TextEdit', '先按 bundle id 唤起，成功率高');
+  assert.equal(r.front, 'DSH', '唤起过程不能抢前台');
+});
+
+test('唤起后窗口才出现：第二次等待就绪，不再报错', async () => {
+  let calls = 0;
+  const r = await ensureAppWindow(APP, {
+    deps: {
+      ensureAppRunning: async () => ({ launched: false, running: true }),
+      waitForWindow: async () => { calls += 1; return calls === 1 ? { ok: false, windows: 0, attempts: 2, waitedMs: 10 } : { ok: true, windows: 1, attempts: 1, waitedMs: 400 }; },
+      openApp: async () => {},
+      frontName: async () => 'DSH',
+      sleep: async () => {},
+    },
+  });
+  assert.equal(r.window, true);
+  assert.equal(r.summoned, true);
+  assert.equal(calls, 2);
+});
+
+test('应用根本没起来：直接把启动失败传出去，不做窗口唤起', async () => {
+  let opened = 0;
+  const r = await ensureAppWindow(APP, {
+    deps: {
+      ensureAppRunning: async () => ({ launched: false, running: false, error: '启动后仍检测不到进程' }),
+      waitForWindow: async () => ({ ok: false, windows: 0, attempts: 0, waitedMs: 0 }),
+      openApp: async () => { opened += 1; },
+      frontName: async () => 'DSH',
+      sleep: async () => {},
+    },
+  });
+  assert.equal(r.window, false);
+  assert.equal(opened, 0);
+  assert.ok(r.error.length > 0);
+});
+
 test('退出被「保存」弹窗挡住：绝不强杀，报 needs-confirm', async () => {
   const calls = [];
   const r = await quitApp(

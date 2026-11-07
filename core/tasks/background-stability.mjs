@@ -6,7 +6,7 @@
  *
  * 输出：轮数、失败步数、前台被抢次数、单轮耗时分布。
  */
-import { frontName, state, find, click, ensureAppRunning, waitForWindow, quitApp } from '../background.mjs';
+import { frontName, state, find, click, ensureAppWindow, quitApp } from '../background.mjs';
 import { isScreenLocked } from '../platform.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
 
@@ -29,11 +29,20 @@ async function main() {
   process.env.AGENT_LAUNCH_HIDDEN = '0';   // 窗口要真的建出来，AX 才有东西可读
   try {
     for (const app of APPS) {
-      const r = await ensureAppRunning(app, { waitMs: 8000 });
+      // 应用可能「进程在、窗口没了」（用户关了最后一个文档/之前的测试关掉了窗口），
+      // 这种情况要让它把窗口建回来，不能误判成「应用没启动」而整项跳过。
+      // 第二判据用真的 AX 界面树：文本编辑会出现「系统窗口数 0、但 ocu 能读到窗口」的状态。
+      const probe = async () => {
+        try {
+          const tree = await state(app.name);
+          return tree.length > 200;
+        } catch { return false; }
+      };
+      const r = await ensureAppWindow(app, { waitMs: 8000, windowMs: 12000, probe });
+      if (r.viaProbe) console.log('[stability] ' + app.name + '：系统窗口计数为 0，但 AX 界面树可读，按就绪处理');
       if (r.launched) launchedByUs.push(app);
-      const ready = await waitForWindow(app.name, { timeoutMs: 10000, altNames: [app.processName] });
-      if (!ready.ok) {
-        console.error('环境跳过：目标应用没能启动（' + app.name + '），无法验证后台操作链路');
+      if (!r.window) {
+        console.error('环境跳过：目标应用没能启动（' + app.name + '）：' + (r.error || '没有可读窗口'));
         return;
       }
     }

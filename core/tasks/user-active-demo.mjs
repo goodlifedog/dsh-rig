@@ -89,6 +89,17 @@ async function main() {
     targetChanged: beforeTarget && afterTarget ? beforeTarget !== afterTarget : null,
     steps,
   };
+  // 失败原因要写成一眼能看懂的行：bg:verify 只摘第一行 ❌，含糊的"有项未通过"没法排障
+  if (frontSteals > 0) {
+    const bad = steps.filter((s) => s.front && s.front !== userApp).slice(0, 3);
+    console.log('❌ 后台操作把前台抢走了 ' + frontSteals + ' 次，例如：' + JSON.stringify(bad));
+  }
+  if (frontEnd !== userApp) {
+    console.log('❌ 结束时前台已从「' + userApp + '」变成「' + frontEnd + '」');
+  }
+  if (userTreeChanged === true) {
+    console.log('❌ 用户应用「' + userApp + '」的界面树被改动了');
+  }
   console.log('\n' + JSON.stringify(report, null, 2));
   await closeOcuMcp().catch(() => {});
   if (!report.ok) process.exitCode = 1;

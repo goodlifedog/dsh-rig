@@ -127,6 +127,86 @@ export async function ensureAppRunning({ bundleId, appName, processName }, optio
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * 确保应用不仅有进程、还有一个可读窗口。
+ *
+ * 为什么单列一个函数：应用「在跑但没有窗口」是常见状态——用户关掉了最后一个文档、
+ * 之前的测试把窗口关了、应用以 -j 隐藏启动后从没建过窗口。这时 ensureAppRunning 看到
+ * 进程在就返回了，waitForWindow 却永远等不到窗口，任务只能报「应用没启动」，
+ * 而这个结论是错的（实际是应用壳在、窗口没了）。实测：文本编辑就会停在这个状态，
+ * 后台稳定性检查因此整项跳过。
+ *
+ * 处理办法：进程在但没窗口时，用 open -g -j 再唤一次（不抢前台、不显示），
+ * 让应用自己新建/重新显示窗口；仍然没有就如实返回 window:false。
+ *
+ * @param {{bundleId:string, appName:string, processName:string}} app
+ * @param {{waitMs?:number, windowMs?:number, deps?:object}} [options]
+ * @returns {Promise<{launched:boolean, running:boolean, window:boolean, windows:number, summoned:boolean, front:string, frontUnchanged:boolean, error:string}>}
+ */
+export async function ensureAppWindow(app, options = {}) {
+  const opts = options || {};
+  const deps = Object.assign({
+    ensureAppRunning,
+    waitForWindow,
+    openApp: (args) => exec('/usr/bin/open', [...launchFlags(), ...args], { timeout: 8000 }),
+    frontName,
+    sleep,
+  }, opts.deps || {});
+  const waitMs = Number.isFinite(opts.waitMs) ? opts.waitMs : 8000;
+  const windowMs = Number.isFinite(opts.windowMs) ? opts.windowMs : 12000;
+  const name = app.appName || app.processName;
+  const altNames = [app.processName, app.appName].filter(Boolean);
+  const before = await deps.frontName();
+
+  const run = await deps.ensureAppRunning(app, { waitMs });
+  if (!run.running) return Object.assign({}, run, { window: false, windows: 0, summoned: false });
+
+  // 「有没有窗口」有两个口径：System Events 的窗口计数，和真正要用的 AX 界面树。
+  // 实测文本编辑会出现「系统窗口数 0、但 ocu 能读到 AXWindow」的状态（窗口在 (0,0)），
+  // 只看前者会误判成"应用没启动"。所以 opts.probe 可以作为第二判据（由调用方给）。
+  const probe = typeof opts.probe === 'function' ? opts.probe : null;
+  const checkReady = async (timeoutMs) => {
+    const started = Date.now();
+    const counted = await deps.waitForWindow(name, { timeoutMs, altNames });
+    if (counted.ok || !probe) return Object.assign({}, counted, { viaProbe: false });
+    for (;;) {
+      let ok = false;
+      try { ok = Boolean(await probe()); } catch {}
+      if (ok) return { ok: true, windows: counted.windows, attempts: counted.attempts, waitedMs: Date.now() - started, viaProbe: true };
+      if (Date.now() - started >= timeoutMs) return Object.assign({}, counted, { viaProbe: false });
+      await deps.sleep(400);
+    }
+  };
+
+  let ready = await checkReady(Math.min(windowMs, 2500));
+  let summoned = false;
+  if (!ready.ok) {
+    // 进程在、窗口没了：让应用自己建一个窗口
+    summoned = true;
+    const attempts = [];
+    if (app.bundleId) attempts.push(['-b', app.bundleId]);
+    if (app.appName) attempts.push(['-a', app.appName]);
+    for (const args of attempts) {
+      try { await deps.openApp(args); } catch {}
+      ready = await checkReady(Math.max(2000, windowMs - 2500));
+      if (ready.ok) break;
+    }
+  }
+
+  const after = await deps.frontName();
+  return {
+    launched: Boolean(run.launched),
+    running: true,
+    window: ready.ok,
+    windows: ready.windows,
+    viaProbe: Boolean(ready.viaProbe),
+    summoned,
+    front: after,
+    frontUnchanged: before === after,
+    error: ready.ok ? '' : '应用在运行但一直没有可读窗口（已尝试 open 唤起）',
+  };
+}
+
 async function mcp() {
   return getOcuMcp();
 }
