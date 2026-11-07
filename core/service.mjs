@@ -10,7 +10,9 @@ import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import fs from 'node:fs';
 import { isMac, isWindows } from './platform.mjs';
+import { tokenPath } from './local-token.mjs';
 import { parseListenerPid, diagnoseListener, parseLaunchdPid, deploymentDrift, isOurOverlayCommand } from './service-guard.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -104,6 +106,29 @@ async function uninstall() {
       await fsp.rm(file, { force: true });
       console.log('已移除 ' + name);
     }
+    // 清掉占着端口的游离实例（只杀确认属于本项目的），否则会一直占着 7788/7789
+    for (const port of [PORT, 7788]) {
+      const info = await listenerInfo(port);
+      if (!info.pid) continue;
+      const ours = port === PORT
+        ? diagnoseListener({ listenerPid: info.pid, listenerCommand: info.command, rootDir: ROOT }) === 'ok'
+        : isOurOverlayCommand(info.command, { rootDir: ROOT });
+      if (!ours) {
+        console.log('端口 ' + port + ' 被别的程序占用（pid ' + info.pid + '），不动它');
+        continue;
+      }
+      console.log('结束占用 ' + port + ' 的本项目进程 pid ' + info.pid);
+      try { process.kill(info.pid, 'SIGTERM'); } catch {}
+      for (let i = 0; i < 20; i += 1) {
+        await new Promise((r) => setTimeout(r, 250));
+        if (!(await listenerInfo(port)).pid) break;
+      }
+    }
+    // token 也一起清掉（下次安装会重新生成）
+    try {
+      fs.rmSync(tokenPath(), { force: true });
+      console.log('已清理控制面 token');
+    } catch {}
     return;
   }
   if (isWindows) {

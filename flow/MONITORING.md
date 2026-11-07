@@ -30,6 +30,16 @@ npm run service:status    # 看端口监听者 pid 与 launchd 受管 pid 是否
 npm run service:restart   # 只杀确认是本项目 daemon 的监听者，再让 launchd 拉起新实例
 ```
 
+**日志/报告轮转**：长期跑会堆到几千个文件，用一条命令清（daemon 启动时也会自动跑一次）：
+
+```bash
+npm run prune              # 演练：只打印会删什么
+npm run prune -- --apply   # 真删（日志留 7 天、报告留最近 200 个）
+```
+
+清理只动 `logs/` 和 `reports/` 里的文件；卸载服务时 `npm run service:uninstall` 会顺带清掉
+控制面 token 和占着 7788/7789 的本项目游离进程。
+
 **踩过的坑**：手工启过一个 daemon 占着 7789，launchd 每次拉起都 EADDRINUSE 崩溃重试，
 于是"重启服务"一直无效、代码改了跑的还是几小时前的版本。现在：
 

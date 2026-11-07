@@ -422,6 +422,10 @@ async function cleanOrphanAgents() {
 server.listen(PORT, '127.0.0.1', () => {
   console.log('[daemon] listening on 127.0.0.1:' + PORT + ' pid=' + state.pid);
   cleanOrphanAgents().catch(() => {});
+  // 启动时顺手清一次旧日志/报告（默认留 7 天 / 200 份；PRUNE_ON_START=0 关闭）
+  if (process.env.PRUNE_ON_START !== '0') {
+    execFile(process.execPath, [path.join(ROOT, 'scripts/prune.mjs'), '--apply'], { cwd: ROOT, timeout: 30000 }, () => {});
+  }
   overlay.status('后台服务已启动').catch(() => {});
   overlay.log('守护进程启动，端口 ' + PORT).catch(() => {});
 });

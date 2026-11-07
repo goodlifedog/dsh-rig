@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 新增 `npm run prune` 日志/报告轮转：日志留 7 天（logs/runs 按文件名时间、logs/daemon 按 mtime）、报告留最近 200 个；默认演练，`--apply` 才删；daemon 启动时自动跑一次（`PRUNE_ON_START=0` 关）；只允许删 logs/ 与 reports/ 下的文件（`isPrunablePath` 守卫 + 4 项单测）
+- `service:uninstall` 现在会清掉控制面 token，并结束占着 7788/7789 的本项目游离进程（确认属于本项目才杀，别人占着不动）
 - 修应用锁被抢（外部评审第 25 轮）：`withAppLock` 现在先看持锁进程 pid 是否还活着，活着就不算过期；持锁期间每 staleMs/3 心跳刷新 mtime——长任务（>3 分钟）不会再被第二个任务抢锁导致两个任务同时控制同一应用；3 项单测（死锁接管 / 活锁不抢 / 心跳续期）
 - 修状态看板「最近验收」：原来对 reports 里所有 .md 做字典序排序，挑中的是 app-matrix 之类报告、会把当天失败盖掉；新增 `core/report-index.mjs` 只认 `acceptance-*.md` 并按文件名时间戳取最新，3 项单测
 - docs/USAGE.md 所有 curl 示例补 `X-Agent-Token`（本地接口加票据后，复制粘贴会 401）

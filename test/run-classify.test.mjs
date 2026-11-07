@@ -59,3 +59,9 @@ test('真失败不能被当成环境跳过（负向用例）', () => {
     assert.equal(v.envSkip, false, line + ' 不该算环境跳过');
   }
 });
+test('矩阵被抢前台要算真失败，不能当环境跳过', () => {
+  const out = end(1) + '\n' + '- 前台：DeepSeek Harness -> Calculator（被抢占）\n汇总: {"ok":false,"readable":2,"clickable":1,"liveCapture":0,"total":2}';
+  const v = classifyRun(out);
+  assert.equal(v.failed, true);
+  assert.equal(v.envSkip, false, '前台被抢是真问题，不能放行');
+});
