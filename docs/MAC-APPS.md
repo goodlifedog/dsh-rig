@@ -2,6 +2,10 @@
 
 > 目标：把应用在后台拉起来、读界面、点按钮、设值、抓画面，**全程不打扰前台**。
 > 本文只写实测过的东西；没实测的一律标「未验证」。数据来源：`reports/app-matrix-*.md`。
+>
+> **支持方式不是"逐个应用适配"**：能力按运行时族（原生/Electron/Chromium 自研壳/Qt/Flutter/Java）
+> 和通道（AX/CDP/AppleScript/画面坐标）设计，见 [APP-SUPPORT-ARCHITECTURE.md](APP-SUPPORT-ARCHITECTURE.md)。
+> 本文的逐应用矩阵是**验证**，用来确认某一族落在哪条链上、边界在哪。
 
 ## 一、先看结论：分门类怎么控
 

@@ -50,7 +50,11 @@ export async function scanDirs(dirs, deps = {}) {
       continue;
     }
     for (const entry of entries) {
-      const isDir = entry && typeof entry.isDirectory === 'function' ? entry.isDirectory() : false;
+      // /Applications/Safari.app 这类是符号链接（指向 Cryptex 里的真包），
+      // 只看 isDirectory() 会把它们漏掉，所以符号链接也当候选，靠能不能读出 bundle 兜底。
+      const isDir = entry && typeof entry.isDirectory === 'function'
+        ? (entry.isDirectory() || (typeof entry.isSymbolicLink === 'function' && entry.isSymbolicLink()))
+        : false;
       const name = entry && entry.name ? entry.name : '';
       if (!isDir || !name.endsWith('.app')) continue;
       const appPath = path.join(dir, name);
@@ -65,6 +69,18 @@ export async function scanDirs(dirs, deps = {}) {
     }
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * 按 bundle id 找已安装应用（纯函数）。
+ * @param {Array<{name:string, bundle:string, process:string}>} installed
+ * @param {string} bundle
+ * @returns {object|null}
+ */
+export function findByBundle(installed, bundle) {
+  const want = String(bundle || '').toLowerCase();
+  if (!want) return null;
+  return (installed || []).find((app) => app && String(app.bundle || '').toLowerCase() === want) || null;
 }
 
 /**

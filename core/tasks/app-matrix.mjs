@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { ensureAppRunning, isAppRunning, frontName, state, find, windowControls, readSafe, findSafe, settleFront, waitForWindow, dismissOnboarding, quitApp } from '../background.mjs';
 import { isScreenLocked } from '../platform.mjs';
 import { presetApps } from '../app-presets.mjs';
+import { scanDirs, findByBundle } from '../app-scan.mjs';
 import { recommendStrategy } from '../app-strategy.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
 
@@ -118,6 +119,15 @@ async function main() {
     return;
   }
   const titleHint = (await getJson(OVERLAY + '/health?session=__none__'))?.dshTitle || '';
+  // 系统窗口 owner 用的是本地化显示名（GarageBand → 库乐队、iRightMouse → 右键超人），
+  // 只按英文名匹配会漏掉窗口；先扫一遍安装清单，把显示名并进匹配正则。
+  let installedApps = [];
+  try {
+    installedApps = [
+      ...(await scanDirs(['/Applications', '/Applications/Utilities'])),
+      ...(await scanDirs(['/System/Applications', '/System/Applications/Utilities'])),
+    ];
+  } catch {}
   const frontStart = await frontName();
   const rows = [];
   let seq = 0;
@@ -131,7 +141,11 @@ async function main() {
       console.log(JSON.stringify({ app: app.name, skipped: true, reason: '中途锁屏' }));
       continue;
     }
-    const pattern = new RegExp(app.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '|' + app.bundle.split('.').pop(), 'i');
+    const installed = findByBundle(installedApps, app.bundle);
+    const localName = installed && installed.name !== app.name ? installed.name : '';
+    const patternSource = [app.name, app.bundle.split('.').pop(), localName].filter(Boolean)
+      .map((s) => s.replace(/[.*+?^$()|[\]\\]/g, '\\$&')).join('|');
+    const pattern = new RegExp(patternSource, 'i');
     const row = { app: app.name, bundle: app.bundle };
     const before = await frontName();
     const steps = {};

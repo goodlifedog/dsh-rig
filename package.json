@@ -53,6 +53,7 @@
     "matrix": "node core/tasks/app-matrix.mjs",
     "apps:inventory": "node scripts/app-inventory.mjs",
     "apps:probe": "node scripts/apps-probe.mjs",
+    "app:runtime": "node scripts/app-runtime.mjs",
     "stability": "node core/tasks/background-stability.mjs",
     "browser:bg": "node core/tasks/browser-background.mjs",
     "cold:launch": "node core/tasks/cold-launch.mjs",

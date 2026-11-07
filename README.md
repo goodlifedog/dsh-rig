@@ -228,6 +228,24 @@ flow/               # 每个流程的方法论与踩坑记录
 
 离屏场景（浏览器、Electron）另走 CDP，用独立 profile 起一个后台实例，抓完再恢复原前台。
 
+## 从底层支持：按运行时归类，不逐个应用适配
+
+支持能力按**运行时族 + 控制通道**设计，而不是给每个应用写一套：
+
+- 识别层不启动应用，只看包结构（Electron 框架、`app.asar`、mojo/Renderer Helper、Qt、JVM、`.sdef` 字典），
+  判断它属于哪一族；本机 27 个应用归出来是 electron 5、chromium 2、qt 1、native 19
+- 通道层按前提协商：AX 语义 → CDP 调试端口 → AppleScript 字典 → 画面坐标，逐条验前提、失败降级
+- 驱动层是同一套 `core/background.mjs` 函数，同类应用共用一条链
+
+所以给 Electron 族做的驱动，ChatGPT、OpenCode、抖音、宿主自己一起受益；QQ 和微信同属 Chromium 自研壳，修一条链两个都好。
+
+```bash
+npm run app:runtime -- Steam          # 看单个应用归到哪族、该走什么通道
+npm run app:runtime -- --all --user   # 把 /Applications 里自己装的应用归类一遍
+```
+
+细节和依据见 [docs/APP-SUPPORT-ARCHITECTURE.md](docs/APP-SUPPORT-ARCHITECTURE.md)。
+
 ## 后台能控制哪些软件（实测）
 
 ```bash

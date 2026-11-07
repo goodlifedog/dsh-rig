@@ -2,6 +2,13 @@
 
 ## 未发布
 
+- 支持方式改为按运行时族设计：新增 `core/app-runtime.mjs`（识别 electron/chromium/qt/flutter/java/native + 通道定义 + 驱动链，13 项单测）和 `core/app-runtime.mjs` 命令行 `npm run app:runtime`（不启动应用即可画像，支持 --all/--user/--json）
+- 修两处运行时误判：链接系统 WebKit 不等于 Web 应用（GarageBand 被误判过）；微信/QQ 这类自研 Chromium 壳（mojo、Renderer Helper）原先被当成原生，现归入 chromium 族并优先走 CDP
+- 修扫描漏掉符号链接应用：`/Applications/Safari.app` 指向 Cryptex，原来清点与探测都扫不到 Safari；`core/app-scan.mjs` 现把符号链接也当候选
+- 矩阵匹配窗口时带上本地化显示名（GarageBand → 库乐队），不再只按英文名匹配
+- 新增 `docs/APP-SUPPORT-ARCHITECTURE.md`：三层结构（识别/通道/驱动）、运行时→通道链矩阵、本机 27 个应用的归类结果、怎么加新运行时、类型级限制
+- 本机 27 个应用归类结果：electron 5、chromium 2、qt 1、native 19；6 个自带 AppleScript 字典（Safari 10 条、Chrome 23、Keynote 28、Numbers 16、Pages 10、Ghostty 19）
+
 - 新增 `docs/MAC-APPS.md`：macOS 应用适配手册（9 类应用的控法、8 个坑与对策、21 个应用实测记录、已知边界），数据全部来自 reports 里的实测报告
 - 矩阵探测会自己收尾：默认只关掉本轮 `launched` 的应用（`MATRIX_QUIT=0` 可关掉），不再把所有测试窗口留在桌面上；用户本来就在跑的应用不碰
 - 新增 `waitForWindow()`：应用启动后窗口要几百毫秒到十几秒才建好，立刻采集会得到「没有窗口」的假结论；改为轮询 System Events 窗口数（Steam 实测 677ms 就绪）
