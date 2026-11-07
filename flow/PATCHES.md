@@ -23,7 +23,7 @@ git apply flow/patch-publish.diff        # 发布配置（发布前必打）
 验证：
 ```bash
 npm publish --dry-run   # 必须显示 Publishing to https://registry.npmjs.org ... public access
-npm pack --dry-run      # 约 138 files / 1.1 MB
+npm pack --dry-run      # 约 147 files / 1.1 MB
 ```
 
 ### ✅ `patch-repocheck-zip.diff`（59 行 / 1 个文件）—— 已应用，补丁文件已删除

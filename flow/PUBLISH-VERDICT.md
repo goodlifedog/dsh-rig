@@ -21,7 +21,7 @@
 | 语法 | `npm run check` | 168 个文件全部通过 |
 | 仓库体检 | `npm run repo:check` | 9 项全过（含 105 处文档命令、31 个 API 文档） |
 | 全新克隆 | `git ls-files` + `npm test` | 不装任何依赖即可跑通 |
-| 打包 | `npm pack --dry-run`（打补丁后） | **145 文件 / 1.1 MB**（不打补丁 274 / 3.7 MB） |
+| 打包 | `npm pack --dry-run`（打补丁后） | **147 文件 / 1.1 MB**（不打补丁 274 / 3.7 MB） |
 | 安装可用 | `npm i -g --prefix /tmp/x <tgz>` | `desktop-agent status/tasks` 正常，装后 2.1 MB |
 | 发布源 | `npm publish --dry-run` | `Publishing to https://registry.npmjs.org ... public access` |
 | 密钥泄漏 | 170 个提交全扫 | 0 命中 |

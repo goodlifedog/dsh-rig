@@ -45,7 +45,7 @@ node core/cli.mjs foo; echo $? # 应为 2（P1 已实现，无需打补丁）
 1) git apply patch-publish.diff     OK
 2) npm test                          507 项 / 506 过 / 0 失败
 3) npm run repo:check                全部通过
-4) npm pack                          145 文件 / 1.1 MB
+4) npm pack                          147 文件 / 1.1 MB
 5) npm i -g --prefix /tmp/… 后跑 CLI   status / tasks 正常
 6) npm publish --dry-run             Publishing to https://registry.npmjs.org … public access
 ```
