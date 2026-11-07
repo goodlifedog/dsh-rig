@@ -185,6 +185,13 @@ try {
   add('flow 文档都能从 INDEX 找到', false, '检查失败：' + String(error.message).slice(0, 60));
 }
 
+// 10b. flow/TASK-ENV.md 必须与代码里的 process.env 用法同步
+try {
+  execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'env-doc.mjs'), '--check'], { cwd: ROOT, stdio: 'pipe' });
+  add('环境变量清单与代码同步', true);
+} catch (error) {
+  add('环境变量清单与代码同步', false, '跑 npm run env:doc 重新生成');
+}
 // 10. flow/TASKS.md 必须与 core/tasks 同步（改了任务忘了更新清单 → 文档失真）
 try {
   execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'tasks-doc.mjs'), '--check'], { cwd: ROOT, stdio: 'pipe' });

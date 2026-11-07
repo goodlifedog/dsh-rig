@@ -45,6 +45,7 @@ npm run service:status   # 服务是否由 launchd 管理、有没有游离进�
 ## 其它资料（上面表格放不下，但有用）
 
 - 有哪些任务、各自做什么：[TASKS.md](TASKS.md)（`npm run tasks:doc` 生成）
+- 有哪些环境变量、默认值多少：[TASK-ENV.md](TASK-ENV.md)（`npm run env:doc` 生成）
 - 写任务/验收判据：[TASK-OUTPUT.md](TASK-OUTPUT.md)（PASS / FAIL / 环境跳过 / ❌ 的语义）
 - 代码风格与工程约定：[CODEX-STANDARD.md](CODEX-STANDARD.md)；技术选型：[CODEX-TECH-STACK.md](CODEX-TECH-STACK.md)
 - 底层 ocu 怎么同步进来：[OCU-SYNC.md](OCU-SYNC.md)
