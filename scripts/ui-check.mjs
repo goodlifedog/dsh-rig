@@ -1,3 +1,4 @@
+import { overlayBase } from '../core/ports.mjs';
 'use strict';
 // 小窗外观监控：把小窗区域单独截出来，附带 /health 指标，用于改前改后对比。
 //   node scripts/ui-check.mjs [标签]
@@ -9,7 +10,7 @@ import { localHeaders } from '../core/local-token.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
-const BASE = 'http://127.0.0.1:7788';
+const BASE = overlayBase();
 const label = process.argv[2] || 'ui';
 
 function sh(cmd, args) {

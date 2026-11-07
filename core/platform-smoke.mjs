@@ -1,3 +1,4 @@
+import { overlayUrl, overlayPort } from './ports.mjs';
 'use strict';
 
 /**
@@ -60,12 +61,12 @@ let overlayOk = false;
 let overlayInfo = '';
 try {
   // overlay 也要 token（2026-11-08 起），不带票会被 401，doctor 会误报小窗不可用
-  const r = await fetch('http://127.0.0.1:7788/health', { headers: localHeaders(), signal: AbortSignal.timeout(2000) });
+  const r = await fetch(overlayUrl('/health'), { headers: localHeaders(), signal: AbortSignal.timeout(2000) });
   const d = await r.json();
   overlayOk = Boolean(d.ok);
   overlayInfo = 'pid=' + d.pid + ' sessions=' + (d.session || 'default');
 } catch (e) { overlayInfo = '未启动'; }
-add('小窗服务 7788', overlayOk, overlayInfo);
+add('小窗服务 ' + overlayPort(), overlayOk, overlayInfo);
 
 // daemon 在线
 let daemonOk = false;

@@ -1,3 +1,4 @@
+import { overlayUrl, overlayPort } from '../core/ports.mjs';
 'use strict';
 // 一条命令看全局：服务、权限、小窗、队列、锁屏、最近失败。
 //   node scripts/health.mjs
@@ -77,8 +78,8 @@ async function main() {
     }
   }
 
-  const ov = await getJson('http://127.0.0.1:7788/health');
-  add('小窗 7788', Boolean(ov && ov.ok), ov ? 'pid=' + ov.pid + ' session=' + ov.session : '未启动');
+  const ov = await getJson(overlayUrl('/health'));
+  add('小窗 ' + overlayPort(), Boolean(ov && ov.ok), ov ? 'pid=' + ov.pid + ' session=' + ov.session : '未启动');
 
   // 安全边界实机自检：这几条是「承诺过必须挡住」的，服务在跑就顺手验一遍
   if (daemon && daemon.ok) {
@@ -89,12 +90,12 @@ async function main() {
     add('Host 校验（daemon 防 DNS rebinding）', daemonHost === 403, 'Host=evil.example → ' + daemonHost);
   }
   if (ov && ov.ok) {
-    const overlayHost = await httpStatus('http://127.0.0.1:7788/health', {
-      host: 'evil.example:7788',
+    const overlayHost = await httpStatus(overlayUrl('/health'), {
+      host: 'evil.example:' + overlayPort(),
       headers: localHeaders(),
     });
     add('Host 校验（小窗防 DNS rebinding）', overlayHost === 403, 'Host=evil.example → ' + overlayHost);
-    const badFrame = await httpStatus('http://127.0.0.1:7788/frame', {
+    const badFrame = await httpStatus(overlayUrl('/frame'), {
       method: 'POST',
       headers: Object.assign({ 'Content-Type': 'application/json' }, localHeaders()),
       body: JSON.stringify({ dataUrl: 'https://evil.example/track.png' }),
@@ -102,7 +103,7 @@ async function main() {
     add('推帧白名单（不收远程图片）', badFrame === 400, '远程 dataUrl → ' + badFrame);
   }
   if (ov) {
-    const sess = await getJson('http://127.0.0.1:7788/sessions');
+    const sess = await getJson(overlayUrl('/sessions'));
     if (sess && typeof sess.count === 'number') {
       add('会话窗口', sess.count > 0, sess.count + ' 个（闲置 30 分钟自动回收，有活动按需重建）');
     }

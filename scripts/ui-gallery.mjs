@@ -1,3 +1,4 @@
+import { overlayBase } from '../core/ports.mjs';
 'use strict';
 // 生成小窗各状态的外观截图（running / error / expanded），仅供内部评审。
 // 注意：底图是 best-effort（headless 截图偶尔会被错误态覆盖），正式展示图用 overlay/docs/ui-after*.png。
@@ -10,7 +11,7 @@ import { localHeaders } from '../core/local-token.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
-const BASE = 'http://127.0.0.1:7788';
+const BASE = overlayBase();
 const DOCS = path.join(ROOT, 'overlay', 'docs');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 

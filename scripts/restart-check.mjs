@@ -1,3 +1,4 @@
+import { overlayUrl, overlayPort } from '../core/ports.mjs';
 'use strict';
 // 重启自检：把两个服务真正重启一遍再验证健康，专门用来抓「跑的是内存里的旧代码」这类问题。
 //   node scripts/restart-check.mjs
@@ -48,10 +49,10 @@ async function main() {
   if (isMac) await restartMac();
   else await restartWin();
 
-  const overlay = await probe('http://127.0.0.1:7788/health', 'overlay');
+  const overlay = await probe(overlayUrl('/health'), 'overlay');
   const daemon = await probe(daemonUrl(), 'daemon');
   const rows = [
-    ['小窗服务 7788', overlay.ok, 'pid=' + (overlay.pid || '-')],
+    ['小窗服务 ' + overlayPort(), overlay.ok, 'pid=' + (overlay.pid || '-')],
     ['后台 daemon ' + daemonPort(), daemon.ok, 'pid=' + (daemon.pid || '-')],
   ];
   console.log('');

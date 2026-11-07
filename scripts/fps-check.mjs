@@ -1,3 +1,4 @@
+import { overlayBase } from '../core/ports.mjs';
 'use strict';
 // 帧率压测：持续往小窗推帧，量实际帧率、单帧体积、抖动、内存。
 //   node scripts/fps-check.mjs           默认 20 秒、目标 13fps
@@ -8,7 +9,7 @@ import path from 'node:path';
 import { launch } from '../core/browser.mjs';
 import { localHeaders } from '../core/local-token.mjs';
 
-const OVERLAY = process.env.OVERLAY_URL || 'http://127.0.0.1:7788';
+const OVERLAY = overlayBase();
 const SESSION = 'fps-check';
 const SECONDS = Math.max(5, Number(process.env.FPS_CHECK_SECONDS) || 20);
 const TARGET_FPS = Math.max(2, Number(process.env.FPS_CHECK_TARGET) || 13);

@@ -27,6 +27,23 @@ export function daemonUrl(pathname = '/') {
   return 'http://127.0.0.1:' + daemonPort() + pathname;
 }
 
+/**
+ * 小窗基础地址：优先 OVERLAY_URL（允许指向别的机器/隧道），否则按 OVERLAY_PORT 拼本机地址。
+ * 传空字符串拿到的是不带尾部斜杠的 base，便于调用方自己拼路径。
+ */
+export function overlayBase() {
+  const custom = String(process.env.OVERLAY_URL || '').trim();
+  if (custom) return custom.replace(/\/+$/, '');
+  return 'http://127.0.0.1:' + overlayPort();
+}
+
 export function overlayUrl(pathname = '/') {
-  return 'http://127.0.0.1:' + overlayPort() + pathname;
+  return overlayBase() + pathname;
+}
+
+/** daemon 基础地址：优先 AGENTD_URL，否则按 AGENTD_PORT 拼 */
+export function daemonBase() {
+  const custom = String(process.env.AGENTD_URL || '').trim();
+  if (custom) return custom.replace(/\/+$/, '');
+  return 'http://127.0.0.1:' + daemonPort();
 }
