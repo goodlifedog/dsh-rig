@@ -45,10 +45,20 @@ async function checkIdleHide() {
   if (shown.visible === true) {
     record('活动触发显示', true, '');
   } else {
-    // 小窗按设计只在 DSH 前台时显示；前台是别的应用时隐藏属于正常行为
+    // 小窗按设计只在 DSH 前台时显示；以下都算环境状态，不该判失败：
+    //   前台是别的应用 / 锁屏 / 取不到前台 / 宿主窗口本身不可见
     const front = frontmostBundle();
-    const suppressed = Boolean(front) && !/deepseek|\.dsh/i.test(front);
-    record('活动触发显示', suppressed, suppressed ? '前台=' + front + '，按设计隐藏' : 'visible=' + shown.visible, suppressed);
+    if (shown.screenLocked) {
+      record('活动触发显示', true, '环境跳过：锁屏时小窗按设计不显示', true);
+    } else if (!front) {
+      record('活动触发显示', true, '环境跳过：取不到前台应用（系统事件暂时不可用）', true);
+    } else if (!/deepseek|\.dsh/i.test(front)) {
+      record('活动触发显示', true, '前台=' + front + '，按设计隐藏', true);
+    } else if (shown.hostVisible === false) {
+      record('活动触发显示', true, '环境跳过：宿主窗口不可见', true);
+    } else {
+      record('活动触发显示', false, 'visible=' + shown.visible + ' front=' + front);
+    }
   }
 }
 
@@ -94,6 +104,13 @@ async function main() {
       { name: 'iRightMouse', bundle: 'cn.better365.iRightMouse', process: 'iRightMouse' },
     ]),
   });
+
+  // 验收里有些 demo 会把目标应用留到前台；结束时把前台还给宿主，别把用户的窗口状态改乱
+  if (process.platform === 'darwin') {
+    try {
+      execFileSync('/usr/bin/osascript', ['-e', 'tell application "System Events" to set frontmost of first process whose bundle identifier is "com.deepseek.dsh" to true'], { timeout: 5000 });
+    } catch {}
+  }
 
   const passed = RESULTS.filter((r) => r.ok && !r.skipped).length;
   const skipped = RESULTS.filter((r) => r.skipped).length;

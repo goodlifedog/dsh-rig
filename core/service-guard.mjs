@@ -39,6 +39,21 @@ export function isOurDaemonCommand(psCommand, options = {}) {
 }
 
 /**
+ * 监听端口的进程是不是本项目的 overlay（纯函数）。
+ * overlay 是 Electron 进程，命令行里是本仓库 overlay 目录下的 Electron 可执行文件。
+ * @param {string} psCommand
+ * @param {{rootDir?:string}} [options]
+ * @returns {boolean}
+ */
+export function isOurOverlayCommand(psCommand, options = {}) {
+  const cmd = String(psCommand || '');
+  if (!/Electron/i.test(cmd)) return false;
+  const root = String((options && options.rootDir) || '');
+  if (root && cmd.includes(root + '/overlay')) return true;
+  return /desktop-agent/i.test(cmd) && /overlay/i.test(cmd);
+}
+
+/**
  * 判定端口监听者身份（纯函数）。
  * @param {{listenerPid:number, listenerCommand?:string, rootDir?:string}} input
  * @returns {'ok'|'no-listener'|'foreign-process'}

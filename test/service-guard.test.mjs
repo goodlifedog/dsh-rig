@@ -8,6 +8,7 @@ import {
   diagnoseListener,
   parseLaunchdPid,
   deploymentDrift,
+  isOurOverlayCommand,
 } from '../core/service-guard.mjs';
 
 test('解析 lsof -t 的 pid', () => {
@@ -44,4 +45,10 @@ test('部署漂移：监听者与受管进程不一致就是 stray', () => {
   assert.equal(deploymentDrift({ listenerPid: 40329, managedPid: 49698 }), 'stray');
   assert.equal(deploymentDrift({ listenerPid: 0, managedPid: 49698 }), 'no-listener');
   assert.equal(deploymentDrift({ listenerPid: 40329, managedPid: 0 }), 'no-managed');
+});
+test('overlay 进程识别：只认本仓库 overlay 目录下的 Electron', () => {
+  const root = '/repo/desktop-agent';
+  assert.equal(isOurOverlayCommand(root + '/overlay/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron .', { rootDir: root }), true);
+  assert.equal(isOurOverlayCommand('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'), false);
+  assert.equal(isOurOverlayCommand('/Applications/Some App/Electron', { rootDir: root }), false);
 });

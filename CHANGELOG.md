@@ -2,6 +2,9 @@
 
 ## 未发布
 
+- `service:status` 同时检查 overlay（7788）的监听者与 launchd 受管 pid，`service:restart` 也会把手工实例的 overlay 换成 launchd 受管实例（原来只处理 daemon，overlay 同样存在"手工实例占端口、launchd 拉不起来"）
+- 验收的「活动触发显示」改为区分环境状态：锁屏 / 取不到前台 / 前台不是宿主 / 宿主窗口不可见都算环境跳过，不再把环境波动判成失败；验收结束把前台还给宿主
+- 新增 `isOurOverlayCommand` 单测：只认本仓库 overlay 目录下的 Electron 进程
 - 补进程收尾的最后一层（外部评审 21 轮）：runner 收到 SIGTERM 时转发给任务进程组（原来 daemon 只杀到 runner 组，任务因为自成组会继续跑），4 秒后补 SIGKILL 再退出；任务子进程 pid 记进运行日志（`task-spawned`），排查"任务拉起了什么"有据可查
 - 实测：runner 收 TERM 后同组任务与孙进程全部结束；真实任务运行日志里能看到 `taskPid`
 - 修进程收尾三个缺口（外部评审实锤：一个孤儿 app-agent 活了 26 小时）：runner 任务改为独立进程组、超时先 TERM 整组 5 秒后补 KILL；daemon 收到 SIGTERM 先结束当前任务进程组再退出；daemon 启动时清理孤儿 app-agent（只清 ppid=1、当前用户、命令属于本项目依赖的），实测清掉 37097/48216 两个残留、保留父进程还活着的那个

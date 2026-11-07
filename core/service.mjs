@@ -11,7 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMac, isWindows } from './platform.mjs';
-import { parseListenerPid, diagnoseListener, parseLaunchdPid, deploymentDrift } from './service-guard.mjs';
+import { parseListenerPid, diagnoseListener, parseLaunchdPid, deploymentDrift, isOurOverlayCommand } from './service-guard.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -139,13 +139,18 @@ async function launchdPid(label) {
 async function status() {
   const listener = await listenerInfo(PORT);
   const managed = isMac ? await launchdPid(LABEL_DAEMON) : 0;
+  // overlay 也有同样的"手工实例占端口、launchd 拉不起来"风险，一起看
+  const overlayListener = await listenerInfo(7788);
+  const overlayManaged = isMac ? await launchdPid(LABEL_OVERLAY) : 0;
   const verdict = diagnoseListener({ listenerPid: listener.pid, listenerCommand: listener.command, rootDir: ROOT });
   const drift = deploymentDrift({ listenerPid: listener.pid, managedPid: managed });
   console.log('端口 ' + PORT + ' 监听者：' + (listener.pid || '无') + (listener.command ? '（' + listener.command.slice(0, 80) + '）' : ''));
   console.log('launchd 受管 pid：' + (managed || '无'));
   console.log('监听者身份：' + verdict);
   console.log('部署状态：' + drift + (drift === 'stray' ? ' —— 端口被不受管进程占着，launchd 拉不起来，先跑 npm run service:restart' : ''));
-  return { listener, managed, verdict, drift };
+  const overlayDrift = deploymentDrift({ listenerPid: overlayListener.pid, managedPid: overlayManaged });
+  console.log('overlay 7788 监听者：' + (overlayListener.pid || '无') + '，launchd 受管 pid：' + (overlayManaged || '无') + '，部署状态：' + overlayDrift);
+  return { listener, managed, verdict, drift, overlayListener, overlayManaged, overlayDrift };
 }
 
 async function restartDaemon() {
@@ -166,7 +171,23 @@ async function restartDaemon() {
       if (!now.pid) break;
     }
   }
+  // overlay 同样处理：手工实例占着 7788 时 launchd 拉不起来
+  const overlayBefore = await listenerInfo(7788);
+  if (overlayBefore.pid) {
+    if (!isOurOverlayCommand(overlayBefore.command, { rootDir: ROOT })) {
+      console.error('7788 被别的程序占用（pid ' + overlayBefore.pid + '）：' + overlayBefore.command.slice(0, 120) + '，不杀');
+    } else {
+      console.log('结束旧 overlay 实例 pid ' + overlayBefore.pid);
+      try { process.kill(overlayBefore.pid, 'SIGTERM'); } catch {}
+      for (let i = 0; i < 20; i += 1) {
+        await new Promise((r) => setTimeout(r, 250));
+        if (!(await listenerInfo(7788)).pid) break;
+      }
+    }
+  }
   const uid = String(process.getuid ? process.getuid() : 501);
+  const kickOverlay = await run('launchctl', ['kickstart', '-k', 'gui/' + uid + '/' + LABEL_OVERLAY]);
+  if (!kickOverlay.ok) console.error('overlay kickstart 失败：' + kickOverlay.err);
   const kick = await run('launchctl', ['kickstart', '-k', 'gui/' + uid + '/' + LABEL_DAEMON]);
   if (!kick.ok) console.error('kickstart 失败：' + kick.err);
   for (let i = 0; i < 40; i += 1) {
