@@ -82,3 +82,41 @@ function sanitizeCursor(cursor) {
 }
 
 module.exports = { base64DataBytes, jpegSize, imageSizeFromDataUrl, sanitizeCursor };
+/**
+ * 判断一张 RGBA 位图是不是"整块纯色"。
+ *
+ * 用途：窗口在别的桌面时系统会返回一整块纯色（JPEG 压完只有几 KB）。
+ * 但纯黑/纯白的**正常**窗口压缩后同样很小 —— 只按体积判断会误伤，
+ * 所以先按体积筛出可疑帧，再解码抽样确认是否真的纯色。
+ *
+ * @param {Buffer} rgba 原生位图（按 4 字节一个像素）
+ * @param {{threshold?:number, samples?:number}} [options]
+ * @returns {{uniform:boolean, range:number}}
+ */
+function looksUniform(rgba, options = {}) {
+  const opts = options || {};
+  const threshold = Number.isFinite(opts.threshold) ? opts.threshold : 10;
+  const samples = Number.isFinite(opts.samples) ? opts.samples : 400;
+  if (!rgba || rgba.length < 4) return { uniform: false, range: 0 };
+
+  const pixels = Math.floor(rgba.length / 4);
+  const step = Math.max(1, Math.floor(pixels / samples));
+  let min = 255;
+  let max = 0;
+  let counted = 0;
+  for (let i = 0; i < pixels; i += step) {
+    const offset = i * 4;
+    if (offset + 2 >= rgba.length) break;
+    for (let c = 0; c < 3; c += 1) {
+      const v = rgba[offset + c];
+      if (v < min) min = v;
+      if (v > max) max = v;
+    }
+    counted += 1;
+  }
+  if (!counted) return { uniform: false, range: 0 };
+  const range = max - min;
+  return { uniform: range <= threshold, range };
+}
+
+module.exports = Object.assign({}, module.exports, { looksUniform });

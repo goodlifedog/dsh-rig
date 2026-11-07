@@ -1163,13 +1163,27 @@ async function captureThumbnail(s) {
     // 纯色帧识别：窗口在别的桌面且没被渲染时，系统会返回一整块纯色（JPEG 压完只有几 KB）。
     // 这种情况既不是抓帧失败、也不是正常画面，单独标出来，别让用户看到一块白。
     if (jpeg.length < BLANK_JPEG_BYTES) {
-      s.state.thumbnail.state = 'offscreen';
-      s.state.thumbnail.error = '窗口在其它桌面，画面暂时不可见（仍可在后台操作）';
-      s.lastCaptureError = null;
-      s.captureFailStreak = 0;
-      s.captureMs = Date.now() - captureStartedAt;
-      signalThumbState(s);
-      return;
+      // 体积小只说明"压缩率高"，纯黑/纯白的正常窗口也会这样（空文档、黑底终端）。
+      // 所以先解码抽样确认真的是整块纯色，避免把正常窗口误标成 offscreen。
+      let uniform = false;
+      try {
+        const probe = nativeImage.createFromBuffer(jpeg);
+        if (probe && !probe.isEmpty()) {
+          uniform = imageMeta.looksUniform(probe.toBitmap(), { threshold: 10 }).uniform;
+        }
+      } catch (error) {
+        uniform = false;
+      }
+      if (uniform) {
+        s.state.thumbnail.state = 'offscreen';
+        s.state.thumbnail.error = '窗口在其它桌面，画面暂时不可见（仍可在后台操作）';
+        s.lastCaptureError = null;
+        s.captureFailStreak = 0;
+        s.captureMs = Date.now() - captureStartedAt;
+        signalThumbState(s);
+        return;
+      }
+      // 不是纯色 → 是正常的小体积画面，继续按正常帧处理
     }
     s.lastCaptureError = null;
     s.captureFailStreak = 0;
