@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 小窗宿主检测支持浏览器里的 Web 界面：原来只认 owner === 「DeepSeek Harness」的原生窗口，用户改用 Chrome 里的 Web 界面时找不到宿主、小窗按设计隐藏；现在优先原生窗口，找不到时退回「浏览器窗口标题含 DeepSeek Harness」的窗口（overlay/host-select.js 纯函数 + 5 项单测），健康信息新增 hostKind（native/browser）
+- 实测宿主检测恢复正常：重启 overlay 后 hostVisible=true、hostKind=native、dshTitle 正确、stale=false
 - 收起 README 里"全程不抢焦点"的绝对表述：改成"尽量不抢"，并写明个别应用（Telegram/部分 Electron）读取时会被短暂顶到前台、工具会立即还原并记录；Chrome 那行同步修正
 - flow/INDEX.md 常用命令补齐 cleanup:test / prune / service:status，并注明验收在用户忙时会拒绝运行（ACCEPT_FORCE=1 强跑）
 - 修小窗画面卡死（外部评审第 57 轮）：抓帧连续失败到阈值后原来只切 error 状态、不解绑也不重新找窗口，目标窗口关掉重开后会一直红字；现在会按上次绑定的 owner/title 自动找回同一应用的新窗口，找不到就解绑（不再卡错误态）；新增 `overlay/recover.js` 纯函数 + 4 项单测。**实机验证未完成（两次尝试）**：隐藏会话抓帧暂停；强制 visible 也因 overlay 的宿主窗口跟踪为 stale（DSH 不在前台时 hostVisible=false）而没真正显示，两次都没触发到失败链路。单测覆盖了找回/解绑逻辑，等宿主窗口可被 overlay 正常跟踪时再补实测

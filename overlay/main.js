@@ -27,6 +27,7 @@ const { normalizeDshTitle, matchesTitle } = require('./session-gate.js');
 const { createOverlayServer, DEFAULT_SESSION, SESSION_PATTERN } = require('./server.js');
 const { ensureTokenSync } = require('../core/local-token.cjs');
 const { pickReplacementWindow } = require('./recover.js');
+const { selectHostWindow } = require('./host-select.js');
 const { normalizeWindowId, resolveWindowId } = require('./window-id.js');
 const { computeFrameTarget } = require('./frame-target.js');
 const layout = require('./layout.js');
@@ -299,20 +300,18 @@ function readHostWindowCg() {
   return new Promise((resolve) => {
     const script =
       'ObjC.import("CoreGraphics");' +
-      'const target=' + JSON.stringify(HOST_PROCESS) + ';' +
       'const opts=$.kCGWindowListOptionOnScreenOnly | $.kCGWindowListExcludeDesktopElements;' +
       'const arr=ObjC.castRefToObject($.CGWindowListCopyWindowInfo(opts, 0));' +
       'const out=[];' +
       'for (let i=0;i<arr.count;i++){' +
       '  try {' +
       '    const d=arr.objectAtIndex(i);' +
-      '    const owner=ObjC.unwrap(d.objectForKey("kCGWindowOwnerName")) || "";' +
-      '    if (owner !== target) continue;' +
+      '    const owner=String(ObjC.unwrap(d.objectForKey("kCGWindowOwnerName")) || "");' +
       '    const layer=Number(ObjC.unwrap(d.objectForKey("kCGWindowLayer")));' +
       '    if (layer !== 0) continue;' +
       '    const b=ObjC.deepUnwrap(d.objectForKey("kCGWindowBounds"));' +
       '    const name=ObjC.unwrap(d.objectForKey("kCGWindowName")) || "";' +
-      '    out.push({x:Number(b.X),y:Number(b.Y),w:Number(b.Width),h:Number(b.Height),name:String(name)});' +
+      '    out.push({owner:owner,x:Number(b.X),y:Number(b.Y),w:Number(b.Width),h:Number(b.Height),name:String(name)});' +
       '  } catch(e){}' +
       '}' +
       'JSON.stringify(out);';
@@ -321,13 +320,8 @@ function readHostWindowCg() {
       try {
         const list = JSON.parse(String(stdout));
         if (!Array.isArray(list)) return resolve({ ok: false, window: null });
-        let best = null;
-        for (const item of list) {
-          if (!item || item.w < 200 || item.h < 150) continue;
-          const area = item.w * item.h;
-          if (!best || area > best.area) best = { x: item.x, y: item.y, w: item.w, h: item.h, title: item.name || '', area: area };
-        }
-        resolve({ ok: true, window: best ? { x: best.x, y: best.y, w: best.w, h: best.h, title: best.title } : null });
+        const pick = selectHostWindow(list.map((i) => ({ owner: i.owner, title: i.name, x: i.x, y: i.y, w: i.w, h: i.h })), HOST_PROCESS);
+        resolve({ ok: true, window: pick ? { x: pick.x, y: pick.y, w: pick.w, h: pick.h, title: pick.title, hostKind: pick.kind } : null });
       } catch (error) {
         resolve({ ok: false, window: null });
       }
@@ -345,20 +339,18 @@ function readHostSnapshot() {
       'ObjC.import("CoreGraphics");' +
       'let front="";' +
       'try { front=String(ObjC.unwrap($.NSWorkspace.sharedWorkspace.frontmostApplication.bundleIdentifier)||""); } catch(e) {}' +
-      'const target=' + JSON.stringify(HOST_PROCESS) + ';' +
       'const opts=$.kCGWindowListOptionOnScreenOnly | $.kCGWindowListExcludeDesktopElements;' +
       'const arr=ObjC.castRefToObject($.CGWindowListCopyWindowInfo(opts, 0));' +
       'const out=[];' +
       'for (let i=0;i<arr.count;i++){' +
       '  try {' +
       '    const d=arr.objectAtIndex(i);' +
-      '    const owner=ObjC.unwrap(d.objectForKey("kCGWindowOwnerName")) || "";' +
-      '    if (owner !== target) continue;' +
+      '    const owner=String(ObjC.unwrap(d.objectForKey("kCGWindowOwnerName")) || "");' +
       '    const layer=Number(ObjC.unwrap(d.objectForKey("kCGWindowLayer")));' +
       '    if (layer !== 0) continue;' +
       '    const b=ObjC.deepUnwrap(d.objectForKey("kCGWindowBounds"));' +
       '    const name=ObjC.unwrap(d.objectForKey("kCGWindowName")) || "";' +
-      '    out.push({x:Number(b.X),y:Number(b.Y),w:Number(b.Width),h:Number(b.Height),name:String(name)});' +
+      '    out.push({owner:owner,x:Number(b.X),y:Number(b.Y),w:Number(b.Width),h:Number(b.Height),name:String(name)});' +
       '  } catch(e){}' +
       '}' +
       'JSON.stringify({front:front,windows:out});';
@@ -367,15 +359,10 @@ function readHostSnapshot() {
       try {
         const data = JSON.parse(String(stdout));
         if (!data || !Array.isArray(data.windows)) return resolve(null);
-        let best = null;
-        for (const item of data.windows) {
-          if (!item || item.w < 200 || item.h < 150) continue;
-          const area = item.w * item.h;
-          if (!best || area > best.area) best = { x: item.x, y: item.y, w: item.w, h: item.h, title: item.name || '', area: area };
-        }
+        const pick = selectHostWindow(data.windows.map((i) => ({ owner: i.owner, title: i.name, x: i.x, y: i.y, w: i.w, h: i.h })), HOST_PROCESS);
         resolve({
           front: data.front || null,
-          cg: { ok: true, window: best ? { x: best.x, y: best.y, w: best.w, h: best.h, title: best.title } : null },
+          cg: { ok: true, window: pick ? { x: pick.x, y: pick.y, w: pick.w, h: pick.h, title: pick.title, hostKind: pick.kind } : null },
         });
       } catch (error) {
         resolve(null);
@@ -403,6 +390,7 @@ let dshTitle = '';
 let hostVisible = true;
 let hostBoundsStale = false;
 let hostCheckedAt = 0;
+let hostKind = 'native';   // native=DSH 原生窗口；browser=浏览器里的 DSH Web 界面
 
 // 多会话平铺：优先排满右上角一行，再往下一行；都限制在 DSH 窗口内部
 function tilePosition(s, b) {
@@ -594,6 +582,7 @@ async function attachTick() {
           bounds = cg.window;
           dshBounds = bounds;
           if (bounds.title) dshTitle = bounds.title;
+          hostKind = bounds.hostKind || 'native';
           hostVisible = true;
           hostBoundsStale = false;
         } else {
@@ -610,6 +599,7 @@ async function attachTick() {
           if (fallback) {
             dshBounds = fallback;
             if (fallback.title) dshTitle = fallback.title;
+            hostKind = 'native';
             hostVisible = true;
             hostBoundsStale = false;
           }
@@ -1615,6 +1605,7 @@ function sessionHealth(s) {
     titleHint: s.titleHint || null,
     matched: Boolean(s.matched),
     dshTitle: dshTitle || null,
+    hostKind: hostKind,
     hostVisible: Boolean(hostVisible),
     hostBoundsStale: Boolean(hostBoundsStale),
     hostPoll: { lastAt: lastAttachAt || null, intervalMs: lastAttachIntervalMs, busy: attachBusy },
@@ -1654,6 +1645,7 @@ function missingSessionHealth(id) {
     titleHint: null,
     matched: false,
     dshTitle: dshTitle || null,
+    hostKind: hostKind,
     hostVisible: Boolean(hostVisible),
     hostBoundsStale: Boolean(hostBoundsStale),
     logs: 0,
