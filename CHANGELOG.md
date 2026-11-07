@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 前台还原策略改为「只在当前前台是我们动过的应用时才还原」（`core/front-restore.mjs`）：用户中途切到 Chrome/Ghostty 等自己的应用时不再被硬拽回宿主——之前无条件还原，看起来就是"屏幕反复切"；矩阵与验收收尾都走这条策略，5 项单测
+- 测试任务自己删自己写的数据：`background-control` 跑完自动删掉它写的测试笔记（实测写 1 条删 1 条、前台全程是 Chrome 未被抢）；笔记删除抽成 `core/note-cleanup.mjs`（System Events 次要动作，AX 层 secondaryAction 会假成功），清理脚本复用
 - 收录协作者改动：失败归类新增「❌ 覆盖环境跳过」——一份日志里同时有真实失败项（❌）和跳过项时，整轮判真失败，不再被环境跳过整轮豁免（2 项单测）；prune 重构为纯函数 `planPrune` 并由测试直接覆盖
 - 修「反复切屏 + 测试数据残留」的根因：外部会话在用户使用期间反复跑 `npm run accept`。验收现在：① `reports/.acceptance.lock` 互斥，两个验收不会并发；② 入口检查系统空闲时间，<180 秒直接拒绝（`ACCEPT_FORCE=1` 可强跑）；③ 结束自动 `npm run cleanup:test` 清掉笔记/文稿/测试应用
 - 新增 `npm run cleanup:test`：删备忘录里标题匹配「后台控制验证/后台写入/后台测试」的笔记（System Events 次要动作，AX 层 secondaryAction 在这种窗口上假成功）、文本编辑空/测试文稿、退出计算器等测试应用；Chrome 标签页与聊天记录只报告不动

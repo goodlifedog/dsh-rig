@@ -21,6 +21,7 @@ import { scanDirs, findByBundle } from '../app-scan.mjs';
 import { recommendStrategy } from '../app-strategy.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
 import { localHeaders } from '../local-token.mjs';
+import { decideRestore } from '../front-restore.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
@@ -71,10 +72,13 @@ async function restoreFront(target) {
 }
 
 /** 还原前台并复查：有些应用会在还原之后又异步把自己顶上来，所以多试几次、以最终状态为准 */
-async function restoreFrontChecked(target, attempts = 4) {
+async function restoreFrontChecked(target, touched = [], attempts = 3) {
   for (let i = 0; i < attempts; i += 1) {
     const now = await frontName();
-    if (now === target) return { ok: true, attempts: i };
+    const decision = decideRestore({ current: now, before: target, touched });
+    if (decision === 'noop') return { ok: true, attempts: i };
+    // 用户自己切到了别的应用：别再抢，如实记下来
+    if (decision === 'leave-user') return { ok: false, leftUser: true, attempts: i, final: now };
     await restoreFront(target);
     await sleep(350);
   }
@@ -242,8 +246,9 @@ async function main() {
     // 探测过程中万一被抢了前台，立刻还给用户（多试几次，防应用异步再顶上来）
     row.frontRestored = null;
     if (after !== before) {
-      const restored = await restoreFrontChecked(before);
+      const restored = await restoreFrontChecked(before, [app.name, app.process, localName]);
       row.frontRestored = restored.ok;
+      row.frontLeftToUser = Boolean(restored.leftUser);
       row.frontRestoreAttempts = restored.attempts;
     }
     // 启动"成功"但现在已经没进程了：应用自己退出的，要如实标出来（抖音/Antigravity 实测这样）
@@ -262,8 +267,9 @@ async function main() {
     console.log(JSON.stringify(row));
   }
 
-  // 收尾再兜一次：前面行里被抢的可能还在跟自己较劲
-  const finalRestore = await restoreFrontChecked(frontStart);
+  // 收尾再兜一次：只还原"我们动过的应用"，用户切走的别抢
+  const touchedAll = rows.flatMap((r) => [r.app, r.bundle && r.bundle.split('.').pop()]);
+  const finalRestore = await restoreFrontChecked(frontStart, touchedAll);
   const frontEnd = await frontName();
   // 判定口径：以"最终前台是否回到起点"为准；单步被抢但已还原的，如实留在行里当证据
   const allFrontOk = frontEnd === frontStart;

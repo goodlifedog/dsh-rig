@@ -8,6 +8,7 @@
  */
 import { ensureAppRunning, frontName, state, find, click, setValue, smartType, smartTypeWithCache, clickByText } from '../background.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
+import { deleteTestNotes } from '../note-cleanup.mjs';
 import { localHeaders } from '../local-token.mjs';
 
 const OVERLAY = process.env.OVERLAY_URL || 'http://127.0.0.1:7788';
@@ -153,6 +154,9 @@ async function main() {
     await post('/status', { session: s, clear: true });
     await post('/visible', { session: s, visible: false });
   }
+  // 自己写进去的测试笔记自己删，别把脏数据留给用户
+  const cleaned = await deleteTestNotes({ max: 10 });
+  console.log('已清理测试笔记：' + cleaned + ' 条');
   console.log('小窗已收起');
   await closeOcuMcp().catch(() => {});
   if (!report.ok) process.exitCode = 1;

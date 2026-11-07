@@ -13,6 +13,7 @@ import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { ensureAppRunning, frontName, quitApp } from '../core/background.mjs';
 import { closeOcuMcp } from '../core/ocu-mcp.mjs';
+import { deleteTestNotes } from '../core/note-cleanup.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const dryRun = process.argv.includes('--dry-run');
@@ -26,42 +27,8 @@ function osa(script, timeoutMs = 20000) {
   }
 }
 
-/** 对 Notes 主列表执行「删除」次要动作；实测 AX 层 secondaryAction 返回 ok 但不删，System Events 才可靠 */
-const DEL_SCRIPT = [
-  'with timeout of 180 seconds',
-  '  set removed to 0',
-  '  repeat with kk from 1 to TIMES_TOK',
-  '    set didDelete to false',
-  '    try',
-  '      tell application "System Events" to tell process "Notes"',
-  '        set w to window 1',
-  '        set tbl to table 1 of scroll area 2 of splitter group 1 of w',
-  '        set rs to rows of tbl',
-  '        repeat with i from (count of rs) to 1 by -1',
-  '          try',
-  '            set rr to item i of rs',
-  '            if (count of actions of rr) >= 2 then',
-  '              perform action 2 of rr',
-  '              set didDelete to true',
-  '              exit repeat',
-  '            end if',
-  '          end try',
-  '        end repeat',
-  '      end tell',
-  '    end try',
-  '    if didDelete then',
-  '      set removed to removed + 1',
-  '      delay 0.3',
-  '    else',
-  '      exit repeat',
-  '    end if',
-  '  end repeat',
-  '  return removed',
-  'end timeout',
-].join('\n');
-
 function delNotes(times) {
-  return Number.parseInt(osa(DEL_SCRIPT.replace('TIMES_TOK', String(times))), 10) || 0;
+  return deleteTestNotes({ max: times });
 }
 
 async function cleanupNotes(report) {
