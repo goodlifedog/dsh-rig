@@ -84,6 +84,21 @@ npm run app:resolve -- "Google Chrome"   # 协商结果应变成 AppleScript（�
 node --test test/driver-resolution.test.mjs
 ```
 
+## 5. `patch-token-permissions.diff`（116 行 / 2 个文件）
+
+**实测发现**：`~/.desktop-agent` 实际是 755（文档写 700），目录里的 `chrome-profile` / `headless-profile`
+也是 755、大量文件 644 —— 浏览器 profile 里可能有登录态 cookie，本机其他用户可读。
+根因是 `mkdirSync({mode:0o700})` 对已存在的目录不生效，且 `ensureTokenSync` 在「已有合法 token」时直接 return，不再校正权限。
+
+补丁：`ensureTokenSync` 增加幂等的 `hardenPermissions()`（目录 700、文件 600），复用路径也执行；
+首次创建后同样校正目录；配 2 条测试（旧文件 644→600、目录 755→700；首次创建即 700/600）。
+
+验证：
+```bash
+node --test test/token-perm.test.mjs
+ls -ld ~/.desktop-agent          # 跑过一次 daemon 后应为 drwx------
+```
+
 ## 已作废（不要再应用）
 
 `patch-p1.diff`、`patch-classify.diff`、`patch-electron-task-test.diff`、`patch-ensure-app-window-test.diff`

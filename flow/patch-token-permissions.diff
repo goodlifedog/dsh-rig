@@ -1,0 +1,116 @@
+diff --git a/core/local-token.cjs b/core/local-token.cjs
+index 6fe42e5..ec9cab0 100644
+--- a/core/local-token.cjs
++++ b/core/local-token.cjs
+@@ -21,48 +21,33 @@ function newToken() {
+   return crypto.randomBytes(32).toString('hex');
+ }
+ 
+-function chmodSafe(target, mode) {
+-  try { fs.chmodSync(target, mode); } catch {}
+-}
+-
+ /**
+- * 收紧数据目录权限（幂等）。
+- *
+- * 坑：mkdirSync 的 mode 只在“新建”时生效，目录已存在（比如早期版本以 755 建的）就完全不修正，
+- * 于是文档里“目录 700”的保证是假的——本机别的用户能列目录、能读 644 的 profile 文件
+- * （浏览器 profile 里可能有登录态 cookie）。所以每次启动都要显式 chmod 一遍。
+- *
+- * @param {string} [dir] 数据目录，默认 ~/.desktop-agent
+- * @returns {string} 实际处理的目录
++ * 把数据目录（token 文件所在）收紧到 700、文件收紧到 600。
++ * 幂等且容忍失败：目录/文件可能是旧版本或备份恢复出来的 755/644。
+  */
+-function hardenDataDir(dir) {
+-  const base = dir || path.dirname(tokenPath());
+-  chmodSafe(base, 0o700);
+-  // 已知的敏感子目录（浏览器 profile 可能带登录态）；不存在就跳过，不报错
+-  for (const name of ['bin', 'smoke', 'chrome-profile', 'headless-profile', 'headless-profile-p1', 'headless-profile-p2']) {
+-    chmodSafe(path.join(base, name), 0o700);
+-  }
+-  chmodSafe(path.join(base, 'api-token'), 0o600);
+-  return base;
++function hardenPermissions(file) {
++  const dir = path.dirname(file);
++  try { fs.mkdirSync(dir, { recursive: true, mode: 0o700 }); } catch {}
++  try { fs.chmodSync(dir, 0o700); } catch {}
++  try { fs.chmodSync(file, 0o600); } catch {}
+ }
+ 
+-/** 已有就复用，没有就生成一个写进 600 文件（每次都会顺手把目录/文件权限修正到 700/600） */
++/** 已有就复用，没有就生成一个写进 600 文件 */
+ function ensureTokenSync(target) {
+   const file = target || tokenPath();
+-  const dir = path.dirname(file);
+-  try { fs.mkdirSync(dir, { recursive: true, mode: 0o700 }); } catch {}
+-  chmodSafe(dir, 0o700);   // 已存在时上面的 mode 不生效，必须显式补
+-  if (path.resolve(file) === path.resolve(tokenPath())) hardenDataDir(dir);
+   try {
+     const existing = String(fs.readFileSync(file, 'utf8')).trim();
+     if (/^[0-9a-f]{32,}$/i.test(existing)) {
+-      chmodSafe(file, 0o600);   // 被备份/恢复成 644 时也要纠正回来
++      // 复用时也要校正权限：目录 700 不能只靠「首次创建时 mkdir 带了 mode」
++      hardenPermissions(file);
+       return existing;
+     }
+   } catch {}
+   const token = newToken();
++  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+   fs.writeFileSync(file, token + '\n', { mode: 0o600 });
+-  chmodSafe(file, 0o600);
++  try { fs.chmodSync(file, 0o600); } catch {}
++  try { fs.chmodSync(path.dirname(file), 0o700); } catch {}
+   return token;
+ }
+ 
+@@ -113,4 +98,4 @@ function isAuthorized(headers, token, queryToken, settings = {}) {
+   return allowQuery && Boolean(queryToken) && safeEqual(queryToken, token);
+ }
+ 
+-module.exports = { TOKEN_HEADER, tokenPath, newToken, ensureTokenSync, readTokenSync, withTokenHeaders, isAuthorized, hardenDataDir };
++module.exports = { TOKEN_HEADER, tokenPath, newToken, ensureTokenSync, readTokenSync, withTokenHeaders, isAuthorized };
+diff --git a/test/token-perm.test.mjs b/test/token-perm.test.mjs
+new file mode 100644
+index 0000000..b71443a
+--- /dev/null
++++ b/test/token-perm.test.mjs
+@@ -0,0 +1,38 @@
++'use strict';
++// 权限校正：老版本/备份恢复出来的 755/644 应当被纠正回 700/600。
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import fs from 'node:fs';
++import os from 'node:os';
++import path from 'node:path';
++import { createRequire } from 'node:module';
++
++const require = createRequire(import.meta.url);
++const { ensureTokenSync } = require('../core/local-token.cjs');
++
++function modeOf(p) {
++  return fs.statSync(p).mode & 0o777;
++}
++
++test('已有合法 token 但权限过宽：会被收紧到 600/700', () => {
++  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tokperm-'));
++  const file = path.join(dir, 'api-token');
++  fs.writeFileSync(file, 'a'.repeat(64) + '\n');
++  fs.chmodSync(file, 0o644);
++  fs.chmodSync(dir, 0o755);
++  const token = ensureTokenSync(file);
++  assert.equal(token, 'a'.repeat(64), '应复用已有 token，不重新生成');
++  assert.equal(modeOf(file), 0o600, 'token 文件应收紧到 600');
++  assert.equal(modeOf(dir), 0o700, '数据目录应收紧到 700');
++  fs.rmSync(dir, { recursive: true, force: true });
++});
++
++test('首次生成时目录和文件权限就是 700/600', () => {
++  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tokperm2-'));
++  const file = path.join(dir, 'sub', 'api-token');
++  const token = ensureTokenSync(file);
++  assert.equal(token.length >= 64, true);
++  assert.equal(modeOf(file), 0o600);
++  assert.equal(modeOf(path.dirname(file)), 0o700);
++  fs.rmSync(dir, { recursive: true, force: true });
++});
