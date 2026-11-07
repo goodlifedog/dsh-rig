@@ -175,6 +175,8 @@ function userRecentlyActive() {
 /** 验收跑完自动清理测试数据（笔记/文稿/测试应用），别把脏数据留给用户 */
 async function cleanupAfterAcceptance() {
   try {
+    // 清理脚本现在是安全模式：笔记默认只报告（要 --force 才删）、TextEdit 只关带测试标记的文稿、
+    // 只会退出测试应用，所以验收后可以直接真跑，把环境收拾干净。
     await run('node', ['scripts/cleanup-test-data.mjs'], { timeout: 240000 });
   } catch {}
 }

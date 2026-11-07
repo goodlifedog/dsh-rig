@@ -59,9 +59,9 @@ async function cleanupTextEdit(report) {
   for (let i = count; i >= 1; i -= 1) {
     const text = osa('tell application "TextEdit" to get text of document ' + i);
     const marker = TEST_NOTE_RE.test(text);
-    const empty = !String(text || '').trim();
-    if (!marker && !empty) continue;
-    report.push({ kind: 'textedit-doc', index: i, marker, empty, dryRun });
+    // 只关"正文里带测试标记"的文稿；空文稿可能是用户自己刚打开的，不动
+    if (!marker) continue;
+    report.push({ kind: 'textedit-doc', index: i, marker, dryRun });
     if (!dryRun) osa('tell application "TextEdit" to close document ' + i + ' saving no');
     await sleep(250);
   }
