@@ -35,10 +35,10 @@ function frontName() {
 }
 
 async function main() {
-  if (await isScreenLocked()) {
-    console.log('环境跳过：屏幕已锁，前台断言在锁屏下没有意义，等解锁后再跑');
-    return;
-  }
+  // 锁屏时前台断言没有意义（前台恒为 loginwindow），但 headless 浏览器本身照常能跑，
+  // 所以照跑并在报告里标注"前台断言跳过"，别把整项都跳过、丢掉了可验证的部分
+  const locked = await isScreenLocked();
+  if (locked) console.log('提示：屏幕已锁 —— 前台断言将跳过，只验证后台浏览器是否真的能操作页面');
   const steps = [];
   const record = (name, ok, extra) => {
     steps.push(Object.assign({ name, ok }, extra || {}));
@@ -47,7 +47,7 @@ async function main() {
 
   const frontStart = frontName();
   const titleHint = (await getJson(OVERLAY + '/health?session=__none__'))?.dshTitle || '';
-  console.log('起点前台:', frontStart);
+  console.log('起点前台:', frontStart, locked ? '（锁屏，前台断言跳过）' : '');
 
   // 1. 后台起独立浏览器（headless，屏幕上不会有窗口）
   const t0 = Date.now();
@@ -57,7 +57,7 @@ async function main() {
     timeoutMs: 60000,
   });
   const frontAfterLaunch = frontName();
-  record('后台启动浏览器（headless）', frontStart === frontAfterLaunch, {
+  record('后台启动浏览器（headless）' + (locked ? '（前台断言跳过）' : ''), locked ? true : frontStart === frontAfterLaunch, {
     detail: '耗时 ' + (Date.now() - t0) + 'ms，前台 ' + frontStart + ' → ' + frontAfterLaunch,
   });
 
@@ -116,14 +116,14 @@ async function main() {
     record('后台点击链接并跳转', url1 !== url2, {
       detail: '「' + (link.text || '链接') + '」点击 ' + (Date.now() - clickAt) + 'ms，url=' + String(url1).slice(0, 30) + ' → ' + String(url2).slice(0, 40),
     });
-    record('点击期间前台未变', frontClick === frontStart, { detail: frontClick });
+    record('点击期间前台未变' + (locked ? '（前台断言跳过）' : ''), locked ? true : frontClick === frontStart, { detail: frontClick });
   } else {
     record('后台点击链接并跳转', false, { detail: '页面没有链接' });
   }
 
   // 5. 收尾
   const frontEnd = frontName();
-  record('全程前台未变', frontStart === frontEnd, { detail: frontStart + ' → ' + frontEnd });
+  record('全程前台未变' + (locked ? '（前台断言跳过）' : ''), locked ? true : frontStart === frontEnd, { detail: frontStart + ' → ' + frontEnd });
 
   await browser.close();
   const report = { ok: steps.every((s) => s.ok), frontStart, frontEnd, steps };
