@@ -47,9 +47,17 @@ export async function isAppRunning({ bundleId, appName, processName }) {
     } catch {}
   }
   if (bundleId) {
+    // 用 LaunchServices 判断（application id ... is running），不要用 pgrep -f：
+    // pgrep -f 会命中 "com.apple.SafariPlatformSupport.Helper" 这类辅助进程，把没运行的 Safari 当成在跑。
     try {
-      const { stdout } = await exec('/usr/bin/pgrep', ['-f', bundleId], { timeout: 3000 });
-      if (stdout.trim()) return true;
+      const { stdout } = await exec('/usr/bin/osascript', ['-e', 'application id ' + JSON.stringify(bundleId) + ' is running'], { timeout: 4000 });
+      if (/true/i.test(stdout)) return true;
+      if (/false/i.test(stdout)) return false;
+    } catch {}
+    // 拿不到明确答案时才退回进程名匹配，但要求是可执行文件路径（排除辅助进程/框架）
+    try {
+      const { stdout } = await exec('/usr/bin/pgrep', ['-fl', bundleId], { timeout: 3000 });
+      if (stdout.split('\n').some((line) => line.includes('/Contents/MacOS/'))) return true;
     } catch {}
   }
   return false;

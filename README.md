@@ -244,6 +244,7 @@ npm run app:runtime -- Steam          # 看单个应用归到哪族、该走什�
 npm run app:runtime -- --all --user   # 把 /Applications 里自己装的应用归类一遍
 npm run cdp:channel                   # CDP 通道端到端自检（自建 Chromium 实例，4 项）
 npm run cdp:apps                      # 看本机 Electron 应用愿不愿意开调试端口
+npm run as:channel                    # AppleScript 通道自检（先静默查授权，不弹授权框）
 ```
 
 细节和依据见 [docs/APP-SUPPORT-ARCHITECTURE.md](docs/APP-SUPPORT-ARCHITECTURE.md)。

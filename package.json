@@ -56,6 +56,7 @@
     "app:runtime": "node scripts/app-runtime.mjs",
     "cdp:apps": "node core/tasks/cdp-driver.mjs",
     "cdp:channel": "node core/tasks/cdp-channel.mjs",
+    "as:channel": "node core/tasks/applescript-channel.mjs",
     "stability": "node core/tasks/background-stability.mjs",
     "browser:bg": "node core/tasks/browser-background.mjs",
     "cold:launch": "node core/tasks/cold-launch.mjs",

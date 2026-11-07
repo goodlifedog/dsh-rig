@@ -55,7 +55,7 @@
 | --- | --- | --- | --- |
 | AX（Accessibility） | 进程有可读的界面树 | 部分应用动作后会异步抢前台，需要延迟复查还原 | 树为空或窗口数为 0（自绘界面） |
 | CDP（调试端口） | 进程真的开着调试端口 | Electron/Chromium 得允许开；不是所有应用都行 | 端口连不上、`/json/version` 无响应 | 已实现：`core/cdp-driver.mjs` + `npm run cdp:channel`（自建 Chromium 实例 4/4 通过：连端口读页面、按文字点、往输入框写） |
-| AppleScript 字典 | 包内有 `.sdef` 且系统已授权自动化 | 第三方应用首次会弹自动化授权框，不能自动点 | 授权被拒、Apple 事件超时 |
+| AppleScript 字典 | 包内有 `.sdef` 且系统已授权自动化 | 第三方应用首次会弹自动化授权框，不能自动点 | 授权被拒、Apple 事件超时。已实现：`core/applescript-driver.mjs` + `npm run as:channel`（权限静默查询，Finder/Chrome 实测通过） |
 | 画面 + 坐标 | 能抓到目标窗口画面 | 坐标依赖窗口位置，窗口一动就失效 | 窗口在别的桌面时只有纯色帧 |
 
 **通道链就是按上表顺序尝试、失败降级**，不是写死用哪条。降级链体现在运行时类型上：
@@ -151,6 +151,33 @@ npm run cdp:channel
 也就是说：**通道本身可用（自己起的实例 4/4 通过），但"应用愿不愿意开调试端口"是应用侧的事**，
 按架构设计这时降级到 AX / 画面通道即可，不需要为单个应用改代码。
 验证脚本不会硬重启正在运行的应用——已经在跑的应用直接跳过，避免打断用户。
+
+## 八点六、AppleScript 通道的实现与实测（2026-11-07）
+
+通道代码在 `core/applescript-driver.mjs`。这条通道最大的风险不是技术，是**授权弹窗**：
+控制第三方应用需要「自动化」权限，没授权时 `osascript` 会弹系统授权框，弹框会打断用户，
+而且替用户点"允许"是越权操作。
+
+所以实现里先静默查权限：调用系统 API `AEDeterminePermissionToAutomateTarget`
+（`askUserIfNeeded=false`，不会弹框），只有状态是 `granted` 才真正发 Apple 事件。
+查询用一个小 C 程序（clang 是系统自带），首次使用时编译并缓存到 `~/.desktop-agent/bin/ae-permission`。
+
+**权限状态含义：** `granted` 已授权 / `needs-consent` 授权后会弹框（不发）/ `denied` 被拒 /
+`app-not-running` 应用没运行（查不到，也不为了测试去启动它）/ `unknown` 查不到。
+
+**实测（`npm run as:channel`）：**
+
+| 应用 | 脚本命令 | 权限 | 结果 |
+| --- | --- | --- | --- |
+| Finder | 25 条 | granted（0） | 只读命令成功：取到主目录名 |
+| Google Chrome | 23 条 | granted（0） | 只读命令成功：取到当前标签地址（报告里脱敏成域名） |
+| Safari | 10 条 | app-not-running | 没运行，不发命令 |
+| TextEdit | 0 条 | - | 没有脚本字典，通道不适用（对照组） |
+
+顺带修了一个会影响很多判断的 bug：原来判断"应用是否在运行"用 `pgrep -f bundleId`，
+会命中 `com.apple.SafariPlatformSupport.Helper` 这类辅助进程，把没运行的 Safari 当成在跑；
+现在优先用 LaunchServices（`application id ... is running`），只有拿不到明确答案才退回进程名匹配，
+且要求路径里有 `/Contents/MacOS/`。
 
 ## 九、已知限制（类型级，不是应用级）
 

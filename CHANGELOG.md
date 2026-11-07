@@ -2,6 +2,9 @@
 
 ## 未发布
 
+- AppleScript 通道落地：新增 `core/applescript-driver.mjs`（bundle 内 .sdef 命令统计、`AEDeterminePermissionToAutomateTarget` 静默查授权、按授权门禁执行脚本、报错分类、URL 脱敏）与 `npm run as:channel` 自检；Finder/Chrome 已授权实测通过，Safari 未运行如实跳过
+- 防授权弹窗：没授权（needs-consent / denied）时**不发 Apple 事件**，避免打断用户；权限查询程序首次使用时用系统 clang 编译并缓存到 `~/.desktop-agent/bin/ae-permission`
+- 修「应用是否在运行」误判：原 `pgrep -f bundleId` 会命中 SafariPlatformSupport 等辅助进程，把没运行的 Safari 当成在跑；改用 LaunchServices 判断，拿不到明确答案才退回进程名（且要求 /Contents/MacOS/ 路径）
 - CDP 通道落地：新增 `core/cdp-driver.mjs`（稳定端口分配、带调试端口后台启动、页面 target 打分挑选、读页面/按文字点/往输入框写）与 `npm run cdp:channel` 自检；自建 Chromium 实例 4/4 通过
 - 新增 `npm run cdp:apps`：实测本机 Electron 应用能否走 CDP——ChatGPT 端口开放、连上后约 1.2 秒被应用主动断开（1006），OpenCode/抖音 不认调试开关；已如实写进架构文档，这类情况下按设计降级到 AX/画面，不改代码
 - 页面 target 打分：优先主界面（index.html），把 detached 空窗口、devtools、扩展页排在后面；连上就断的目标自动换下一个
