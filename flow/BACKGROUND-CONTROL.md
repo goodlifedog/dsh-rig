@@ -339,8 +339,9 @@ Steam 实测 677ms 就绪（等之前判「没有窗口」），抖音/Antigravi
 只点白名单按钮（继续/下一步/开始使用/知道了/OK…），看到「存储/删除/取消」一律不点，
 挑不到安全按钮就返回 `dismissed:false`，宁可不点也不乱点。
 
-**收尾**。探测完不关会留一堆窗口在桌面上。`quitApp()` 先走 Apple 事件优雅退出，
-失败（弹窗卡住）再按进程 TERM，返回 `quit/term/already-stopped/still-running`；
+**收尾**。探测完不关会留一堆窗口在桌面上。`quitApp()` 先走 Apple 事件优雅退出；
+退不掉时先查有没有「保存/删除」类弹窗，有就返回 `needs-confirm` 且**不强杀**（避免丢未保存内容），
+没有才按进程 TERM。返回 `quit/term/already-stopped/needs-confirm/still-running`。
 矩阵默认只关本轮 `launched` 的应用——用户本来就在跑的（如 Clash）绝不动。
 
 10 项单测覆盖：窗口迟到、一直没窗口、-1 不当成功、弹窗结构解析（含坏行）、

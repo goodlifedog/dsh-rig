@@ -669,14 +669,17 @@ export async function dialogs(app, options = {}) {
     '    if (subrole of w) is "AXDialog" then',
     '      set out to out & "WIN|" & (name of w) & linefeed',
     '      set out to out & "IDX|" & i & linefeed',
-    '      repeat with t in (every static text of w)',
+    '      -- 弹窗内容经常嵌在 group 里，只看窗口直接子元素会漏掉按钮和正文',
+    '      repeat with el in (entire contents of w)',
     '        try',
-    '          set out to out & "TXT|" & (value of t) & linefeed',
-    '        end try',
-    '      end repeat',
-    '      repeat with b in (every button of w)',
-    '        try',
-    '          set out to out & "BTN|" & (name of b) & linefeed',
+    '          set c to (class of el) as text',
+    '          if c is "static text" then',
+    '            set v to (value of el) as text',
+    '            if v is not "" then set out to out & "TXT|" & v & linefeed',
+    '          else if c is "button" then',
+    '            set n to (name of el) as text',
+    '            if n is not "" then set out to out & "BTN|" & n & linefeed',
+    '          end if',
     '        end try',
     '      end repeat',
     '    end if',
@@ -733,25 +736,41 @@ export async function dismissOnboarding(app, options = {}) {
  */
 export async function quitApp(app, options = {}) {
   const opts = options || {};
+  const deps = Object.assign({ isAppRunning, sleep, dialogs, exec }, opts.deps || {});
   const graceMs = Number.isFinite(opts.graceMs) ? opts.graceMs : 4000;
   const check = { bundleId: app.bundleId, appName: app.appName, processName: app.processName };
-  if (!(await isAppRunning(check))) return { quit: true, mode: 'already-stopped', detail: '' };
+  if (!(await deps.isAppRunning(check))) return { quit: true, mode: 'already-stopped', detail: '' };
   const target = app.bundleId ? 'id ' + JSON.stringify(app.bundleId) : JSON.stringify(String(app.appName || ''));
   try {
-    await exec('/usr/bin/osascript', ['-e', 'with timeout of ' + Math.ceil(graceMs / 1000) + ' seconds\ntell application ' + target + ' to quit\nend timeout'], { timeout: graceMs + 2000 });
+    await deps.exec('/usr/bin/osascript', ['-e', 'with timeout of ' + Math.ceil(graceMs / 1000) + ' seconds\ntell application ' + target + ' to quit\nend timeout'], { timeout: graceMs + 2000 });
   } catch {}
-  await sleep(600);
-  if (!(await isAppRunning(check))) return { quit: true, mode: 'quit', detail: '' };
+  await deps.sleep(600);
+  if (!(await deps.isAppRunning(check))) return { quit: true, mode: 'quit', detail: '' };
+
+  // 退不掉时先看有没有「要不要保存」这类弹窗：有就绝不能强杀，
+  // 否则用户没保存的内容会被直接丢掉（文本编辑实测就会弹这个）。
+  let openDialogs = [];
+  try {
+    openDialogs = (await deps.dialogs(app.appName)) || [];
+  } catch {}
+  const risky = openDialogs.find((d) => /保存|存储|Save|删除|Delete|覆盖|Replace|替换/i.test(
+    [d.title, ...(d.texts || []), ...(d.buttons || [])].join(' '),
+  ));
+  if (risky) {
+    const snippet = [risky.title, ...(risky.texts || [])].filter(Boolean).join(' ').slice(0, 60);
+    return { quit: false, mode: 'needs-confirm', detail: '有未保存/确认弹窗，未强杀：' + snippet };
+  }
+
   // 弹窗卡住 Apple 事件时优雅退出会失败，按进程名 TERM；拿不到进程名就只能报仍然在跑
   if (app.processName) {
     try {
-      const { stdout } = await exec('/usr/bin/pgrep', ['-x', app.processName], { timeout: 3000 });
+      const { stdout } = await deps.exec('/usr/bin/pgrep', ['-x', app.processName], { timeout: 3000 });
       const pid = Number.parseInt(String(stdout).trim().split('\n')[0], 10);
       if (Number.isFinite(pid) && pid > 0) {
-        await exec('/bin/kill', ['-TERM', String(pid)], { timeout: 3000 });
+        await deps.exec('/bin/kill', ['-TERM', String(pid)], { timeout: 3000 });
         for (let i = 0; i < 10; i += 1) {
-          await sleep(300);
-          if (!(await isAppRunning(check))) return { quit: true, mode: 'term', detail: 'Apple 事件被弹窗卡住，按进程 TERM' };
+          await deps.sleep(300);
+          if (!(await deps.isAppRunning(check))) return { quit: true, mode: 'term', detail: 'Apple 事件被弹窗卡住，按进程 TERM' };
         }
       }
     } catch {}

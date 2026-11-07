@@ -9,6 +9,7 @@ import {
   pickOnboardingButton,
   ONBOARDING_TEXT_RE,
   dismissOnboarding,
+  quitApp,
 } from '../core/background.mjs';
 
 test('窗口已经在：立即返回，不睡眠', async () => {
@@ -165,4 +166,61 @@ test('已经在跑：直接返回，不再 open', async () => {
   assert.equal(r.launched, false);
   assert.equal(r.running, true);
   assert.equal(opened, 0);
+});
+test('退出被「保存」弹窗挡住：绝不强杀，报 needs-confirm', async () => {
+  const calls = [];
+  const r = await quitApp(
+    { appName: '文本编辑', processName: 'TextEdit' },
+    {
+      graceMs: 10,
+      deps: {
+        isAppRunning: async () => true,
+        sleep: async () => {},
+        dialogs: async () => [{ index: 1, title: '', texts: ['你有 3 个未命名的文稿'], buttons: ['存储', '不存储', '取消'] }],
+        exec: async (bin, args) => { calls.push(args.join(' ')); return { stdout: '' }; },
+      },
+    },
+  );
+  assert.equal(r.quit, false);
+  assert.equal(r.mode, 'needs-confirm');
+  assert.ok(r.detail.includes('未强杀'));
+  assert.ok(!calls.some((c) => c.includes('-TERM')), '有未保存弹窗时不许发 TERM');
+  assert.ok(!calls.some((c) => c.includes('pgrep')), '连接进程都不该找');
+});
+
+test('没有弹窗：先优雅退出，退不掉再 TERM', async () => {
+  let checks = 0;
+  const calls = [];
+  const r = await quitApp(
+    { appName: 'Steam', processName: 'steam_osx' },
+    {
+      graceMs: 10,
+      deps: {
+        isAppRunning: async () => { checks += 1; return checks < 3; },
+        sleep: async () => {},
+        dialogs: async () => [],
+        exec: async (bin, args) => { calls.push(bin + ' ' + args.join(' ')); return { stdout: bin.includes('pgrep') ? '4242\n' : '' }; },
+      },
+    },
+  );
+  assert.equal(r.quit, true);
+  assert.equal(r.mode, 'term');
+  assert.ok(calls.some((c) => c.includes('/bin/kill') && c.includes('4242')), '要按 pid 发 TERM');
+});
+
+test('TERM 之后还在跑：如实报 still-running', async () => {
+  const r = await quitApp(
+    { appName: '某应用', processName: 'X' },
+    {
+      graceMs: 10,
+      deps: {
+        isAppRunning: async () => true,
+        sleep: async () => {},
+        dialogs: async () => [],
+        exec: async (bin) => ({ stdout: bin.includes('pgrep') ? '777\n' : '' }),
+      },
+    },
+  );
+  assert.equal(r.quit, false);
+  assert.equal(r.mode, 'still-running');
 });

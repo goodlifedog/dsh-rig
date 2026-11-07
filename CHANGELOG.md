@@ -8,6 +8,7 @@
 - 新增 `dialogs()` / `dismissOnboarding()`：首启欢迎弹窗是 app-modal，会把 Apple 事件整个卡住（Pages Creator Studio 连 count documents 都超时 -1712），但 System Events 仍能读到结构；只点「继续/开始使用/知道了」白名单按钮，见到「存储/删除/取消」一律不点
 - 新增 `quitApp()`：先优雅退出，退不掉（被弹窗卡住）再按进程 TERM，如实回报 quit/term/already-stopped
 - 新增 `windowCount()`、`parseDialogDump()`、`pickOnboardingButton()` 纯函数 + 10 项单测（窗口迟到、一直没窗口、-1 不当成功、坏行解析、破坏性按钮不点）
+- 修自动收尾的数据安全风险：`quitApp()` 优雅退出失败时先检查有没有「保存/删除」类弹窗，有就返回 `needs-confirm` 且绝不发 TERM（强杀会丢用户未保存的内容，文本编辑实测会弹这个）；3 项单测覆盖（有弹窗不强杀、没弹窗走 TERM、TERM 后仍在跑如实报）
 - 新增 `npm run apps:inventory` 应用清点：扫描 /Applications 与系统应用目录，对照预设和**全部历史**矩阵报告，输出每个应用的适配状态（已适配/可只用画面/专用方案/不动/限制/未测/未安装）；包名过期按名字兜底并标注，特殊应用（Clash/奇游/宿主/Chrome）不挂在「未测」
 - 修预设里 5 个过期包名（Clash Verge/Gemini/Telegram/OrbStack/Pages Creator Studio），清点跑出来才发现的
 - 新增 `core/app-presets.mjs` 分门类预设（office/im/dev/system/media/tools）与 `MATRIX_PRESET` 环境变量：一条命令按门类批量探测，条目缺字段/bundle 写错/重复会被 5 项单测拦住
