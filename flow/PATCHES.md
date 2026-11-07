@@ -105,6 +105,25 @@ ls -ld ~/.desktop-agent          # 跑过一次 daemon 后应为 drwx------
 `test/token-perm.test.mjs`）。实机重启服务后复核全部 `drwx------`、token `-rw-------`。
 补丁文件已删除，可从 git 历史查到。
 
+## 5. `patch-host-check.diff`（110 行 / 4 个文件）
+
+**实测发现**：两个服务都不校验 `Host` 头。伪造 `Host: evil.example` 时 daemon 返回 200、overlay 返回 200/202，
+意味着网页可以通过 DNS rebinding（evil.com 解析到 127.0.0.1）读 daemon 的只读接口——
+而 `/status` 里有任务历史、当前任务、pid 等信息。
+
+补丁：`core/safety.mjs` 加纯函数 `isLoopbackHost()`（认 127.0.0.1 / localhost / [::1]，允许带端口）；
+daemon 与 overlay 的 `assertLocalClient` 进来先查 Host，非本机一律 403；配 3 条测试。
+
+注意：overlay 是 CJS、safety 是 ESM，所以 overlay 里保留了同规则的最小实现（5 行），不引构建步骤。
+
+验证：
+```bash
+node --test test/safety-host.test.mjs
+# 起一个备用端口的 daemon 后：
+curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: evil.example' http://127.0.0.1:7789/   # 应 403
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:7789/                          # 应 200
+```
+
 ## 已作废（不要再应用）
 
 `patch-token-permissions.diff`：权限校正已由主会话自行实现（`hardenDataDir`，更完整——连 chrome-profile 等敏感子目录一起收紧），
