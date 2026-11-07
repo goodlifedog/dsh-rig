@@ -66,6 +66,8 @@ const THUMB_JPEG_QUALITY = 92;
 const CAPTURE_TIMEOUT_MS = 4000;
 // 连续抓帧失败多少次才对外报错：真实窗口刚绑定时偶尔会连续失败 2–3 次
 const CAPTURE_FAIL_TOLERANCE = Math.max(1, Math.round(toNumber(process.env.OVERLAY_CAPTURE_FAIL_TOLERANCE, 4)));
+// 小于这个体积的 JPEG 基本就是一整块纯色（正常窗口帧 40KB 左右）
+const BLANK_JPEG_BYTES = Math.max(1000, Math.round(toNumber(process.env.OVERLAY_BLANK_JPEG_BYTES, 8000)));
 const FADE_MS = 180;
 // 宿主轮询节奏：有小窗可见时快轮（切会话要马上消失），全都藏着时慢轮省电。
 // 快轮 400ms：用户切走会话到小窗消失最多约 0.5s；之前固定 1.2s 会明显觉得"迟一下"。
@@ -403,7 +405,10 @@ let hostCheckedAt = 0;
 // 多会话平铺：优先排满右上角一行，再往下一行；都限制在 DSH 窗口内部
 function tilePosition(s, b) {
   const [cw, ch] = s.win.getSize();
-  return layout.tilePosition(b, { w: cw, h: ch }, s.index, { margin: DSH_MARGIN, gap: TILE_GAP });
+  // 用「当前还活着的会话里的顺序」当格子号：全局自增序号开过很多会话后会让新窗口堆到底部
+  const ordered = Array.from(sessions.values()).sort((a, c) => a.createdAt - c.createdAt);
+  const slot = Math.max(0, ordered.indexOf(s));
+  return layout.tilePosition(b, { w: cw, h: ch }, slot, { margin: DSH_MARGIN, gap: TILE_GAP });
 }
 
 function clampIntoDsh(s) {
@@ -1155,6 +1160,17 @@ async function captureThumbnail(s) {
       // 窗口在抓帧途中被换掉/解绑：这帧作废，别覆盖新窗口的画面
       return;
     }
+    // 纯色帧识别：窗口在别的桌面且没被渲染时，系统会返回一整块纯色（JPEG 压完只有几 KB）。
+    // 这种情况既不是抓帧失败、也不是正常画面，单独标出来，别让用户看到一块白。
+    if (jpeg.length < BLANK_JPEG_BYTES) {
+      s.state.thumbnail.state = 'offscreen';
+      s.state.thumbnail.error = '窗口在其它桌面，画面暂时不可见（仍可在后台操作）';
+      s.lastCaptureError = null;
+      s.captureFailStreak = 0;
+      s.captureMs = Date.now() - captureStartedAt;
+      signalThumbState(s);
+      return;
+    }
     s.lastCaptureError = null;
     s.captureFailStreak = 0;
     s.captureMs = Date.now() - captureStartedAt;
@@ -1313,7 +1329,67 @@ async function refreshSelfWindows() {
   }
 }
 
+// macOS：用 CGWindowList 列「所有」窗口。Electron 的 desktopCapturer 只给当前桌面，
+// 而别的桌面的窗口其实是可以抓图的（screencapture -l 实测可行），所以要自己列。
+function listWindowsMac() {
+  return new Promise((resolve) => {
+    const script =
+      'ObjC.import("CoreGraphics");' +
+      'const arr=ObjC.castRefToObject($.CGWindowListCopyWindowInfo($.kCGWindowListOptionAll,0));' +
+      'const out=[];' +
+      'for (let i=0;i<arr.count;i++){' +
+      '  try {' +
+      '    const d=arr.objectAtIndex(i);' +
+      '    const layer=Number(ObjC.unwrap(d.objectForKey("kCGWindowLayer")));' +
+      '    if (layer !== 0) continue;' +
+      '    const b=ObjC.deepUnwrap(d.objectForKey("kCGWindowBounds"));' +
+      '    const w=Number(b.Width), h=Number(b.Height);' +
+      '    if (!(w > 200) || !(h > 120)) continue;' +
+      '    out.push({' +
+      '      windowId:Number(ObjC.unwrap(d.objectForKey("kCGWindowNumber"))),' +
+      '      owner:String(ObjC.unwrap(d.objectForKey("kCGWindowOwnerName"))||""),' +
+      '      title:String(ObjC.unwrap(d.objectForKey("kCGWindowName"))||""),' +
+      '      onscreen:Number(ObjC.unwrap(d.objectForKey("kCGWindowIsOnscreen"))||0)=== 1,' +
+      '      x:w, h:h' +
+      '    });' +
+      '  } catch(e){}' +
+      '}' +
+      'JSON.stringify(out);';
+    execFile('/usr/bin/osascript', ['-l', 'JavaScript', '-e', script], { timeout: 4000 }, (error, stdout) => {
+      if (error) return resolve(null);
+      try {
+        const list = JSON.parse(String(stdout));
+        resolve(Array.isArray(list) ? list : null);
+      } catch { resolve(null); }
+    });
+  });
+}
+
 async function listWindows() {
+  if (platform.isMac) {
+    const macList = await listWindowsMac();
+    if (macList) {
+      const windows = [];
+      for (const item of macList) {
+        const owner = String(item.owner || '');
+        const title = String(item.title || '');
+        // 自己和宿主不算「被控目标」；其余所有应用窗口都列出来（含其它桌面）
+        const ownOverlay = /Desktop Agent|^Electron$/i.test(owner);
+        const isSelf = ownOverlay || owner === HOST_PROCESS || SELF_WINDOW_PATTERN.test(title);
+        if (isSelf) { selfWindowIds.add(item.windowId); continue; }
+        windows.push({
+          windowId: item.windowId,
+          sourceId: 'window:' + item.windowId + ':0',
+          title: title || owner,
+          owner: owner,
+          onscreen: Boolean(item.onscreen),
+          self: false,
+        });
+      }
+      return windows;
+    }
+  }
+
   const sources = await desktopCapturer.getSources({
     types: ['window'],
     thumbnailSize: { width: 1, height: 1 },

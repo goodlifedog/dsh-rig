@@ -276,6 +276,7 @@
   // ---------- 缩略图 ----------
 
   function placeholderText() {
+    if (view.thumbState === 'offscreen') return '窗口在其它桌面，画面不可见（仍可后台操作）';
     if (view.thumbState === 'no-window') return '等待目标窗口';
     if (view.thumbState === 'error') return '画面暂时不可用';
     if (view.thumbState === 'waiting') return '正在连接窗口…';
