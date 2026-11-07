@@ -3,6 +3,7 @@
 ## 未发布
 
 - bg:verify 汇总里标注「锁屏：前台断言跳过」，避免把部分验证当成全部通过
+- 终端后台控制验收：`npm run terminal:bg` 在 Ghostty 敲 echo + 回车，5 项全过且前台未变；已并入 bg:verify（现 6 项）
 - 发现并修「读取抢前台」：Ghostty / ChatGPT 读界面树会把应用顶到前台（连不截图也发生）；
   新增 readSafe/findSafe（读前记前台、读后比对、变了立刻还原并如实标记），矩阵改用它，
   实测两应用读取后前台稳定在 DSH；扩了 5 项单测，矩阵默认覆盖加终端与 Electron 聊天两类

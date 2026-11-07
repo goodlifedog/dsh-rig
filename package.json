@@ -55,6 +55,7 @@
     "browser:bg": "node core/tasks/browser-background.mjs",
     "cold:launch": "node core/tasks/cold-launch.mjs",
     "user:active": "node core/tasks/user-active-demo.mjs",
+    "terminal:bg": "node core/tasks/terminal-control.mjs",
     "bg:verify": "node scripts/bg-verify.mjs",
     "ui:check": "node scripts/ui-check.mjs",
     "health": "node scripts/health.mjs"

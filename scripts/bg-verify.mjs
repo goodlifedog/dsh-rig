@@ -21,6 +21,7 @@ const CHECKS = [
   { name: '后台操作稳定性', script: 'core/tasks/background-stability.mjs' },
   { name: '后台浏览器', script: 'core/tasks/browser-background.mjs' },
   { name: '用户在用A时控B', script: 'core/tasks/user-active-demo.mjs' },
+  { name: '终端后台控制', script: 'core/tasks/terminal-control.mjs' },
 ];
 
 function run(script) {
