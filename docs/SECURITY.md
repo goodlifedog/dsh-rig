@@ -16,6 +16,7 @@
 | CDP 端口劫持 | 本地进程抢先监听调试端口冒充 CDP，我们连上去等于把页面内容/输入交给它 | 连之前用 `lsof` 查端口主人：知道应用 pid 时必须相等（`debugPortTrust`）；拿不到 pid 时校验端口主人的可执行路径属于该应用；两者都拿不到就**拒绝连接**（fail closed）。启动和 attach 两处都校验，实机用假 CDP 占端口验证过拒绝路径 |
 | pid 复用误杀 | pgrep 和 kill 之间 pid 被系统复用，把用户别的程序 TERM 掉 | 杀之前 `ps -p pid -o comm=` 复核，名字对不上就不杀（`pidMatchesProcess`） |
 | 预置可执行文件 | `~/.desktop-agent/bin/ae-permission` 被别人换成恶意程序 | 执行前校验归属和权限（必须本用户所有、不能被组/其他人写），缓存目录不可信时**拒绝执行**；编译走临时文件 + rename |
+| 小窗渲染进程被注入/加载远程资源 | 窗口标题、日志、推帧 note 都可能来自外部，一旦渲染层放开就是注入面 | `overlay/index.html` 带严格 CSP：`default-src 'none'`、脚本只允许本地、图片只允许 `self data:`、`base-uri/form-action 'none'`；渲染层只用 `textContent`、没有内联事件处理器；`test/overlay-csp.test.mjs` 把口径钉住 |
 | 误点权限弹窗（代点授权） | 非中英文系统上，辅助功能/录屏的授权按钮也叫 OK/許可/Erlauben，若按"普通弹窗"点掉就变成替用户授权 | `dialog-guard` 改成结构判定：文案含权限/系统设置线索、按钮像授权（CJK 与拉丁各一套词表）、或弹窗属于系统进程，任一命中就**绝不点**；文案不认识的弹窗默认也不点，只有明确是「崩溃/更新」提示时才点关闭类按钮 |
 | 未保存数据被强杀 | 退出应用时如果卡在"要保存吗"，强杀会丢内容 | 退不掉时先查保存/删除类弹窗，有就返回 `needs-confirm` 且不发 TERM |
 | 任务名目录穿越 | `/run` 传 `../core/runner` 执行目录外脚本 | daemon 只接受白名单任务名，未知任务 400 |
