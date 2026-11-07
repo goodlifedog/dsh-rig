@@ -1,12 +1,13 @@
 # 外部评审提供的补丁
 
-> 最后更新：2026-11-08 04:10。**2 个待应用补丁**，其余都已被主会话实现并删除。
+> 最后更新：2026-11-08 04:15。**3 个待应用补丁**，其余都已被主会话实现并删除。
 
 ## 待应用
 
 ```bash
 git apply flow/patch-publish.diff        # 发布配置（发布前必打）
 git apply flow/patch-repocheck-zip.diff  # repo:check 在非 git 目录（下载 ZIP）不再报红
+git apply flow/patch-packaging-files.diff # 打包白名单补齐 main.js require 的所有模块
 ```
 
 ### `patch-publish.diff`（78 行 / 3 个文件）
@@ -37,6 +38,21 @@ npm pack --dry-run      # 约 138 files / 1.1 MB
 验证：
 ```bash
 rsync -a --exclude .git ./ /tmp/zipcheck/ && cd /tmp/zipcheck && node scripts/repo-check.mjs
+```
+
+### patch-packaging-files.diff（82 行 / 2 个文件）
+
+**问题（打包版起不来）**：overlay/electron-builder.yml 的 files 只列了 9 个 js，
+而 main.js 实际 require 14 个本地模块——recover.js / host-select.js / session-policy.js /
+capture-policy.js / frame-target.js / layout.js / image-meta.js / crash-log.js / quote.js 都不在名单里。
+照这个配置打出来的 App 一启动就是 MODULE_NOT_FOUND。
+
+补丁：files 改为通配 "*.js" + index.html + package.json（并排除 start.mjs / smoke-http.js 两个开发脚本），
+另加 test/overlay-packaging.test.mjs：**解析 yml 白名单，断言 main.js 每个 require 的模块都被覆盖**，以后再拆模块忘了加也不会漏。
+
+验证：
+```bash
+node --test test/overlay-packaging.test.mjs
 ```
 
 ## 已采纳并删除的补丁
