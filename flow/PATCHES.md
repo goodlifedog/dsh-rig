@@ -142,6 +142,10 @@ node scripts/bundle-ocu.mjs --with-binary && cat third_party/open-computer-use/N
 非法值回退默认），四个诊断入口改为从它取端口。实测：`AGENTD_PORT=7799 node core/platform-smoke.mjs`
 现在会如实报「后台 daemon 7799 未启动」，而不是显示 7789 上那台服务；默认端口下一切不变。
 
+范围说明：本次只统一了 **daemon 端口**（4 处写死 + cli/service/daemon）。
+overlay 侧的 7788 还有约 18 处（7 个任务 + 11 个脚本），改端口目前要同时设 `OVERLAY_URL`，
+已在 docs/USAGE.md 写明配对关系；全量统一收益不高、改动面大，留作发布后再做。
+
 验证：
 ```bash
 node --test test/ports.test.mjs
