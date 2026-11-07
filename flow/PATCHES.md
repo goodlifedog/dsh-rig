@@ -1,6 +1,6 @@
 # 外部评审提供的补丁
 
-> 最后更新：2026-11-08 04:45。**2 个待应用补丁**，其余都已被主会话实现并删除。
+> 最后更新：2026-11-08 04:50。**3 个待应用补丁**，其余都已被主会话实现并删除。
 
 ## 待应用
 
@@ -80,6 +80,20 @@ npm run repo:check   # 应显示「29 份文档都有入口」
 验证：
 ```bash
 npm run tasks:doc && npm run repo:check
+```
+
+### patch-bundle-provenance.diff（106 行 / 2 个文件）
+
+**问题**：`scripts/bundle-ocu.mjs --with-binary` 会把第三方 ocu 运行时（37MB）拷进分发产物，
+NOTICE.md 里只记了版本/许可/仓库，**没有二进制指纹**——发出去的到底是哪一份运行时，事后无法核对。
+
+补丁：拷贝后计算 `bin/ocu` 的 sha256 写进 NOTICE.md（取不到时明确写「未取到」），
+并把 NOTICE 生成抽成纯函数 `buildNotice()` + 3 条单测。
+
+验证：
+```bash
+node --test test/bundle-ocu.test.mjs
+node scripts/bundle-ocu.mjs --with-binary && cat third_party/open-computer-use/NOTICE.md | grep sha256
 ```
 
 ## 已采纳并删除的补丁
