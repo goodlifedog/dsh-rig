@@ -45,6 +45,33 @@ export async function linkedFrameworks(appPath, deps = {}) {
   }
 }
 
+/**
+ * 找 Chromium 系自带的渲染进程 Helper（Renderer）。
+ *
+ * 为什么要单独找：Chrome / Edge 这类把 Helper 放在
+ *   Contents/Frameworks/<厂商> Framework.framework/Versions/<版本>/Helpers/
+ * 里，顶层 Frameworks 只有框架名——只扫一层就会把 Chrome 误判成原生应用（实测踩过：
+ * npm run app:runtime --all 里 Google Chrome 显示 native）。
+ * Helper (Renderer) 是 Chromium 多进程架构独有的产物，出现它就说明这一族能走 CDP。
+ *
+ * @param {string} appPath /Applications/X.app
+ * @param {{exec?:Function}} [deps]
+ * @returns {Promise<string[]>} 命中的相对/绝对路径（最多 8 条，够判定了）
+ */
+export async function listRendererHelpers(appPath, deps = {}) {
+  const run = deps.exec || exec;
+  try {
+    const { stdout } = await run('/usr/bin/find', [
+      path.join(appPath, 'Contents', 'Frameworks'),
+      '-maxdepth', '6',
+      '-name', '*Helper (Renderer).app',
+    ], { timeout: 8000 });
+    return String(stdout).split('\n').map((line) => line.trim()).filter(Boolean).slice(0, 8);
+  } catch {
+    return [];
+  }
+}
+
 export async function hasAsar(appPath, deps = {}) {
   const access = deps.access || ((p) => fs.promises.access(p));
   try {
@@ -92,14 +119,16 @@ export async function sdefInfo(appPath, deps = {}) {
  * @returns {Promise<{type:string, evidence:string[], frameworks:string[], links:string[], applescript:{available:boolean,commands:number}, hasAsar:boolean}>}
  */
 export async function profileApp(appPath, deps = {}) {
-  const [frameworks, links, asar, jvm, sdef] = await Promise.all([
+  const [frameworks, links, helpers, asar, jvm, sdef] = await Promise.all([
     listFrameworks(appPath, deps),
     linkedFrameworks(appPath, deps),
+    listRendererHelpers(appPath, deps),
     hasAsar(appPath, deps),
     hasJvm(appPath, deps),
     sdefInfo(appPath, deps),
   ]);
-  const runtime = classifyRuntime([...frameworks, ...links], { hasAsar: asar, hasJvmRuntime: jvm });
+  // Helper (Renderer) 的路径要一起送进分类器：Chrome 这类把它埋在框架内部
+  const runtime = classifyRuntime([...frameworks, ...links, ...helpers], { hasAsar: asar, hasJvmRuntime: jvm });
   return {
     type: runtime.type,
     evidence: runtime.evidence,

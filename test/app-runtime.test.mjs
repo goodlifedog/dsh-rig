@@ -98,6 +98,24 @@ test('Chromium 系自研壳：mojo / Renderer Helper 也算（微信、QQ 实测
   assert.equal(classifyRuntime(['QQ Helper (Renderer).app', 'QQNT.framework']).type, 'chromium');
 });
 
+test('Chrome 系：Helper (Renderer) 带完整路径也能认出来，证据只写名字', () => {
+  const helper = '/Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/1/Helpers/Google Chrome Helper (Renderer).app';
+  const r = classifyRuntime(['Google Chrome Framework.framework', helper]);
+  assert.equal(r.type, 'chromium');
+  assert.equal(r.evidence[0], '包含 Google Chrome Helper (Renderer).app');
+});
+
+test('CEF 系：Chromium Embedded Framework / libcef 都算 chromium', () => {
+  assert.equal(classifyRuntime(['Chromium Embedded Framework.framework']).type, 'chromium');
+  assert.equal(classifyRuntime(['libcef.dylib']).type, 'chromium');
+});
+
+test('有 Helper (Renderer) 就不会被误判成 electron', () => {
+  const helper = '/x/Contents/Frameworks/Electron Framework.framework/Versions/A/Helpers/Electron Helper (Renderer).app';
+  const r = classifyRuntime(['Electron Framework.framework', helper]);
+  assert.equal(r.type, 'electron', 'Electron 优先级最高，不能被 chromium 抢走');
+});
+
 test('每条通道都要写清使用前提', () => {
   for (const chainItem of chooseDriverChain({ type: 'electron' })) {
     assert.ok(chainItem.requires && chainItem.requires.length > 4, chainItem.driver + ' 缺前提说明');

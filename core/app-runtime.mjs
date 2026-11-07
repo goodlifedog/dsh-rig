@@ -42,8 +42,17 @@ export function classifyRuntime(frameworks = [], info = {}) {
 
   // Chromium 系不止 "Chromium Framework" 一种写法：微信/QQ 这类自研壳子里有 mojo IPC、
   // Renderer Helper 子进程，本质仍是 Chromium 多进程架构，能走 CDP 一族通道。
-  const chromium = has(/chromium( embedded)? framework/i) || has(/libmmmojo/i) || has(/helper \(renderer\)\.app/i);
-  if (chromium) return { type: 'chromium', evidence: ['包含 ' + chromium] };
+  // 「Chrome 系」的包结构不止一种写法：Chrome/Edge 的框架叫 "<厂商> Framework.framework"，
+  // Helper (Renderer) 埋在框架内部的 Helpers 目录下（所以要连路径一起看），
+  // 微信/QQ 这类自研壳子里有 mojo IPC，CEF 系则直接带 Chromium Embedded Framework。
+  const chromium = has(/chromium( embedded)? framework/i)
+    || has(/libmmmojo/i)
+    || has(/libcef|cef\.framework/i)
+    || has(/helper \(renderer\)\.app/i);
+  if (chromium) {
+    const label = String(chromium).split('/').pop();
+    return { type: 'chromium', evidence: ['包含 ' + label] };
+  }
 
   // 注意：链接系统的 WebKit.framework 不代表界面是 Web 做的（GarageBand 也链接它，用来显示帮助文档），
   // 所以这里只当线索记下来，不当成运行时类型，避免把原生应用误判成 Web 应用。
