@@ -132,6 +132,36 @@ async function probeCapture(session, pattern, titleHint) {
   return result;
 }
 
+/**
+ * 矩阵结论（纯函数）：前台没被抢只是底线。所有应用都被跳过 = 没验证（环境跳过），
+ * 有尝试但一个都读不出界面树 = 真失败；不能因为前台没变就报成功（评审 6acf775）。
+ */
+export function summarizeMatrixVerdict(rows, allFrontOk) {
+  const list = Array.isArray(rows) ? rows : [];
+  const skipped = list.filter((r) => r && r.skipped).length;
+  const attempted = list.length - skipped;
+  const readable = list.filter((r) => r && r.readable).length;
+  let problem = '';
+  let envSkip = false;
+  if (!allFrontOk) {
+    problem = '前台被抢占';
+  } else if (attempted === 0) {
+    problem = '所有应用都环境跳过，矩阵未验证';
+    envSkip = true;
+  } else if (readable === 0) {
+    problem = '一个应用都读不出界面树（' + attempted + ' 个尝试）';
+  }
+  return {
+    ok: Boolean(allFrontOk) && (attempted === 0 || readable > 0),
+    allFrontOk: Boolean(allFrontOk),
+    skipped,
+    attempted,
+    readable,
+    problem,
+    envSkip,
+  };
+}
+
 async function main() {
   // 另一个验收正在跑时不要掺和：两边会互相抢前台/互关应用，报告全变假失败
   const foreignAcc = await foreignAcceptanceOwner(ACCEPTANCE_LOCK);
@@ -285,8 +315,11 @@ async function main() {
   // 判定口径：以"最终前台是否回到起点"为准；单步被抢但已还原的，如实留在行里当证据
   const allFrontOk = frontEnd === frontStart;
   const skippedRows = rows.filter((r) => r.skipped);
+  const verdict = summarizeMatrixVerdict(rows, allFrontOk);
   const summary = {
-    ok: allFrontOk,
+    ok: verdict.ok,
+    problem: verdict.problem,
+    envSkip: verdict.envSkip,
     skipped: skippedRows.length,
     skippedApps: skippedRows.map((r) => r.app),
     frontStart,
@@ -339,10 +372,17 @@ async function main() {
   lines.push('建议控法：元素级驱动 = 读树+AX 操作；只读状态 = 树可读但没可点元素；画面+坐标 = 读不到树只能看画面；应用侧限制 = 启动即退或什么都拿不到。');
   fs.writeFileSync(path.join(dir, 'app-matrix-' + stamp + '.md'), lines.join('\n'));
 
-  console.log('\n汇总: ' + JSON.stringify({ ok: summary.ok, readable: summary.readable, clickable: summary.clickable, liveCapture: summary.liveCapture, total: summary.total }));
+  if (summary.envSkip) console.log('环境跳过：' + summary.problem);
+  else if (!summary.ok) console.log('❌ ' + summary.problem);
+  console.log('\n汇总: ' + JSON.stringify({ ok: summary.ok, problem: summary.problem, envSkip: summary.envSkip, readable: summary.readable, clickable: summary.clickable, liveCapture: summary.liveCapture, total: summary.total }));
   console.log('报告: reports/app-matrix-' + stamp + '.md');
   await closeOcuMcp().catch(() => {});
-  if (!allFrontOk) process.exitCode = 1;
+  if (!summary.ok && !summary.envSkip) process.exitCode = 1;
 }
 
-main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
+const invokedDirectly = Boolean(process.argv[1])
+  && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (invokedDirectly) {
+  main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
+}

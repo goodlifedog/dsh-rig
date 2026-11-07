@@ -31,6 +31,41 @@ const CASES = [
   { appName: 'TextEdit', bundleId: 'com.apple.TextEdit', label: '无字典对照', script: 'tell application "TextEdit" to get name', redact: false },
 ];
 
+/**
+ * 通道验证结论（纯函数）：前台没被抢只是底线，还必须真的有应用执行成功过命令。
+ * 一次都没执行成功（全部未运行/未授权）说明通道没被验证——要么报环境跳过，要么报失败，
+ * 反正不能当「验证通过」。评审 6acf775 指出这类假绿。
+ * @param {Array<{status:string, frontUnchanged?:boolean}>} rows
+ * @param {boolean} helperOk
+ */
+export function summarizeApplescriptRows(rows, helperOk) {
+  const list = Array.isArray(rows) ? rows : [];
+  const frontOk = list.every((r) => r && r.frontUnchanged !== false);
+  const okCount = list.filter((r) => r && r.status === 'ok').length;
+  const notRunning = list.filter((r) => r && r.status === 'app-not-running').length;
+  const denied = list.filter((r) => r && r.status === 'denied').length;
+  const needsConsent = list.filter((r) => r && r.status === 'needs-consent').length;
+  let problem = '';
+  let envSkip = false;
+  if (!frontOk) {
+    problem = '前台被抢占';
+  } else if (!list.length) {
+    problem = '没有可验证的应用';
+    envSkip = true;
+  } else if (okCount === 0) {
+    if (notRunning === list.length) {
+      problem = '应用都没在运行，通道未验证';
+      envSkip = true;
+    } else if (denied + needsConsent + notRunning === list.length) {
+      problem = '没有应用获得自动化授权，通道未验证';
+      envSkip = true;
+    } else {
+      problem = '没有任何应用成功执行 AppleScript 命令';
+    }
+  }
+  return { ok: frontOk && okCount > 0, frontOk, okCount, notRunning, denied, needsConsent, problem, envSkip };
+}
+
 async function main() {
   const frontStart = await frontName();
   const helper = await ensureHelper();
@@ -72,11 +107,14 @@ async function main() {
   }
 
   const frontEnd = await frontName();
+  const verdict = summarizeApplescriptRows(rows, helper.ok);
   const summary = {
-    ok: rows.every((r) => r.frontUnchanged !== false),
+    ok: verdict.ok,
+    problem: verdict.problem,
+    envSkip: verdict.envSkip,
     helperOk: helper.ok,
-    grantedTested: rows.filter((r) => r.status === 'ok').length,
-    notRunning: rows.filter((r) => r.status === 'app-not-running').length,
+    grantedTested: verdict.okCount,
+    notRunning: verdict.notRunning,
     frontStart,
     frontEnd,
     total: rows.length,
@@ -104,9 +142,16 @@ async function main() {
   lines.push('权限查询用 AEDeterminePermissionToAutomateTarget(askUserIfNeeded=false)，不会弹授权框；没授权的应用一律不发送 Apple 事件。');
   lines.push('Chrome 的地址在报告里做了脱敏（只留协议和域名）。');
   fs.writeFileSync(path.join(dir, 'applescript-channel-' + stamp + '.md'), lines.join('\n'));
-  console.log('\n汇总: ' + JSON.stringify({ ok: summary.ok, helperOk: summary.helperOk, grantedTested: summary.grantedTested, notRunning: summary.notRunning, total: summary.total }));
+  if (summary.envSkip) console.log('环境跳过：' + summary.problem);
+  else if (!summary.ok) console.log('❌ ' + summary.problem);
+  console.log('\n汇总: ' + JSON.stringify({ ok: summary.ok, problem: summary.problem, envSkip: summary.envSkip, helperOk: summary.helperOk, grantedTested: summary.grantedTested, notRunning: summary.notRunning, total: summary.total }));
   console.log('报告: reports/applescript-channel-' + stamp + '.md');
-  if (!summary.ok) process.exitCode = 1;
+  if (!summary.ok && !summary.envSkip) process.exitCode = 1;
 }
 
-main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
+const invokedDirectly = Boolean(process.argv[1])
+  && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (invokedDirectly) {
+  main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
+}
