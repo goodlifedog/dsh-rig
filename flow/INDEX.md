@@ -17,6 +17,9 @@
 
 ## 发布与协作（新加的，放这里免得找不到）
 
+> **只想看一页？→ [START-HERE.md](START-HERE.md)**
+
+
 | 我想… | 看这份 |
 | --- | --- |
 | 现在到底能不能发（Go/No-Go + 实测证据） | [PUBLISH-VERDICT.md](PUBLISH-VERDICT.md) |
