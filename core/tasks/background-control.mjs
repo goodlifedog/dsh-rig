@@ -8,7 +8,8 @@
  */
 import { ensureAppRunning, frontName, state, find, click, setValue, smartType, smartTypeWithCache, clickByText } from '../background.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
-import { deleteTestNotes } from '../note-cleanup.mjs';
+import { countNotes, deleteTopNotes } from '../note-cleanup.mjs';
+import { isScreenLocked } from '../platform.mjs';
 import { localHeaders } from '../local-token.mjs';
 
 const OVERLAY = process.env.OVERLAY_URL || 'http://127.0.0.1:7788';
@@ -39,6 +40,11 @@ function recordSkipped(name, detail) {
 }
 
 async function main() {
+  // 锁屏下 AX 整体不可用（ocu 会报 NSPOSIXErrorDomain Code=2），这是环境限制不是失败
+  if (await isScreenLocked()) {
+    console.log('环境跳过：屏幕已锁，锁屏下 AX/抓图都不可用，等解锁后再跑');
+    return;
+  }
   const frontAtStart = await frontName();
   console.log('起点前台:', frontAtStart);
 
@@ -49,6 +55,8 @@ async function main() {
     detail: launch.launched ? '冷启动成功，前台仍是 ' + launch.front : '本来就在运行',
   });
   await sleep(1500);
+  // 记下测试写入前的笔记数量：结束时只删"自己新增的条数"，绝不批量删用户笔记
+  const notesBefore = await countNotes();
 
   // 2. 把备忘录真实窗口绑到小窗（回显）
   const dshTitle = (await getJson(OVERLAY + '/health?session=__none__'))?.dshTitle || '';
@@ -154,9 +162,15 @@ async function main() {
     await post('/status', { session: s, clear: true });
     await post('/visible', { session: s, visible: false });
   }
-  // 自己写进去的测试笔记自己删，别把脏数据留给用户
-  const cleaned = await deleteTestNotes({ max: 10 });
-  console.log('已清理测试笔记：' + cleaned + ' 条');
+  // 自己写进去的测试笔记自己删，别把脏数据留给用户（BG_KEEP_NOTE=1 时保留，便于排查）
+  if (process.env.BG_KEEP_NOTE === '1') {
+    console.log('已按 BG_KEEP_NOTE=1 保留测试笔记，未清理');
+  } else {
+    const notesAfter = await countNotes();
+    const delta = notesBefore >= 0 && notesAfter >= 0 ? Math.max(0, notesAfter - notesBefore) : 0;
+    const cleaned = await deleteTopNotes(delta);
+    console.log('已清理测试笔记：' + cleaned + ' 条（测试前 ' + notesBefore + ' 条 → 测试后 ' + notesAfter + ' 条）');
+  }
   console.log('小窗已收起');
   await closeOcuMcp().catch(() => {});
   if (!report.ok) process.exitCode = 1;

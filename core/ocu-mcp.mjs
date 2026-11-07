@@ -4,11 +4,25 @@
  * ocu 的 MCP 常驻客户端。
  * 相比每次 spawn `ocu js`，长连接能复用原生会话：元素索引 120 秒内有效、动作更快、无需拼 JS 字符串。
  */
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import { resolveOcu } from './platform.mjs';
 
 const PROTOCOL_VERSION = '2025-03-26';
+
+/**
+ * ocu 用 os.tmpdir() 放 app-agent 的 unix socket。
+ * DSH 会话里的 TMPDIR 可能被指向自定义临时目录，而 launchd 起的 agent 用的是系统临时目录，
+ * 两边 socket 对不上就会出现 "NSPOSIXErrorDomain Code=2 No such file or directory"（实测踩过）。
+ * 统一强制用系统临时目录，保证 client 和 agent 看到同一个 socket。
+ */
+function systemTempDir() {
+  try {
+    return execFileSync('/usr/bin/getconf', ['DARWIN_USER_TEMP_DIR'], { encoding: 'utf8', timeout: 2000 }).trim();
+  } catch {
+    return '';
+  }
+}
 
 export class OcuMcp {
   constructor(options = {}) {
@@ -37,6 +51,8 @@ export class OcuMcp {
     const cmd = isNodeScript ? process.execPath : this.bin;
     const args = isNodeScript ? [this.bin, 'mcp'] : ['mcp'];
     const env = { ...process.env, OPEN_COMPUTER_USE_VISUAL_CURSOR: '0' };
+    const sysTmp = systemTempDir();
+    if (sysTmp) env.TMPDIR = sysTmp;
     if (isNodeScript) env.ELECTRON_RUN_AS_NODE = '1';
     this.child = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'], env });
     this.child.stdout.setEncoding('utf8');
@@ -102,7 +118,19 @@ export class OcuMcp {
 
   /** 调用一个工具，返回解析后的 JSON（工具返回的是 MCP content 数组里的文本） */
   async callTool(name, args = {}, timeoutMs = 60000) {
-    const msg = await this._request('tools/call', { name, arguments: args }, timeoutMs);
+    // agent 刚被拉起时 socket 还没建好，第一次调用会报 NSPOSIXErrorDomain Code=2（实测踩过），
+    // 这种是瞬时状态：等一会儿重试即可，不要直接判任务失败。
+    let msg = null;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      msg = await this._request('tools/call', { name, arguments: args }, timeoutMs);
+      const result = msg.result || {};
+      const content = Array.isArray(result.content) ? result.content : [];
+      const textPart = content.find((c) => c && typeof c.text === 'string');
+      const text = textPart ? textPart.text : '';
+      const transient = /No such file or directory|NSPOSIXErrorDomain/i.test(text);
+      if (!transient) break;
+      await new Promise((r) => setTimeout(r, 700));
+    }
     const result = msg.result || {};
     const content = Array.isArray(result.content) ? result.content : [];
     const textPart = content.find((c) => c && typeof c.text === 'string');

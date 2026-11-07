@@ -13,10 +13,11 @@ import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { ensureAppRunning, frontName, quitApp } from '../core/background.mjs';
 import { closeOcuMcp } from '../core/ocu-mcp.mjs';
-import { deleteTestNotes } from '../core/note-cleanup.mjs';
+import { countNotes, deleteTopNotes } from '../core/note-cleanup.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const dryRun = process.argv.includes('--dry-run');
+const forceNotes = process.argv.includes('--force') || process.env.NOTES_CLEANUP_FORCE === '1';
 const TEST_NOTE_RE = /后台控制验证|后台写入|后台测试|pta 测试/i;
 
 function osa(script, timeoutMs = 20000) {
@@ -27,42 +28,27 @@ function osa(script, timeoutMs = 20000) {
   }
 }
 
-function delNotes(times) {
-  return deleteTestNotes({ max: times });
+async function purgeNotes(report) {
+  const count = await countNotes();
+  report.push({ kind: 'note-count', count });
+  if (count <= 0) return 0;
+  if (!forceNotes) {
+    report.push({ kind: 'note-skip', note: '当前文件夹有 ' + count + ' 条笔记；清理需要 --force（会把这些都删掉，确认都是测试数据再执行）' });
+    return 0;
+  }
+  const removed = await deleteTopNotes(count);
+  report.push({ kind: 'note-deleted', removed });
+  return removed;
 }
 
 async function cleanupNotes(report) {
   const launch = await ensureAppRunning({ bundleId: 'com.apple.Notes', appName: 'Notes', processName: 'Notes' }, { waitMs: 6000 });
   await sleep(1000);
-  const beforeFront = await frontName();
-  if (dryRun) { report.push({ kind: 'note-total', dryRun: true }); return; }
-
-  let removed = 0;
-  for (let pass = 0; pass < 5; pass += 1) {
-    const n = delNotes(40);
-    removed += n;
-    if (n < 40) break;
-  }
-  report.push({ kind: 'note-deleted', removed });
-
-  // 最近删除里的再删一遍（永久删除）：把 Notes 切前台 → 点侧边栏「最近删除」→ 重复删除
-  try {
-    const info = osa('tell application "System Events" to tell process "Notes" to get {position of window 1, position of row 3 of outline 1 of scroll area 1 of splitter group 1 of window 1}');
-    const nums = (info.match(/-?\d+/g) || []).map(Number);
-    if (nums.length >= 4) {
-      osa('tell application "System Events" to set frontmost of process "Notes" to true');
-      await sleep(400);
-      const rx = nums[2]; const ry = nums[3];
-      osa('tell application "System Events" to click at {' + (rx + 40) + ', ' + (ry + 14) + '}', 8000);
-      await sleep(700);
-      const purged = delNotes(40);
-      report.push({ kind: 'note-trash-purged', removed: purged });
-    }
-  } catch {}
-  if (beforeFront && beforeFront !== 'Notes') {
-    osa('tell application "System Events" to set frontmost of first process whose name is ' + JSON.stringify(beforeFront) + ' to true', 8000);
-    await sleep(200);
-  }
+  if (dryRun) { report.push({ kind: 'note-dry-run' }); return; }
+  await purgeNotes(report);
+  // 「最近删除」没法安全自动化：Notes 辅助功能读不到标题、侧边栏行也无法脚本选中，
+  // 只能提示用户手动清（或等 30 天系统自动清）
+  report.push({ kind: 'note-trash', note: '最近删除需手动清空：打开备忘录 → 最近删除 → 删除全部' });
   if (!launch.launched) report.push({ kind: 'note-app', note: 'Notes 本来就在运行，未关闭' });
 }
 
