@@ -81,6 +81,13 @@ Electron 应用 `open -g` 之后进程先起来，窗口要几百毫秒到十几
 抖音/Antigravity 等到 40s 也没有窗口（它们随后自行退出，属应用侧问题）。
 对策：`waitForWindow()` 轮询 System Events 的窗口数，拿不到再判失败。
 
+**1.5 显示名 ≠ 进程名（很常见的坑）**
+同一个应用有三个名字：`/Applications` 里的文件名、Info.plist 的 bundle id、系统里的**进程显示名**（可能本地化）。
+比如 Keynote Creator Studio 的进程名是 `Keynote`，腾讯会议的窗口 owner 是「腾讯会议」。
+只按一个名字查会「查不到窗口 / 查不到弹窗」，甚至会让退出保护失效、错误强杀丢数据。
+对策：`windowCount()` / `waitForWindow()` / `dismissOnboarding()` / `quitApp()` 都接受候选名
+（`altNames`，矩阵自动把进程名带上），按顺序问到为止；退出保护尤其要两个名字都查。
+
 **2. 首启欢迎弹窗卡住 Apple 事件**
 Pages Creator Studio 首启弹窗期间，`tell application "Pages" to count documents` 直接超时（-1712），
 但 System Events 仍能读到窗口结构。

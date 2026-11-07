@@ -10,6 +10,7 @@ import {
   ONBOARDING_TEXT_RE,
   dismissOnboarding,
   quitApp,
+  windowCount,
 } from '../core/background.mjs';
 
 test('窗口已经在：立即返回，不睡眠', async () => {
@@ -223,4 +224,50 @@ test('TERM 之后还在跑：如实报 still-running', async () => {
   );
   assert.equal(r.quit, false);
   assert.equal(r.mode, 'still-running');
+});
+test('窗口数：显示名查不到时用进程名兜底', async () => {
+  const seen = [];
+  const n = await windowCount('Keynote Creator Studio', {
+    altNames: ['Keynote'],
+    deps: {
+      exec: async (bin, args) => {
+        const script = args.join(' ');
+        seen.push(script);
+        if (script.includes('"Keynote Creator Studio"')) throw new Error('没有这个进程');
+        return { stdout: '3' };
+      },
+    },
+  });
+  assert.equal(n, 3);
+  assert.equal(seen.length, 2, '第一个名字失败后要试第二个');
+});
+
+test('窗口数：候选名都查不到才算 -1', async () => {
+  const n = await windowCount('X', {
+    altNames: ['Y'],
+    deps: { exec: async () => { throw new Error('没有'); } },
+  });
+  assert.equal(n, -1);
+});
+
+test('退出保护：显示名查不到弹窗时，按进程名也要查到，绝不能漏掉保存提示', async () => {
+  const calls = [];
+  const r = await quitApp(
+    { appName: 'Keynote Creator Studio', processName: 'Keynote' },
+    {
+      graceMs: 10,
+      deps: {
+        isAppRunning: async () => true,
+        sleep: async () => {},
+        // 显示名不是系统里的进程名，查不到；进程名才查得到
+        dialogs: async (name) => (name === 'Keynote'
+          ? [{ index: 1, title: '', texts: ['要存储对文稿的更改吗'], buttons: ['存储', '不存储'] }]
+          : []),
+        exec: async (bin, args) => { calls.push(bin + ' ' + args.join(' ')); return { stdout: '' }; },
+      },
+    },
+  );
+  assert.equal(r.mode, 'needs-confirm');
+  assert.ok(r.detail.includes('未强杀'));
+  assert.ok(!calls.some((c) => c.includes('-TERM')), '查到保存弹窗时不许发 TERM');
 });

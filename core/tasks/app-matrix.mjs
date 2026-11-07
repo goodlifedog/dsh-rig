@@ -144,7 +144,7 @@ async function main() {
     row.launch = launch.error ? 'error' : (launch.launched ? 'launched' : 'running');
     row.launchFrontUnchanged = launch.frontUnchanged !== false;
     // 刚启动时窗口可能还没建好：等它出现再探测，否则会得到"没有窗口"的假结论
-    const ready = await waitForWindow(app.name, { timeoutMs: 12000 });
+    const ready = await waitForWindow(app.name, { timeoutMs: 12000, altNames: [app.process] });
     row.windowWaitMs = ready.waitedMs;
     row.windowAttempts = ready.attempts;
     // AX 看不到窗口时退一步看系统窗口层（菜单栏工具、自绘界面实测会这样）
@@ -155,7 +155,7 @@ async function main() {
     if (!row.windowReady) row.captureNote = '等了 ' + ready.waitedMs + 'ms 仍没有窗口';
     // 首启欢迎弹窗会卡住 Apple 事件：点掉白名单按钮（默认开，MATRIX_DISMISS=0 关）
     if (process.env.MATRIX_DISMISS !== '0') {
-      const dis = await dismissOnboarding(app.name, { timeoutMs: 6000 });
+      const dis = await dismissOnboarding(app.name, { timeoutMs: 6000, altNames: [app.process] });
       if (dis.dismissed) {
         row.onboardingDismissed = true;
         row.onboardingButton = dis.button;

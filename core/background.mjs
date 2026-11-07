@@ -561,15 +561,21 @@ export async function settleFront(expect, options = {}) {
  * @returns {Promise<number>} 窗口数；-1 表示查不到（应用没起来 / 无辅助功能权限）
  */
 export async function windowCount(app, options = {}) {
-  const timeout = Number.isFinite(options.timeoutMs) ? options.timeoutMs : 5000;
-  const script = 'tell application "System Events" to tell process ' + JSON.stringify(String(app)) + ' to count windows';
-  try {
-    const { stdout } = await exec('/usr/bin/osascript', ['-e', script], { timeout });
-    const n = Number.parseInt(String(stdout).trim(), 10);
-    return Number.isFinite(n) ? n : -1;
-  } catch {
-    return -1;
+  const opts = options || {};
+  const timeout = Number.isFinite(opts.timeoutMs) ? opts.timeoutMs : 5000;
+  const run = (opts.deps && opts.deps.exec) || exec;
+  // 显示名和进程名会不一致（Keynote Creator Studio 的进程名是 Keynote），
+  // 所以按候选名依次问一遍，谁先问到用谁。
+  const candidates = [String(app), ...((opts.altNames || []).filter(Boolean).map(String))];
+  for (const name of candidates) {
+    const script = 'tell application "System Events" to tell process ' + JSON.stringify(name) + ' to count windows';
+    try {
+      const { stdout } = await run('/usr/bin/osascript', ['-e', script], { timeout });
+      const n = Number.parseInt(String(stdout).trim(), 10);
+      if (Number.isFinite(n) && n >= 0) return n;
+    } catch {}
   }
+  return -1;
 }
 
 /**
@@ -584,7 +590,8 @@ export async function windowCount(app, options = {}) {
  */
 export async function waitForWindow(app, options = {}) {
   const opts = options || {};
-  const deps = Object.assign({ count: windowCount, sleep }, opts.deps || {});
+  const altNames = opts.altNames || [];
+  const deps = Object.assign({ count: (name) => windowCount(name, { altNames }), sleep }, opts.deps || {});
   const timeoutMs = Number.isFinite(opts.timeoutMs) ? opts.timeoutMs : 15000;
   const intervalMs = Number.isFinite(opts.intervalMs) ? opts.intervalMs : 400;
   const started = Date.now();
@@ -697,6 +704,28 @@ export async function dialogs(app, options = {}) {
 }
 
 /**
+ * 按候选名（显示名 + 进程名）收集弹窗并去重。
+ * 应用显示名和进程名经常不一致，只问一个名字会漏掉弹窗——退出保护尤其不能漏。
+ */
+async function collectDialogs(deps, names, options = {}) {
+  const out = [];
+  const seen = new Set();
+  for (const name of (names || []).filter(Boolean).map(String)) {
+    let list = [];
+    try {
+      list = (await deps.dialogs(name, options)) || [];
+    } catch {}
+    for (const d of list) {
+      const key = JSON.stringify([d.index, d.title, d.texts || [], d.buttons || []]);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(d);
+    }
+  }
+  return out;
+}
+
+/**
  * 点掉首启欢迎/引导弹窗（只认白名单按钮，宁可不点也不乱点）。
  * @param {string} app
  * @param {{timeoutMs?:number, buttonRe?:RegExp, deps?:object}} [options]
@@ -706,7 +735,7 @@ export async function dismissOnboarding(app, options = {}) {
   const opts = options || {};
   const deps = Object.assign({ dialogs, frontName, settleFront, exec: exec }, opts.deps || {});
   const before = await deps.frontName();
-  const list = await deps.dialogs(app, opts);
+  const list = await collectDialogs(deps, [app, ...(opts.altNames || [])], opts);
   for (const d of list) {
     const hay = [d.title, ...(d.texts || [])].join(' ');
     if (!ONBOARDING_TEXT_RE.test(hay)) continue;
@@ -751,7 +780,7 @@ export async function quitApp(app, options = {}) {
   // 否则用户没保存的内容会被直接丢掉（文本编辑实测就会弹这个）。
   let openDialogs = [];
   try {
-    openDialogs = (await deps.dialogs(app.appName)) || [];
+    openDialogs = await collectDialogs(deps, [app.appName, app.processName], { timeoutMs: 5000 });
   } catch {}
   const risky = openDialogs.find((d) => /保存|存储|Save|删除|Delete|覆盖|Replace|替换/i.test(
     [d.title, ...(d.texts || []), ...(d.buttons || [])].join(' '),
