@@ -413,6 +413,23 @@ scripts/start-all.mjs:18,34          起服务后探活
 - 同一份 repo-check 里，「依赖产物 / 孤儿图 / 大文件」三条已经会用 `hasGit` 标 ⏭️ 跳过，这条漏了同样的处理
 - 改法：`hasGit` 为 false 时 `add('shebang 都在第一行', true, '跳过（非 git 目录）', true)`
 
+### 2.19 还有 9 个做 AX 操作的任务没做锁屏判断（锁屏跑会红而不是跳过）
+
+项目已经有 `lockedSkipNotice()`（b背景稳定性 / cold-launch / terminal-control / user-active-demo 在用），
+但下面这些任务锁屏跑仍会报失败而不是「环境跳过」：
+
+```
+applescript-channel  cdp-driver  multi-app  parallel-real-demo  user-chrome-demo
+form-fill            form-fill-local
+boss-greet           boss-scan        （这两个随 BOSS 内容一起移除，不用管）
+```
+
+影响：单人手动跑这些任务时，锁屏状态下看到的是红点，会误以为功能坏了；
+验收整体锁屏时会提前跳过，所以不影响 `npm run accept`。
+
+改法（每个任务入口一行）：`if (await lockedSkipNotice()) return;`——helper 里已经把「打印环境跳过 + 退出 0」封装好。
+我没直接改这么多文件，是因为主会话正在这块连续动，避免撞车。
+
 ## 已修好（复核过，不用再看）
 
 控制面 token（daemon + overlay 全接口）· Origin/跨域拦截 · pid Helper 误匹配 · 验收覆盖新通道（10 项）·
