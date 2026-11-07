@@ -76,7 +76,16 @@ flow/patch-deploy-freshness.diff     代码新鲜度检查（service:status 能�
 - 影响：用户机器上 ocu 没装/路径不对时，看到的是崩溃栈而不是「请先装 ocu」
 - 建议：记日志后继续服务；overlay 崩了重载并把事件写进 `/health`
 
-## P1.5 · 安全边界的三处不一致
+## P1.5 · 安全边界的四处不一致
+
+### 2.2 非中文/英文系统上，权限弹窗可能被当成普通弹窗自动点掉
+
+- `core/dialog-guard.mjs` 的策略是：弹窗文字命中 `PERMISSION_HINTS`（中文/英文关键词）就**绝不代点**，否则当普通弹窗，允许点白名单里的安全按钮
+- 问题：`PERMISSION_HINTS` 只有中文和英文。**德语「Bedienungshilfen」、法语「Accessibilité」、日语「アクセシビリティ」都匹配不到**，会被判成 benign
+- 白名单按钮里含 `OK`——德/法/日 macOS 的权限弹窗按钮恰好也叫「OK」或「許可」等，于是「点掉普通弹窗」有概率变成「点掉授权弹窗」
+- 这违反项目自己写进 SECURITY.md 的红线（「权限类弹窗绝不代点」），而且只在非中英文系统上触发，作者本机测不到
+- 建议改成**结构判定**而不是语言判定：只要弹窗里出现授予类按钮（允许/Allow/好/許可/Erlauben/Autoriser/Zulassen/Consenti/Accetta…），或出现「系统设置/System Settings/Systemeinstellungen」字样，就一律不点；再加一条测试覆盖非中英文文案
+
 
 ### 2.3 daemon 有三个只读接口无票可读，与 SECURITY.md 的说法矛盾
 
