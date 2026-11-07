@@ -1,11 +1,12 @@
 # 外部评审提供的补丁
 
-> 最后更新：2026-11-08 06:00。**2 个待应用补丁**，其余都已被主会话实现并删除。
+> 最后更新：2026-11-08 07:10。**2 个待应用补丁**，其余都已被主会话实现并删除。
 
 ## 待应用
 
 ```bash
 git apply flow/patch-publish.diff        # 发布配置（发布前必打）
+git apply flow/patch-scope-lock.diff     # 锁屏时 scope:check 标环境跳过而不是报红
 # patch-ports 已应用（端口单一来源 core/ports.mjs），文件已删
 # repocheck-zip / packaging-files 已应用（ZIP 降级 + 打包白名单），文件已删
 ```
@@ -151,6 +152,20 @@ overlay 侧的 7788 还有约 18 处（7 个任务 + 11 个脚本），改端口
 node --test test/ports.test.mjs
 AGENTD_PORT=7799 npm run doctor   # 应报 7799 未启动
 npm run doctor                     # 应全绿
+```
+
+### patch-scope-lock.diff（28 行 / 1 个文件）
+
+**问题（实测）**：锁屏状态下跑 `npm run scope:check` 会红——`❌ 读得到当前会话标题 拿不到 dshTitle`。
+锁屏时系统前台是 loginwindow，宿主窗口标题读不到，这是环境限制，不是会话隔离坏了。
+项目里其它依赖 AX/前台的任务都已经改成「锁屏 → 环境跳过」，这个脚本还没跟上。
+
+补丁：入口检测锁屏，命中直接打印「环境跳过：屏幕已锁…」并返回 0（与 background-stability / cold-launch 等一致）；
+未锁屏但拿不到标题时，把提示补成「DSH 窗口不在前台？锁屏或最小化」。
+
+验证：
+```bash
+npm run scope:check   # 锁屏下应显示环境跳过、退出码 0；解锁后仍跑完整 7 项
 ```
 
 ## 已采纳并删除的补丁

@@ -1,0 +1,28 @@
+diff --git a/scripts/session-scope-check.mjs b/scripts/session-scope-check.mjs
+index 9202aee..c0047b9 100644
+--- a/scripts/session-scope-check.mjs
++++ b/scripts/session-scope-check.mjs
+@@ -1,4 +1,5 @@
+ import { overlayBase } from '../core/ports.mjs';
++import { isScreenLocked } from '../core/platform.mjs';
+ import { localHeaders } from '../core/local-token.mjs';
+ 'use strict';
+ // 会话隔离检查：小窗只能出现在「召唤它的那个会话」里，切走要立刻藏、切回要很快出现。
+@@ -35,11 +36,16 @@ async function cleanup() {
+ }
+ 
+ async function main() {
++  // 锁屏时系统前台是 loginwindow，宿主窗口标题读不到——这是环境限制，不是「会话隔离坏了」
++  if (await isScreenLocked()) {
++    console.log('环境跳过：屏幕已锁，读不到宿主窗口标题，无法判断会话归属');
++    return;
++  }
+   const probe = await health('__none__');
+   record('小窗服务在线', Boolean(probe && probe.ok), probe ? '不存在的 session 返回 exists=' + probe.exists + '（按需建窗，不误建）' : '无法连接');
+   const title = probe && probe.dshTitle;
+   if (!title) {
+-    record('读得到当前会话标题', false, '拿不到 dshTitle，无法判断归属');
++    record('读得到当前会话标题', false, '拿不到 dshTitle（DSH 窗口不在前台？锁屏或最小化），无法判断归属');
+     return;
+   }
+   record('读得到当前会话标题', true, title);
