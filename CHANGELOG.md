@@ -2,6 +2,9 @@
 
 ## 未发布
 
+- 服务部署守卫：daemon 端口被占时打印占用者 pid 并以退出码 78 结束（原来静默崩溃、launchd 一直重试）；新增 `npm run service:status`（监听者 pid / launchd 受管 pid / 漂移判定）与 `npm run service:restart`（只杀确认是本项目 daemon.mjs 的监听者，再 kickstart 并验证新 pid）；launchd plist 加 ThrottleInterval 10；5 项单测
+- 实测 `service:restart`：旧 pid 49698 → launchd 拉起 50606，漂移状态 ok，token 闸门复验 401 生效
+- 收尾清理：退出验收留下的计算器与备忘录窗口
 - 定位表述统一：README 开头不再自称"桌面自动化框架"，改成"看得见、验得准的后台控制层"，多通道明确为手段；Windows 整列统一标 ⚠️ 未实机验证（自启说明同步标注）
 - 新增 `flow/INDEX.md`：按"我想做什么"组织的 10 条文档入口 + 常用命令，flow 里 20 多份文档不再没有导航
 - visual（画面）通道定位写清：只做诊断/兜底判断，本仓库没有实现自动坐标点击，不参与无人值守执行

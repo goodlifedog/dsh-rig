@@ -25,8 +25,18 @@ npm run health -- --deep   # 再加 21 项行为断言（14 项小窗效果 + 7 
 ## 二、改完代码：确认跑的是新代码
 
 ```bash
-npm run restart:check   # 重启 daemon + 小窗，再验证健康
+npm run restart:check     # 重启 daemon + 小窗，再验证健康
+npm run service:status    # 看端口监听者 pid 与 launchd 受管 pid 是否一致（stray = 改动没生效）
+npm run service:restart   # 只杀确认是本项目 daemon 的监听者，再让 launchd 拉起新实例
 ```
+
+**踩过的坑**：手工启过一个 daemon 占着 7789，launchd 每次拉起都 EADDRINUSE 崩溃重试，
+于是"重启服务"一直无效、代码改了跑的还是几小时前的版本。现在：
+
+- daemon 遇到端口占用会打印占用者 pid 并以退出码 78 结束（不再静默崩溃循环）
+- `service:status` 直接报"监听者是谁 / launchd 在跑哪个 pid / 是否漂移"
+- `service:restart` 只在命令行确认是本项目 `daemon.mjs` 时才杀，杀完用 `launchctl kickstart -k` 拉起并验证新 pid
+- launchd plist 加了 `ThrottleInterval 10`，崩溃时不会把日志刷爆
 
 进程活着不代表跑的是新代码——改成 ESM 那次就是这样漏掉的。
 

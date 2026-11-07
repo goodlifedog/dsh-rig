@@ -11,6 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMac, isWindows } from './platform.mjs';
+import { parseListenerPid, diagnoseListener, parseLaunchdPid, deploymentDrift } from './service-guard.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -42,6 +43,7 @@ async function macInstall() {
     '<key>PATH</key><string>' + os.homedir() + '/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>',
     '<key>OPEN_COMPUTER_USE_VISUAL_CURSOR</key><string>0</string>',
     '</dict>',
+    '<key>ThrottleInterval</key><integer>10</integer>',
     '<key>StandardOutPath</key><string>' + path.join(ROOT, 'logs/launchd-daemon.out') + '</string>',
     '<key>StandardErrorPath</key><string>' + path.join(ROOT, 'logs/launchd-daemon.err') + '</string>',
     '</dict></plist>',
@@ -60,6 +62,7 @@ async function macInstall() {
     '<key>HOME</key><string>' + os.homedir() + '</string>',
     '<key>PATH</key><string>' + os.homedir() + '/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>',
     '</dict>',
+    '<key>ThrottleInterval</key><integer>10</integer>',
     '<key>StandardOutPath</key><string>' + path.join(ROOT, 'logs/launchd-overlay.out') + '</string>',
     '<key>StandardErrorPath</key><string>' + path.join(ROOT, 'logs/launchd-overlay.err') + '</string>',
     '</dict></plist>',
@@ -113,7 +116,77 @@ async function uninstall() {
   throw new Error('不支持的平台: ' + process.platform);
 }
 
+
+const PORT = Number(process.env.AGENTD_PORT || 7789);
+
+async function listenerInfo(port) {
+  const lsof = await run('/usr/sbin/lsof', ['-nP', '-iTCP:' + port, '-sTCP:LISTEN', '-t']);
+  const pid = parseListenerPid(lsof.out);
+  let command = '';
+  if (pid) {
+    const ps = await run('/bin/ps', ['-p', String(pid), '-o', 'command=']);
+    command = ps.out;
+  }
+  return { pid, command };
+}
+
+async function launchdPid(label) {
+  const uid = String(process.getuid ? process.getuid() : 501);
+  const r = await run('launchctl', ['print', 'gui/' + uid + '/' + label]);
+  return r.ok ? parseLaunchdPid(r.out) : 0;
+}
+
+async function status() {
+  const listener = await listenerInfo(PORT);
+  const managed = isMac ? await launchdPid(LABEL_DAEMON) : 0;
+  const verdict = diagnoseListener({ listenerPid: listener.pid, listenerCommand: listener.command, rootDir: ROOT });
+  const drift = deploymentDrift({ listenerPid: listener.pid, managedPid: managed });
+  console.log('端口 ' + PORT + ' 监听者：' + (listener.pid || '无') + (listener.command ? '（' + listener.command.slice(0, 80) + '）' : ''));
+  console.log('launchd 受管 pid：' + (managed || '无'));
+  console.log('监听者身份：' + verdict);
+  console.log('部署状态：' + drift + (drift === 'stray' ? ' —— 端口被不受管进程占着，launchd 拉不起来，先跑 npm run service:restart' : ''));
+  return { listener, managed, verdict, drift };
+}
+
+async function restartDaemon() {
+  if (!isMac) { console.log('目前只实现 macOS 的 restart'); process.exit(1); }
+  const before = await listenerInfo(PORT);
+  const verdict = diagnoseListener({ listenerPid: before.pid, listenerCommand: before.command, rootDir: ROOT });
+  if (verdict === 'foreign-process') {
+    console.error('端口 ' + PORT + ' 被别的程序占用（pid ' + before.pid + '）：' + before.command.slice(0, 120));
+    console.error('这不是本项目的守护进程，不杀。请先确认它是什么再处理。');
+    process.exit(1);
+  }
+  if (before.pid) {
+    console.log('结束旧实例 pid ' + before.pid);
+    try { process.kill(before.pid, 'SIGTERM'); } catch {}
+    for (let i = 0; i < 20; i += 1) {
+      await new Promise((r) => setTimeout(r, 250));
+      const now = await listenerInfo(PORT);
+      if (!now.pid) break;
+    }
+  }
+  const uid = String(process.getuid ? process.getuid() : 501);
+  const kick = await run('launchctl', ['kickstart', '-k', 'gui/' + uid + '/' + LABEL_DAEMON]);
+  if (!kick.ok) console.error('kickstart 失败：' + kick.err);
+  for (let i = 0; i < 40; i += 1) {
+    await new Promise((r) => setTimeout(r, 250));
+    const now = await listenerInfo(PORT);
+    if (!now.pid) continue;
+    const managed = await launchdPid(LABEL_DAEMON);
+    if (managed && now.pid === managed) {
+      console.log('已由 launchd 拉起新实例：pid ' + now.pid);
+      return;
+    }
+  }
+  const final = await status();
+  console.error('重启后没有确认到受管实例（监听者=' + final.listener.pid + '，受管=' + final.managed + '）');
+  process.exit(1);
+}
+
 const cmd = process.argv[2] || 'install';
 if (cmd === 'install') await install();
 else if (cmd === 'uninstall') await uninstall();
-else { console.log('用法: node core/service.mjs install|uninstall'); process.exit(1); }
+else if (cmd === 'restart') await restartDaemon();
+else if (cmd === 'status') await status();
+else { console.log('用法: node core/service.mjs install|uninstall|restart|status'); process.exit(1); }

@@ -33,6 +33,8 @@
     "overlay": "node overlay/start.mjs",
     "doctor": "node core/platform-smoke.mjs",
     "service:install": "node core/service.mjs install",
+    "service:restart": "node core/service.mjs restart",
+    "service:status": "node core/service.mjs status",
     "service:uninstall": "node core/service.mjs uninstall",
     "test": "node --test test/",
     "demo:platform": "node core/runner.mjs run platform-demo",

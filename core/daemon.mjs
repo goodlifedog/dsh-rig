@@ -381,6 +381,21 @@ const server = http.createServer(async (req, res) => {
   return json(res, 404, { ok: false, error: 'not found', path: p });
 });
 
+// 端口被占时给一条能直接照做的错误，不要静默崩在 launchd 里反复重试
+server.on('error', (error) => {
+  if (error && error.code === 'EADDRINUSE') {
+    execFile('/usr/sbin/lsof', ['-nP', '-iTCP:' + PORT, '-sTCP:LISTEN', '-t'], (err, stdout) => {
+      const pid = String(stdout || '').trim().split('\n')[0] || '';
+      console.error('[daemon] 端口 ' + PORT + ' 已被占用' + (pid ? '（pid ' + pid + '）' : '') +
+        '：可能是手工启动的游离实例，launchd 拉不起来。先跑 npm run service:restart');
+      process.exit(78);
+    });
+    return;
+  }
+  console.error('[daemon] 服务启动失败：' + String((error && error.message) || error));
+  process.exit(1);
+});
+
 server.listen(PORT, '127.0.0.1', () => {
   console.log('[daemon] listening on 127.0.0.1:' + PORT + ' pid=' + state.pid);
   overlay.status('后台服务已启动').catch(() => {});
