@@ -109,6 +109,9 @@ await app.getAXState({ windowPlacement: 'restore' });         // 还回去
 
 ## 四点六、应用能力矩阵（2026-11-07 实测）
 
+按门类批量跑：`MATRIX_PRESET=office|im|dev|system|media|tools npm run matrix`（清单在 `core/app-presets.mjs`），
+探测完默认只关掉本轮自己拉起的应用。
+
 ```bash
 npm run bg:verify    # 一次跑完后端控制全部验收，输出 reports/bg-verify-*.md
 npm run matrix       # 逐个应用探明：能否后台启动/读界面/点击/设值/回显

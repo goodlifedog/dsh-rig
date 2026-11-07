@@ -5,7 +5,8 @@
  *   node core/tasks/app-matrix.mjs
  *
  * 环境变量：
- *   MATRIX_APPS_JSON   覆盖应用列表
+ *   MATRIX_PRESET      按预设门类跑（office / im / dev / system / media / tools）
+ *   MATRIX_APPS_JSON   覆盖应用列表（优先级高于预设）
  *   MATRIX_QUIT=0      探测完不关自己拉起来的应用（默认会关，避免留一堆窗口）
  *   MATRIX_DISMISS=0   不点首启欢迎弹窗（默认会点白名单按钮）
  */
@@ -15,6 +16,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ensureAppRunning, frontName, state, find, windowControls, readSafe, findSafe, settleFront, waitForWindow, dismissOnboarding, quitApp } from '../background.mjs';
 import { isScreenLocked } from '../platform.mjs';
+import { presetApps } from '../app-presets.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -39,6 +41,15 @@ const DEFAULT_APPS = [
 ];
 
 let APPS = DEFAULT_APPS;
+// 优先级：MATRIX_APPS_JSON > MATRIX_PRESET > 默认列表
+if (!process.env.MATRIX_APPS_JSON && process.env.MATRIX_PRESET) {
+  try {
+    APPS = presetApps(process.env.MATRIX_PRESET);
+  } catch (e) {
+    console.error(e.message);
+    process.exit(1);
+  }
+}
 if (process.env.MATRIX_APPS_JSON) {
   try {
     const parsed = JSON.parse(process.env.MATRIX_APPS_JSON);

@@ -36,10 +36,14 @@ await quitApp(app);                                // 只关自己拉起来的
 
 ```bash
 npm run matrix                                   # 默认 11 个门类
+MATRIX_PRESET=im npm run matrix                  # 按预设门类跑：office/im/dev/system/media/tools
 MATRIX_APPS_JSON='[{"name":"Steam","bundle":"com.valvesoftware.steam","process":"steam_osx"}]' npm run matrix
 MATRIX_QUIT=0 npm run matrix                     # 探测完不关（默认会关自己开的）
 MATRIX_DISMISS=0 npm run matrix                  # 不点首启弹窗
 ```
+
+预设清单在 `core/app-presets.mjs`，改一行就能加应用；同一个应用不许出现在两个门类里，
+条目缺字段、bundle 写错都会被单测拦住。
 
 ## 三、每个坑的成因与对策
 
@@ -128,7 +132,27 @@ overlay 的系统窗口列表（CGWindowList）。只信 AX 会把菜单栏工�
 原来的 3 秒判定会报「启动后仍检测不到进程」。现在 `ensureAppRunning()` 默认等 8 秒
 （矩阵里给到 15 秒），`waitMs` 可调。
 
-## 六、已知边界
+## 六、本机已安装应用的覆盖情况
+
+| 应用 | 状态 | 说明 |
+| --- | --- | --- |
+| 备忘录 / 文本编辑 / 计算器 / 访达 / 系统设置 | 已适配 | AX 完整，可读可点可设值 |
+| QQ / 微信 / Gemini / ChatGPT | 已适配 | 操作后异步抢前台，已自动还原 |
+| Ghostty | 已适配 | 读取会抢前台；键入+回车可用 |
+| OrbStack / FastZip / State | 已适配 | Electron / 原生工具 / 菜单栏工具 |
+| Steam | 已适配 | 窗口 677ms 就绪、画面可回显、退出需 TERM |
+| iMovie | 已适配 | 读取瞬间抢前台，已还原 |
+| Safari | 已适配 | 冷启动不留窗口，需要已有窗口 |
+| Chrome | 走独立实例 | 会自己抢前台，用专用 profile 的 headless 实例 |
+| WPS Office | 已适配 | 只开首页时没有文档 |
+| Pages / Keynote / Numbers Creator Studio | 限制 | 首启弹窗卡 Apple 事件；Keynote/Numbers 的 AX 树为空，只能画面+坐标 |
+| 腾讯会议 | 限制 | AX 时有时无，窗口层可见，画面抓不到 |
+| Telegram | 限制 | 自绘窗口，AX 拿不到按钮 |
+| 抖音 / Antigravity | 限制 | 启动后自行退出（应用侧行为） |
+| Clash Verge / 奇游加速器 | **不动** | 用户在用的代理/加速器，只读状态，永不退出 |
+| OpenCode / GarageBand / UURemote / iRightMouse | 未测 | 已进预设清单，等解锁后跑 `MATRIX_PRESET=dev` 等 |
+
+## 七、已知边界
 
 - **菜单栏命令**：备忘录这类应用菜单栏节点不可查询（AXMenuBarItem/AXMenuItem 均为 0），
   后台点菜单走不通；⌘N 快捷键会把应用顶到前台，AppleScript 控制第三方应用会触发自动化权限弹窗。
