@@ -76,7 +76,16 @@ flow/patch-deploy-freshness.diff     代码新鲜度检查（service:status 能�
 - 影响：用户机器上 ocu 没装/路径不对时，看到的是崩溃栈而不是「请先装 ocu」
 - 建议：记日志后继续服务；overlay 崩了重载并把事件写进 `/health`
 
-## P1.5 · 安全边界的两处不一致
+## P1.5 · 安全边界的三处不一致
+
+### 2.3 daemon 有三个只读接口无票可读，与 SECURITY.md 的说法矛盾
+
+- 文档两处写「**daemon 与 overlay 的全部接口**都要 `X-Agent-Token`」「实测两个服务无 token 均 401」
+- 实测：`GET /`、`GET /status`、`GET /tasks` **无 token 均返回 200**（代码里 `needsToken` 只覆盖 `/run` `/stop` `/selftest`）
+- `/status` 的 943 字节里含 `pid` / `startedAt` / `current` / `queue` / `history`（任务名、时间、结果）/ `tasks` 列表
+- 更关键的是两个服务都不校验 `Host` 头：伪造 `Host: evil.example` 仍返回 200/202（token 正确时），意味着**网页可通过 DNS rebinding 读到这些只读信息**（token 它拿不到，所以只能读、不能驱动）
+- 建议二选一：① 让 daemon 也全接口要票（和 overlay 一致，最省心）；② 保留只读免票，但把文档改成「写接口要票，只读接口免票」并说明原因。无论哪种，都建议加一条 Host 白名单校验（只认 127.0.0.1 / localhost），把 DNS rebinding 这条堵死
+
 
 ### 2.4 数据目录实际是 755，文档和安全模型都假设它是 700
 
