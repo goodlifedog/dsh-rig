@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 新增 `npm run browser:bg`：后台浏览器验收（独立 headless 实例 → 打开页面 → 拟人点击跳转 → 回显），实测全程前台未变
+- 实测确认 Chrome 直接启动与 `open -g -n` 启动都会抢前台，浏览器后台控制必须走独立实例，已写入文档
 - 新增 `npm run matrix` 应用能力矩阵：7 个门类应用逐个探明后台启动/读/点/设值/回显，结果写 reports/app-matrix-*.md
 - 新增 `npm run stability` 焦点稳定性验证：12 轮后台操作 0 次抢前台、单轮约 900ms
 - 后台启动改用「先判断是否在跑（AppleScript is running），只在没跑时 open -g」，避免把已在运行的应用唤起

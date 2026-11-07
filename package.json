@@ -52,6 +52,7 @@
     "humanize:live": "node scripts/humanize-live.mjs",
     "matrix": "node core/tasks/app-matrix.mjs",
     "stability": "node core/tasks/background-stability.mjs",
+    "browser:bg": "node core/tasks/browser-background.mjs",
     "ui:check": "node scripts/ui-check.mjs",
     "health": "node scripts/health.mjs"
   }
