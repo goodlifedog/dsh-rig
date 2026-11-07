@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import {
   normalizeName,
   nextProbeCommands,
+  checkStrategyConsistency,
   flattenPresets,
   classifyApp,
   mergeInventory,
@@ -131,4 +132,33 @@ test('报告里的下一步补测段落只对未测应用出现', () => {
     { name: 'B', preset: 'im', status: '已适配', installed: true, detail: '节点 9' },
   ]);
   assert.ok(!noPending.includes('下一步补测'));
+});
+test('状态与建议控法一致时没有问题', () => {
+  const problems = checkStrategyConsistency([
+    { name: 'A', status: '已适配', strategy: 'ax' },
+    { name: 'B', status: '已适配', strategy: 'ax-read' },
+    { name: 'C', status: '可只用画面', strategy: 'visual' },
+    { name: 'D', status: '专用方案', strategy: 'dedicated' },
+    { name: 'E', status: '不动', strategy: 'no-touch' },
+    { name: 'F', status: '限制', strategy: 'blocked' },
+    { name: 'G', status: '未测', strategy: 'unknown' },
+    { name: 'H', status: '未安装', strategy: 'unknown' },
+  ]);
+  assert.deepEqual(problems, []);
+});
+
+test('自相矛盾的状态要被挑出来（比如已适配却只能画面操作）', () => {
+  const problems = checkStrategyConsistency([
+    { name: 'Keynote', status: '已适配', strategy: 'blocked' },
+  ]);
+  assert.equal(problems.length, 1);
+  assert.ok(problems[0].reason.includes('已适配'));
+  assert.ok(problems[0].reason.includes('blocked'));
+});
+
+test('报告里会写出策略一致性结论', () => {
+  const good = renderInventoryMarkdown([{ name: 'A', status: '已适配', strategy: 'ax', detail: 'ok' }]);
+  assert.ok(good.includes('状态与建议控法一致'));
+  const bad = renderInventoryMarkdown([{ name: 'B', status: '已适配', strategy: 'visual', detail: 'x' }]);
+  assert.ok(bad.includes('不一致'));
 });

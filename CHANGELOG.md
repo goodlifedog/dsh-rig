@@ -8,6 +8,7 @@
 - 新增 `dialogs()` / `dismissOnboarding()`：首启欢迎弹窗是 app-modal，会把 Apple 事件整个卡住（Pages Creator Studio 连 count documents 都超时 -1712），但 System Events 仍能读到结构；只点「继续/开始使用/知道了」白名单按钮，见到「存储/删除/取消」一律不点
 - 新增 `quitApp()`：先优雅退出，退不掉（被弹窗卡住）再按进程 TERM，如实回报 quit/term/already-stopped
 - 新增 `windowCount()`、`parseDialogDump()`、`pickOnboardingButton()` 纯函数 + 10 项单测（窗口迟到、一直没窗口、-1 不当成功、坏行解析、破坏性按钮不点）
+- 清点报告加「状态 vs 建议控法」一致性交叉校验：两套判定分开写，规则改了容易自相矛盾（如状态已适配、策略却说只能画面操作），现在报告会直接指出；3 项单测（一致不报、矛盾要点名、报告里写出结论）
 - 修显示名/进程名不一致导致的漏判：`windowCount/waitForWindow/dismissOnboarding/quitApp` 支持候选名（`altNames`），矩阵自动带上进程名；关键影响是退出保护——只按显示名查不到「要存储吗」弹窗时会错误强杀、丢未保存内容；4 项新单测（窗口数兜底、候选全失败才算 -1、按进程名查到保存弹窗后不强杀）
 - 文档补「给一个新应用做适配的步骤」：清点 → 探测 → 读建议控法 → 补预设 → 复核状态
 - 新增 `npm run apps:probe`：按应用名或门类预设一条命令探测一批应用（名字自动解析 bundle/进程名），跑完自动刷新清点；支持 --dry/--keep/--no-refresh；12 项单测覆盖参数解析、按名字匹配、扫描目录

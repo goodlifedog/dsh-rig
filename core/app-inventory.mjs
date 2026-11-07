@@ -159,6 +159,34 @@ export function mergeInventory({ installed = [], presetApps = [], tested = [], s
 }
 
 /**
+ * 交叉校验「状态」和「建议控法」是否自相矛盾。
+ * 两套判定是分开写的，规则一改就可能对不上（比如状态说已适配、策略却说只能画面操作）。
+ *
+ * @param {Array<{name?:string, status?:string, strategy?:string}>} rows
+ * @returns {Array<{name:string, status:string, strategy:string, reason:string}>}
+ */
+export function checkStrategyConsistency(rows) {
+  const allowed = {
+    '已适配': ['ax', 'ax-read'],
+    '可只用画面': ['visual'],
+    '专用方案': ['dedicated'],
+    '不动': ['no-touch'],
+    '限制': ['blocked', 'ax-read'],
+    '未测': ['unknown'],
+    '未安装': ['unknown'],
+  };
+  const out = [];
+  for (const row of rows || []) {
+    const status = String(row.status || '');
+    const strategy = String(row.strategy || '');
+    const ok = (allowed[status] || []).includes(strategy);
+    if (ok) continue;
+    out.push({ name: String(row.name || '?'), status, strategy, reason: '状态「' + status + '」不该配「' + strategy + '」' });
+  }
+  return out;
+}
+
+/**
  * 给「未测」的应用生成下一步要跑的命令，省得人手写 MATRIX_APPS_JSON。
  * @param {Array<{name:string, bundle:string, process:string, installed:boolean, status:string}>} rows
  * @returns {string[]}
@@ -199,6 +227,11 @@ export function renderInventoryMarkdown(rows, meta = {}) {
   }
   lines.push('');
   lines.push('汇总：' + order.filter((s) => counts.has(s)).map((s) => s + ' ' + counts.get(s)).join('，'));
+  const problems = checkStrategyConsistency(rows);
+  lines.push('');
+  lines.push(problems.length
+    ? '⚠️ 状态与建议控法有 ' + problems.length + ' 处不一致：' + problems.map((p) => p.name + '（' + p.reason + '）').join('；')
+    : '状态与建议控法一致。');
   const next = nextProbeCommands(rows);
   if (next.length) {
     lines.push('');
