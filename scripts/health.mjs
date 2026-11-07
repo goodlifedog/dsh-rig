@@ -252,14 +252,26 @@ async function main() {
       return { total, failed, detail: total ? (total + ' 项，' + failed + ' 项失败' + (names.length ? '：' + names.join('、') : '')) : '没有输出' };
     };
 
+    // 被检脚本在锁屏时会打印「环境跳过」并退 0：这是环境限制，不能显示成 ❌
+    const envSkipOf = (out) => {
+      const line = String(out || '').split('\n').find((l) => l.includes('环境跳过'));
+      return line ? line.trim().slice(0, 80) : '';
+    };
+
     const ui = runCheck('ui-regression.mjs');
+    const uiSkip = envSkipOf(ui.out);
     const uiSum = summarize(ui.out);
-    add('小窗效果回归', uiSum.failed === 0 && uiSum.total > 0, uiSum.detail);
-    if (!uiSum.total) add('小窗效果回归失败原因', false, ui.out.slice(-120).replace(/\n/g, ' '));
+    if (uiSkip) add('小窗效果回归', true, uiSkip);
+    else {
+      add('小窗效果回归', uiSum.failed === 0 && uiSum.total > 0, uiSum.detail);
+      if (!uiSum.total) add('小窗效果回归失败原因', false, ui.out.slice(-120).replace(/\n/g, ' '));
+    }
 
     const scope = runCheck('session-scope-check.mjs');
+    const scopeSkip = envSkipOf(scope.out);
     const scopeSum = summarize(scope.out);
-    add('会话隔离检查', scopeSum.failed === 0 && scopeSum.total > 0, scopeSum.detail);
+    if (scopeSkip) add('会话隔离检查', true, scopeSkip);
+    else add('会话隔离检查', scopeSum.failed === 0 && scopeSum.total > 0, scopeSum.detail);
   }
 
   const width = Math.max(...rows.map((r) => r.name.length)) + 2;
