@@ -2,6 +2,9 @@
 
 ## 未发布
 
+- 安全边界硬化：overlay（7788）与 daemon（7789）都拒绝带 Origin 的浏览器请求（403）、拒绝跨域预检、POST 强制 `Content-Type: application/json`（415），堵掉"网页读窗口标题/往浮窗塞图/让守护进程跑任务"这条路；客户端代码零改动
+- 新增 `docs/SECURITY.md`：已堵的 9 类攻击面（注入、授权弹窗、CDP 端口劫持、pid 复用、预置可执行文件、未保存数据、目录穿越、队列上限、浏览器来源）、刻意不做的 4 条、还没堵的 4 条、测试边界说明
+- 新增安全单测：`test/security-boundaries.test.mjs`（13 项，注入/端口主人/pid 复核/helper 信任/目录不可信 fail closed），overlay 与 daemon 各补浏览器来源与非 JSON 提交用例
 - 通道协商落地：新增 `core/driver-resolution.mjs` 与 `npm run app:resolve`（--all-user 可批量）：只读探测应用是否在跑、AX 树有无内容、CDP 端口开没开、AppleScript 授没授权、窗口在不在，输出每条通道可用性与实际降级顺序；10 项单测
 - 修 Finder 这类"有窗口但 AX 窗口数为 0"的误判：窗口可用性补一次系统窗口层（CGWindowList）证据；overlay 的窗口列表新增 `pid` 字段，按 pid 匹配本地化 owner（Finder → 访达），按名字匹配会漏
 - 抽出 `core/app-profile.mjs`（框架/otool/asar/JVM/.sdef 采集），`app:runtime` 与 `app:resolve` 共用，去掉一份重复实现

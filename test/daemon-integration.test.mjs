@@ -71,6 +71,22 @@ test('daemon：队列串行、环境失败不重试、临时失败重试一次',
     assert.equal(res.status, 400, '应拒绝可疑任务名：' + evil);
   }
 
+  // 安全边界：浏览器来源（带 Origin）一律拒绝，避免网页直接驱动守护进程跑任务
+  const fromBrowser = await fetch(BASE + '/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Origin: 'https://evil.example' },
+    body: JSON.stringify({ task: 'ok-task' }),
+  });
+  assert.equal(fromBrowser.status, 403, '带 Origin 的请求必须拒绝');
+
+  // 安全边界：非 JSON 的 POST（表单式跨站提交）一律拒绝
+  const formPost = await fetch(BASE + '/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ task: 'ok-task' }),
+  });
+  assert.equal(formPost.status, 415, '非 JSON 的 POST 必须拒绝');
+
   // 队列上限：上限 3 时一次塞 4 个应当被 429 拒绝（且不会真的入队）
   const overflow = await fetch(BASE + '/run', {
     method: 'POST',

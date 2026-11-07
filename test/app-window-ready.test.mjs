@@ -200,7 +200,12 @@ test('没有弹窗：先优雅退出，退不掉再 TERM', async () => {
         isAppRunning: async () => { checks += 1; return checks < 3; },
         sleep: async () => {},
         dialogs: async () => [],
-        exec: async (bin, args) => { calls.push(bin + ' ' + args.join(' ')); return { stdout: bin.includes('pgrep') ? '4242\n' : '' }; },
+        exec: async (bin, args) => {
+          calls.push(bin + ' ' + args.join(' '));
+          if (bin.includes('pgrep')) return { stdout: '4242\n' };
+          if (bin.includes('/bin/ps')) return { stdout: '/Applications/Steam.app/Contents/MacOS/steam_osx\n' };
+          return { stdout: '' };
+        },
       },
     },
   );
@@ -218,7 +223,11 @@ test('TERM 之后还在跑：如实报 still-running', async () => {
         isAppRunning: async () => true,
         sleep: async () => {},
         dialogs: async () => [],
-        exec: async (bin) => ({ stdout: bin.includes('pgrep') ? '777\n' : '' }),
+        exec: async (bin) => {
+          if (bin.includes('pgrep')) return { stdout: '777\n' };
+          if (bin.includes('/bin/ps')) return { stdout: '/Applications/X.app/Contents/MacOS/X\n' };
+          return { stdout: '' };
+        },
       },
     },
   );

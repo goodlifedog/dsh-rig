@@ -250,6 +250,8 @@ npm run as:channel                    # AppleScript 通道自检（先静默查�
 
 细节和依据见 [docs/APP-SUPPORT-ARCHITECTURE.md](docs/APP-SUPPORT-ARCHITECTURE.md)。
 
+安全边界（能防什么、刻意不做什么、还有什么没堵）见 [docs/SECURITY.md](docs/SECURITY.md)。
+
 ## 后台能控制哪些软件（实测）
 
 ```bash

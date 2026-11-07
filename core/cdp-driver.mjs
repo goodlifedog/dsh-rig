@@ -12,6 +12,7 @@ import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { CDP, listTargets, getVersion } from './cdp.mjs';
+import { parseLsofPid, debugPortTrust } from './safety.mjs';
 
 const exec = promisify(execFile);
 
@@ -79,6 +80,21 @@ export function pickPageTarget(targets, options = {}) {
 }
 
 /**
+ * 查某个本地端口是哪个进程在监听（防本地端口劫持：必须先确认主人再连）。
+ * @returns {Promise<number>} pid，查不到返回 0
+ */
+export async function debugPortOwner(port, options = {}) {
+  const opts = options || {};
+  const run = (opts.deps && opts.deps.exec) || exec;
+  try {
+    const { stdout } = await run('/usr/sbin/lsof', ['-nP', '-iTCP:' + Number(port), '-sTCP:LISTEN'], { timeout: 4000 });
+    return parseLsofPid(stdout);
+  } catch {
+    return 0;
+  }
+}
+
+/**
  * 探测某个端口上有没有活的 CDP 服务。
  * @returns {Promise<{ok:boolean, version?:object, error?:string}>}
  */
@@ -139,6 +155,14 @@ export async function launchWithDebug(app, options = {}) {
  */
 export async function attachPage(options = {}) {
   const opts = options || {};
+  // 给了 expectedPid 就先确认端口主人，避免连到一个冒充 CDP 的本地进程
+  if (opts.expectedPid) {
+    const ownerPid = await (opts.portOwner || debugPortOwner)(opts.port, opts);
+    const trust = debugPortTrust({ ownerPid, appPid: opts.expectedPid });
+    if (trust !== 'ok') {
+      return { ok: false, trust, error: '调试端口主人校验未通过（' + trust + '，owner=' + ownerPid + ' 期望=' + opts.expectedPid + '）' };
+    }
+  }
   const timeoutMs = Number.isFinite(opts.timeoutMs) ? opts.timeoutMs : 8000;
   const deps = Object.assign({
     listTargets,

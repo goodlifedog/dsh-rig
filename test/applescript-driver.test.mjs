@@ -39,6 +39,8 @@ test('ensureHelper：已经有可执行文件就直接用', async () => {
   const r = await ensureHelper({
     path: '/fake/ae-permission',
     deps: {
+      uid: 501,
+      stat: async () => ({ uid: 501, mode: 0o755 }),
       fs: { constants: { X_OK: 1 }, promises: { access: async () => {}, mkdir: async () => {}, writeFile: async () => {}, rm: async () => {} } },
       exec: async () => ({}),
     },
@@ -52,12 +54,19 @@ test('ensureHelper：没有就编译一次；编译失败要如实报错', async
   const r = await ensureHelper({
     path: '/fake/bin/ae-permission',
     deps: {
+      uid: 501,
+      stat: async (p) => {
+        if (p.endsWith('/bin')) return { uid: 501, mode: 0o755 };
+        throw new Error('缺文件');
+      },
+      chmod: async () => {},
       fs: {
         constants: { X_OK: 1 },
         promises: {
           access: async () => { throw new Error('缺文件'); },
           mkdir: async () => {},
           writeFile: async (p) => { written.push(p); },
+          rename: async () => {},
           rm: async () => {},
         },
       },
@@ -69,7 +78,13 @@ test('ensureHelper：没有就编译一次；编译失败要如实报错', async
   const failed = await ensureHelper({
     path: '/fake/bin/ae-permission',
     deps: {
-      fs: { constants: { X_OK: 1 }, promises: { access: async () => { throw new Error('缺文件'); }, mkdir: async () => {}, writeFile: async () => {}, rm: async () => {} } },
+      uid: 501,
+      stat: async (p) => {
+        if (p.endsWith('/bin')) return { uid: 501, mode: 0o755 };
+        throw new Error('缺文件');
+      },
+      chmod: async () => {},
+      fs: { constants: { X_OK: 1 }, promises: { access: async () => { throw new Error('缺文件'); }, mkdir: async () => {}, writeFile: async () => {}, rename: async () => {}, rm: async () => {} } },
       exec: async () => { throw new Error('没有 clang'); },
     },
   });

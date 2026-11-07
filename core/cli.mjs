@@ -46,7 +46,7 @@ async function start() {
 
 async function stop() {
   if (!(await alive())) { console.log('后台服务未运行'); return; }
-  try { await api('/stop', { method: 'POST' }); } catch {}
+  try { await api('/stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); } catch {}
   try {
     const pid = Number(fs.readFileSync(PID_FILE, 'utf8'));
     process.kill(pid, 'SIGTERM');

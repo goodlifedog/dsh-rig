@@ -137,3 +137,38 @@ test('未知接口 404', async () => {
     assert.equal(r.status, 404);
   });
 });
+test('安全边界：浏览器来源的请求一律拒绝（防网页读窗口标题/塞图）', async () => {
+  await withServer(async (base) => {
+    const res = await fetch(base + '/windows', { headers: { Origin: 'https://evil.example' } });
+    assert.equal(res.status, 403);
+    const body = await res.json();
+    assert.ok(body.error.includes('Origin'));
+  });
+});
+
+test('安全边界：跨域预检直接拒绝', async () => {
+  await withServer(async (base) => {
+    const res = await fetch(base + '/status', {
+      method: 'OPTIONS',
+      headers: { Origin: 'https://evil.example', 'Access-Control-Request-Method': 'POST' },
+    });
+    assert.equal(res.status, 403);
+  });
+});
+
+test('安全边界：POST 必须是 JSON，表单式跨站提交进不来', async () => {
+  await withServer(async (base) => {
+    const res = await fetch(base + '/frame', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ dataUrl: 'data:image/png;base64,AAAA' }),
+    });
+    assert.equal(res.status, 415);
+    const ok = await fetch(base + '/status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: '正常写入' }),
+    });
+    assert.equal(ok.status, 200, '正常 JSON 客户端不受影响');
+  });
+});

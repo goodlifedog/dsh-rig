@@ -13,6 +13,7 @@ import { promisify } from 'node:util';
 import { getOcuMcp } from './ocu-mcp.mjs';
 import { restoreFront } from './front-watch.mjs';
 import { loadCache, saveCache, methodOrder, recordMethod } from './capabilities.mjs';
+import { isSafeIdentifier, pidMatchesProcess } from './safety.mjs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -576,6 +577,8 @@ export async function windowCount(app, options = {}) {
   // 所以按候选名依次问一遍，谁先问到用谁。
   const candidates = [String(app), ...((opts.altNames || []).filter(Boolean).map(String))];
   for (const name of candidates) {
+    // 名字要拼进 AppleScript：含引号/反斜杠/控制字符的一律拒绝，避免脚本注入
+    if (!isSafeIdentifier(name)) continue;
     const script = 'tell application "System Events" to tell process ' + JSON.stringify(name) + ' to count windows';
     try {
       const { stdout } = await run('/usr/bin/osascript', ['-e', script], { timeout });
@@ -674,6 +677,7 @@ export function pickOnboardingButton(buttons, options = {}) {
  * @returns {Promise<Array<{index:number,title:string,texts:string[],buttons:string[]}>>}
  */
 export async function dialogs(app, options = {}) {
+  if (!isSafeIdentifier(String(app || ''))) return [];
   const timeout = Number.isFinite(options.timeoutMs) ? options.timeoutMs : 8000;
   const script = [
     'tell application "System Events" to tell process ' + JSON.stringify(String(app)),
@@ -804,6 +808,16 @@ export async function quitApp(app, options = {}) {
       const { stdout } = await deps.exec('/usr/bin/pgrep', ['-x', app.processName], { timeout: 3000 });
       const pid = Number.parseInt(String(stdout).trim().split('\n')[0], 10);
       if (Number.isFinite(pid) && pid > 0) {
+        // 杀之前再核对一次这个 pid 现在还是不是目标进程：pgrep 和 kill 之间 pid 可能已被复用，
+        // 不复核就可能误杀用户别的程序。
+        let comm = '';
+        try {
+          const ps = await deps.exec('/bin/ps', ['-p', String(pid), '-o', 'comm='], { timeout: 3000 });
+          comm = String(ps.stdout || '');
+        } catch {}
+        if (!pidMatchesProcess(comm, app.processName)) {
+          return { quit: false, mode: 'pid-mismatch', detail: 'pid ' + pid + ' 已不是 ' + app.processName + '（' + String(comm).trim().slice(0, 60) + '），不杀' };
+        }
         await deps.exec('/bin/kill', ['-TERM', String(pid)], { timeout: 3000 });
         // 退出可能要好几秒（ChatGPT/大应用实测 TERM 后 3 秒还没走），给到 6 秒再判失败
         for (let i = 0; i < 20; i += 1) {

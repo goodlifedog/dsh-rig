@@ -277,9 +277,35 @@ async function drain() {
   drain();
 }
 
+/**
+ * 只接受本机命令行客户端：浏览器页面发起的请求一律拒绝。
+ * 否则任何网页都能通过表单/预检直接让守护进程跑任务（任务里有打字、退出应用这类动作）。
+ */
+function assertLocalClient(req) {
+  const origin = req.headers && req.headers.origin;
+  if (origin) {
+    const error = new Error('拒绝浏览器来源的请求（Origin: ' + String(origin).slice(0, 80) + '）');
+    error.statusCode = 403;
+    throw error;
+  }
+  if ((req.method || 'GET') === 'POST') {
+    const type = String((req.headers && req.headers['content-type']) || '');
+    if (!/^application\/json\b/i.test(type)) {
+      const error = new Error('POST 需要 Content-Type: application/json');
+      error.statusCode = 415;
+      throw error;
+    }
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const p = url.pathname.replace(/\/+$/, '') || '/';
+  try {
+    assertLocalClient(req);
+  } catch (error) {
+    return json(res, error.statusCode || 403, { ok: false, error: String(error.message || error) });
+  }
 
   if (p === '/' && req.method === 'GET') {
     return json(res, 200, {

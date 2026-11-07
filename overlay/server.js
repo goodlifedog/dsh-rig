@@ -29,11 +29,29 @@ const MAX_STATUS_CHARS = 300;
 const DEFAULT_SESSION = 'default';
 const SESSION_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+// 不再放行跨域：本地接口只给本机命令行客户端用，浏览器页面一律拒绝（见 assertLocalClient）。
+const SECURITY_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
 };
+
+/**
+ * 只接受"本机进程"的请求，不接受浏览器发起的请求。
+ *
+ * 浏览器发起请求时一定带 Origin（同源也有，file:// 是 "null"）；命令行客户端不会带。
+ * 放行浏览器的后果很实在：任何网页都能读 /windows 拿到窗口标题、POST /frame 往浮窗里塞图。
+ */
+function assertLocalClient(req, method) {
+  const origin = req.headers && req.headers.origin;
+  if (origin) {
+    throw httpError(403, '拒绝浏览器来源的请求（Origin: ' + String(origin).slice(0, 80) + '）');
+  }
+  if (method === 'POST') {
+    const type = String((req.headers && req.headers['content-type']) || '');
+    if (!/^application\/json\b/i.test(type)) {
+      throw httpError(415, 'POST 需要 Content-Type: application/json');
+    }
+  }
+}
 
 function httpError(statusCode, message) {
   const error = new Error(message);
@@ -47,7 +65,7 @@ function json(res, statusCode, payload) {
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': Buffer.byteLength(body),
     'Cache-Control': 'no-store',
-  }, CORS_HEADERS));
+  }, SECURITY_HEADERS));
   res.end(body);
 }
 
@@ -141,11 +159,11 @@ function createOverlayServer(options) {
     const pathname = url.pathname.replace(/\/+$/, '') || '/';
     const method = req.method || 'GET';
 
+    // 浏览器预检直接拒掉：本地接口没有跨域使用场景
     if (method === 'OPTIONS') {
-      res.writeHead(204, CORS_HEADERS);
-      res.end();
-      return;
+      throw httpError(403, '不支持跨域预检');
     }
+    assertLocalClient(req, method);
 
     if (pathname === '/' && method === 'GET') {
       return json(res, 200, {

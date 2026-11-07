@@ -15,6 +15,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { countSdefCommands } from './app-runtime.mjs';
+import { executableTrust } from './safety.mjs';
 
 const exec = promisify(execFile);
 
@@ -65,20 +66,46 @@ export function helperPath() {
  */
 export async function ensureHelper(options = {}) {
   const target = (options && options.path) || helperPath();
-  const deps = Object.assign({ exec, fs }, (options && options.deps) || {});
+  const uid = typeof process.getuid === 'function' ? process.getuid() : -1;
+  const deps = Object.assign({ exec, fs, uid }, (options && options.deps) || {});
+  const stat = deps.stat || deps.fs.promises.stat;
+  const chmod = deps.chmod || deps.fs.promises.chmod;
+
+  // 1) 已经有文件：先验证它的归属和权限（防别人提前放一个可执行文件让我们跑）
   try {
-    await deps.fs.promises.access(target, fs.constants.X_OK);
-    return { ok: true, path: target };
+    const info = await stat(target);
+    const trust = executableTrust({ fileUid: info.uid, uid: deps.uid, mode: info.mode, exists: true });
+    if (trust === 'ok') return { ok: true, path: target, trust };
+    // 不可信的文件：不删除也不执行，直接编译覆盖（覆盖后仍是本用户的文件）
   } catch {}
+
+  // 2) 目录本身必须可信：本用户所有且不能被他人写；否则拒绝在这里编译/执行
+  const dir = path.dirname(target);
   try {
-    await deps.fs.promises.mkdir(path.dirname(target), { recursive: true });
-    const src = target + '.c';
-    await deps.fs.promises.writeFile(src, HELPER_SOURCE, 'utf8');
-    await deps.exec('/usr/bin/clang', ['-O2', '-framework', 'ApplicationServices', '-o', target, src], { timeout: 60000 });
-    await deps.fs.promises.rm(src, { force: true });
-    return { ok: true, path: target };
+    await deps.fs.promises.mkdir(dir, { recursive: true });
+    const dirInfo = await stat(dir);
+    const dirTrust = executableTrust({ fileUid: dirInfo.uid, uid: deps.uid, mode: dirInfo.mode, exists: true });
+    if (dirTrust !== 'ok') {
+      return { ok: false, path: target, error: '缓存目录不可信（' + dirTrust + '）：' + dir };
+    }
   } catch (e) {
+    return { ok: false, path: target, error: '创建缓存目录失败：' + String(e && e.message || e).slice(0, 80) };
+  }
+
+  // 3) 编译到临时文件再改名，避免用到"编译了一半"的文件
+  const tmpTarget = target + '.tmp-' + (typeof process.pid === 'number' ? process.pid : '0');
+  const src = target + '.c';
+  try {
+    await deps.fs.promises.writeFile(src, HELPER_SOURCE, 'utf8');
+    await deps.exec('/usr/bin/clang', ['-O2', '-framework', 'ApplicationServices', '-o', tmpTarget, src], { timeout: 60000 });
+    await chmod(tmpTarget, 0o755);
+    await deps.fs.promises.rename(tmpTarget, target);
+    return { ok: true, path: target, trust: 'recompiled' };
+  } catch (e) {
+    try { await deps.fs.promises.rm(tmpTarget, { force: true }); } catch {}
     return { ok: false, path: target, error: String(e && e.message || e).slice(0, 120) };
+  } finally {
+    try { await deps.fs.promises.rm(src, { force: true }); } catch {}
   }
 }
 
