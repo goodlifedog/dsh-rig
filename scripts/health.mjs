@@ -2,6 +2,7 @@
 // 一条命令看全局：服务、权限、小窗、队列、锁屏、最近失败。
 //   node scripts/health.mjs
 import { execFileSync } from 'node:child_process';
+import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,6 +19,27 @@ async function getJson(url, timeout = 2500) {
     const r = await fetch(url, { headers: localHeaders(), signal: AbortSignal.timeout(timeout) });
     return await r.json();
   } catch { return null; }
+}
+
+/** 发一个请求只取状态码（可伪造 Host）：用来实机验证安全边界，不读响应体、不改变状态 */
+function httpStatus(url, options = {}) {
+  const { host, method = 'GET', headers = {}, body = null } = options;
+  return new Promise((resolve) => {
+    let u;
+    try { u = new URL(url); } catch { resolve(0); return; }
+    const req = http.request({
+      host: u.hostname,
+      port: u.port,
+      path: u.pathname + u.search,
+      method,
+      headers: Object.assign({}, host ? { Host: host } : {}, headers),
+      timeout: 3000,
+    }, (res) => { res.resume(); resolve(res.statusCode || 0); });
+    req.on('timeout', () => { req.destroy(); resolve(0); });
+    req.on('error', () => resolve(0));
+    if (body) req.write(body);
+    req.end();
+  });
 }
 
 function sh(cmd, args, timeout = 5000) {
@@ -56,6 +78,28 @@ async function main() {
 
   const ov = await getJson('http://127.0.0.1:7788/health');
   add('小窗 7788', Boolean(ov && ov.ok), ov ? 'pid=' + ov.pid + ' session=' + ov.session : '未启动');
+
+  // 安全边界实机自检：这几条是「承诺过必须挡住」的，服务在跑就顺手验一遍
+  if (daemon && daemon.ok) {
+    const noToken = await httpStatus('http://127.0.0.1:7789/status');
+    const withToken = await httpStatus('http://127.0.0.1:7789/status', { headers: localHeaders() });
+    add('接口票据（daemon）', noToken === 401 && withToken === 200, '无票=' + noToken + '｜带票=' + withToken);
+    const daemonHost = await httpStatus('http://127.0.0.1:7789/', { host: 'evil.example:7789' });
+    add('Host 校验（daemon 防 DNS rebinding）', daemonHost === 403, 'Host=evil.example → ' + daemonHost);
+  }
+  if (ov && ov.ok) {
+    const overlayHost = await httpStatus('http://127.0.0.1:7788/health', {
+      host: 'evil.example:7788',
+      headers: localHeaders(),
+    });
+    add('Host 校验（小窗防 DNS rebinding）', overlayHost === 403, 'Host=evil.example → ' + overlayHost);
+    const badFrame = await httpStatus('http://127.0.0.1:7788/frame', {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json' }, localHeaders()),
+      body: JSON.stringify({ dataUrl: 'https://evil.example/track.png' }),
+    });
+    add('推帧白名单（不收远程图片）', badFrame === 400, '远程 dataUrl → ' + badFrame);
+  }
   if (ov) {
     const sess = await getJson('http://127.0.0.1:7788/sessions');
     if (sess && typeof sess.count === 'number') {
