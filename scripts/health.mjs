@@ -26,9 +26,11 @@ function sh(cmd, args, timeout = 5000) {
 
 async function main() {
   // 1. 服务
-  // 用 /status：它才带 history；GET / 只有 current/queued/tasks
+  // 用 /status：它才带 history 和 queueLength；GET / 只剩 ok/pid/uptimeSec
   const daemon = await getJson('http://127.0.0.1:7789/status');
-  add('后台 daemon 7789', Boolean(daemon && daemon.ok), daemon ? 'pid=' + daemon.pid + ' 队列=' + daemon.queued : '未启动');
+  // /status 返回 queue(数组) 与 queueLength，没有 queued 字段；之前这里读 daemon.queued 一直显示 undefined
+  const queueLen = daemon && (daemon.queueLength != null ? daemon.queueLength : (Array.isArray(daemon.queue) ? daemon.queue.length : null));
+  add('后台 daemon 7789', Boolean(daemon && daemon.ok), daemon ? 'pid=' + daemon.pid + ' 队列=' + (queueLen == null ? '-' : queueLen) : '未启动');
 
   // 后台服务是 launchd 起的，权限身份和终端里跑不同：实际探一次系统事件与 ocu 是否可控
   const selftest = await getJson('http://127.0.0.1:7789/selftest', 20000);

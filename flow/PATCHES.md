@@ -155,7 +155,7 @@ node --test test/retry-policy.test.mjs   # 6 项全过
 npm test                                  # 全量全绿
 ```
 
-## 8. `patch-health-queue.diff`（15 行 / 1 个文件）
+## 8. ✅ `patch-health-queue.diff`（15 行 / 1 个文件）—— 已应用，补丁文件已删除
 
 **发现**：`npm run health` 那行「后台 daemon 7789 pid=… **队列=undefined**」——`health.mjs` 读 `daemon.queued`，
 但 `/status` 返回的是 `queue`（数组）+ `queueLength`，从来没有 `queued` 字段。这条从早期一直错到现在。
