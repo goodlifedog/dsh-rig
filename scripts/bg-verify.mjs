@@ -38,9 +38,10 @@ function classify(result, name) {
   const skipped = /环境跳过/.test(result.out);
   if (skipped) return { status: 'SKIP', detail: '环境跳过（' + (result.out.match(/环境跳过[：:]([^\n]{0,40})/) || [])[1] + '）' };
   if (result.code === 0) {
-    // 取最后一段 JSON 里的关键数字
+    // 取最后一段 JSON 里的关键数字；锁屏时部分断言被跳过要标注出来，别让人以为全验了
     const summary = (result.out.match(/汇总:\s*(\{[^}]+\})/) || [])[1] || '';
-    return { status: 'PASS', detail: summary ? summary.replace(/"/g, '') : '通过' };
+    const partial = /前台断言跳过/.test(result.out) ? '（锁屏：前台断言跳过）' : '';
+    return { status: 'PASS', detail: (summary ? summary.replace(/"/g, '') : '通过') + partial };
   }
   const failLine = (result.out.match(/❌[^\n]{0,80}/) || [])[0] || '有项未通过';
   return { status: 'FAIL', detail: failLine };
