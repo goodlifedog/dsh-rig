@@ -388,6 +388,23 @@ iRightMouse | ... | none   | ...   ← 菜单栏应用，本来就没有可抓�
 - 建议：① `findForeignUiRuns` 支持按父进程链排除（`isDescendantOf` 已经在 acceptance-lock 里实现，可以直接复用）；② 至少把命中进程的 pid 写进中止原因，方便一眼看出是谁
 - 实测当前环境返回 0 个外来任务，规则本身工作正常，属于极端时序下的诊断准确性问题
 
+### 2.17 端口收口还漏了 8 处（`3c2bbc8` 说「都走 ports.mjs」，实测没有）
+
+`grep` 实测仍有 8 行写死 127.0.0.1:7788/7789：
+
+```
+scripts/health.mjs:89      Host 校验探测里的 'evil.example:7789'（端口也该跟着变）
+scripts/health.mjs:188     /stats 探测
+scripts/soak.mjs:9,10      DAEMON / OVERLAY 默认值（这里本来就支持 AGENTD_URL/OVERLAY_URL，但没读端口变量）
+scripts/ui-regression.mjs:5          BASE = 7788
+scripts/session-scope-check.mjs:5    BASE = 7788
+scripts/start-all.mjs:18,34          起服务后探活
+```
+
+影响：只改端口跑这些脚本（ui:regression / scope:check / soak / start-all）会连旧端口。
+改法：全部换成 `daemonUrl()/overlayBase()`；`soak` 保留 URL 覆盖优先级。
+我没直接改，是因为主会话刚收口完、还在动这块，避免撞车——列在这里由主会话收尾。
+
 ## 已修好（复核过，不用再看）
 
 控制面 token（daemon + overlay 全接口）· Origin/跨域拦截 · pid Helper 误匹配 · 验收覆盖新通道（10 项）·
