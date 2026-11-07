@@ -4,14 +4,14 @@
 
 ## 一、本项目自己写的部分
 
-仓库里 49 个源文件、全部 `core/`、`overlay/`、`tools/`、`scripts/`、`flow/` 内容均为本项目自己编写：
+仓库里约 120 个源文件（`core/` / `overlay/` / `tools/` / `scripts/`，数字随开发变化）、`flow/` 内容是本项目自己编写：
 
 | 模块 | 作用 |
 | --- | --- |
 | `core/daemon.mjs` `runner.mjs` `cli.mjs` | 常驻服务、任务队列、命令行 |
 | `core/agentd.mjs` | ocu 封装、overlay 客户端、应用锁、前台守卫 |
 | `core/platform.mjs` | 平台抽象（控制后端探测、路径、服务管理） |
-| `core/browser.mjs` `cdp.mjs` `human.mjs` `frames.mjs` | 离屏浏览器、CDP 客户端、拟人轨迹、帧推送 |
+| `core/browser.mjs` `cdp.mjs` `human.mjs` `humanize.mjs` | 离屏浏览器、CDP 客户端、拟人鼠标/输入轨迹 |
 | `core/backends/uia.mjs` | Windows 控制后端适配层 |
 | `core/tasks/*.mjs` | 具体任务（含 BOSS 投递与验收） |
 | `overlay/*` | 多会话小窗：主进程、HTTP 服务、渲染、平台层、会话门控 |
