@@ -22,6 +22,29 @@ const APPS = [
   { name: '抖音', bundle: 'com.bytedance.douyin.desktop', process: '抖音' },
 ];
 
+/**
+ * 汇总判断（纯函数）：通道到底能不能用，不能只看「前台有没有被抢」。
+ *
+ * 真实问题：OpenCode/抖音 端口起不来、一次 CDP 都没连上，任务却因为前台没变而报成功——
+ * 等于把「通道不可用」洗成绿灯。现在要求：有尝试的应用时，至少一个真的连上（cdp-ok）。
+ * 全部 skipped-running（应用都在跑、不动它）属于没验证，但也不是失败。
+ *
+ * @param {Array<{status:string, frontUnchanged?:boolean}>} rows
+ * @returns {{ok:boolean, frontOk:boolean, attempted:number, cdpOk:number, skippedRunning:number, problem:string}}
+ */
+export function summarizeCdpRows(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  const frontOk = list.every((r) => r && r.frontUnchanged !== false);
+  const attempted = list.filter((r) => r && r.status !== 'skipped-running').length;
+  const cdpOk = list.filter((r) => r && r.status === 'cdp-ok').length;
+  const skippedRunning = list.filter((r) => r && r.status === 'skipped-running').length;
+  const channelUsable = attempted === 0 || cdpOk > 0;
+  let problem = '';
+  if (!frontOk) problem = '前台被抢占';
+  else if (attempted > 0 && cdpOk === 0) problem = '一次 CDP 都没连上（' + attempted + ' 个应用全部失败）';
+  return { ok: frontOk && channelUsable, frontOk, attempted, cdpOk, skippedRunning, problem };
+}
+
 async function main() {
   const frontStart = await frontName();
   const rows = [];
@@ -95,13 +118,16 @@ async function main() {
   }
 
   const frontEnd = await frontName();
+  const verdict = summarizeCdpRows(rows);
   const summary = {
-    ok: rows.every((r) => r.frontUnchanged !== false),
+    ok: verdict.ok,
+    problem: verdict.problem,
     frontStart,
     frontEnd,
-    cdpOk: rows.filter((r) => r.status === 'cdp-ok').length,
+    cdpOk: verdict.cdpOk,
+    attempted: verdict.attempted,
     unavailable: rows.filter((r) => r.status === 'cdp-unavailable').length,
-    skippedRunning: rows.filter((r) => r.status === 'skipped-running').length,
+    skippedRunning: verdict.skippedRunning,
     total: rows.length,
     rows,
   };
@@ -127,9 +153,15 @@ async function main() {
   lines.push('');
   lines.push('skipped-running = 应用已在运行，不动它；cdp-unavailable = 应用没开放调试端口；cdp-ok = 连进去读到页面。');
   fs.writeFileSync(path.join(dir, 'cdp-driver-' + stamp + '.md'), lines.join('\n'));
-  console.log('\n汇总: ' + JSON.stringify({ ok: summary.ok, cdpOk: summary.cdpOk, unavailable: summary.unavailable, skippedRunning: summary.skippedRunning, total: summary.total }));
+  if (!summary.ok && summary.problem) console.log('❌ ' + summary.problem);
+  console.log('\n汇总: ' + JSON.stringify({ ok: summary.ok, problem: summary.problem, cdpOk: summary.cdpOk, attempted: summary.attempted, unavailable: summary.unavailable, skippedRunning: summary.skippedRunning, total: summary.total }));
   console.log('报告: reports/cdp-driver-' + stamp + '.md');
   if (!summary.ok) process.exitCode = 1;
 }
 
-main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
+const invokedDirectly = Boolean(process.argv[1])
+  && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (invokedDirectly) {
+  main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
+}
