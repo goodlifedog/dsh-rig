@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { isScreenLocked, lockedSkipNotice } from '../platform.mjs';
 import { overlayBase } from '../ports.mjs';
 /**
  * 双应用并行回显：同时操作两个真实软件，并把它们各自的窗口实时回显到两个小窗。
@@ -74,6 +75,11 @@ async function runText() {
 }
 
 async function main() {
+  // 锁屏下 AX/抓图不可用：这是环境限制，不是任务失败（手动跑也不该红）
+  if (await isScreenLocked()) {
+    console.log(lockedSkipNotice('parallel-real-demo.mjs'));
+    return;
+  }
   const dshTitle = (await getJson(OVERLAY + '/health?session=__none__'))?.dshTitle || '';
   const list = await getJson(OVERLAY + '/windows');
   const windows = (list && list.windows) || [];

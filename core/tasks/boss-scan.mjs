@@ -7,7 +7,7 @@ import { ocu, overlay, guard, parseJobs, countElements } from '../agentd.mjs';
 
 const APP = process.env.TARGET_APP || 'Google Chrome';
 const TARGET_FRAGMENT = 'zhipin.com/web/geek/jobs';
-import { resolveOcu } from '../platform.mjs';
+import { resolveOcu, isScreenLocked, lockedSkipNotice } from '../platform.mjs';
 
 import { isMac } from '../platform.mjs';
 if (!isMac) {
@@ -183,6 +183,11 @@ async function bindThumbnail() {
 }
 
 async function main() {
+  // 锁屏下 AX/抓图不可用：这是环境限制，不是任务失败（手动跑也不该红）
+  if (await isScreenLocked()) {
+    console.log(lockedSkipNotice('boss-scan.mjs'));
+    return;
+  }
   const t0 = Date.now();
   const evidence = { steps: [] };
 

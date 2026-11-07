@@ -1,3 +1,4 @@
+import { isScreenLocked, lockedSkipNotice } from '../platform.mjs';
 'use strict';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
@@ -17,6 +18,12 @@ const HTML = [
 
 const results = [];
 const check = (n, ok, d) => { results.push({ n, ok }); console.log((ok ? '  PASS  ' : '  FAIL  ') + n + '  ' + (d === undefined ? '' : JSON.stringify(d))); };
+
+// 拟人输入需要真实指针/屏幕，锁屏下没法验证，按环境跳过
+if (await isScreenLocked()) {
+  console.log(lockedSkipNotice('human-demo.mjs'));
+  process.exit(0);
+}
 
 const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'human-demo-'));
 const file = path.join(tmp, 'demo.html');

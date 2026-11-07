@@ -10,7 +10,7 @@ import path from 'node:path';
  * 再读回 AX 校验。没有 submit，不提交任何表单。
  */
 
-import { resolveOcu } from '../platform.mjs';
+import { resolveOcu, isScreenLocked, lockedSkipNotice } from '../platform.mjs';
 
 import { isMac } from '../platform.mjs';
 if (!isMac) {
@@ -307,6 +307,11 @@ async function ensureHostApp() {
 }
 
 async function main() {
+  // 锁屏下 AX/抓图不可用：这是环境限制，不是任务失败（手动跑也不该红）
+  if (await isScreenLocked()) {
+    console.log(lockedSkipNotice('form-fill-local.mjs'));
+    return;
+  }
   const evidence = {};
   const frontBefore = await frontmost();
   evidence.frontmostBefore = frontBefore;

@@ -18,7 +18,7 @@ import { readChatItems, diffChat } from './greet-verify.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
-import { resolveOcu } from '../platform.mjs';
+import { resolveOcu, isScreenLocked, lockedSkipNotice } from '../platform.mjs';
 const OCU = resolveOcu() || path.join(os.homedir(), '.local/bin/ocu');
 const APP = process.env.TARGET_APP || 'Google Chrome';
 const TARGET = Math.max(1, Number(process.env.GREET_LIMIT || 2));
@@ -102,6 +102,11 @@ function parseResult(stdout) {
 
 // ---------- 主流程 ----------
 async function main() {
+  // 锁屏下 AX/抓图不可用：这是环境限制，不是任务失败（手动跑也不该红）
+  if (await isScreenLocked()) {
+    console.log(lockedSkipNotice('boss-greet.mjs'));
+    return;
+  }
   await overlay.status('BOSS 投递：开始（逐条核对）');
 
   // 先建立基线。读不到消息列表就绝不下发 —— 没有验收手段的投递一律不做。

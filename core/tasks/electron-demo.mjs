@@ -1,3 +1,4 @@
+import { isScreenLocked, lockedSkipNotice } from '../platform.mjs';
 'use strict';
 
 /**
@@ -69,6 +70,11 @@ function check(name, ok, detail) {
 }
 
 async function main() {
+  // 锁屏下 AX/抓图不可用：这是环境限制，不是任务失败（手动跑也不该红）
+  if (await isScreenLocked()) {
+    console.log(lockedSkipNotice('electron-demo.mjs'));
+    return;
+  }
   const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'electron-demo-'));
   const htmlPath = path.join(tempDir, 'demo.html');
   let host = null;

@@ -1,3 +1,4 @@
+import { isScreenLocked, lockedSkipNotice } from '../platform.mjs';
 'use strict';
 // 验证「默认操作你自己的 Chrome」这条链路：只读 + 可选的后台点击，全程不切前台。
 //   node core/runner.mjs run user-chrome-demo
@@ -11,6 +12,11 @@ function frontmostFromList(text) {
 }
 
 async function main() {
+  // 锁屏下 AX/抓图不可用：这是环境限制，不是任务失败（手动跑也不该红）
+  if (await isScreenLocked()) {
+    console.log(lockedSkipNotice('user-chrome-demo.mjs'));
+    return;
+  }
   const mcp = await getOcuMcp();
   const before = frontmostFromList((await mcp.callTool('list_apps', {})).text);
   console.log('操作前前台:', before);
