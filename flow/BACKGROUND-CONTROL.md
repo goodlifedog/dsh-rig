@@ -121,6 +121,23 @@ npm run stability   # 连续多轮后台操作，统计前台被抢次数与单�
    走 AX 语义通路，不抢前台（矩阵已验证）
 2. **浏览器**：用独立实例（headless 或独立 profile），不碰用户正在用的窗口
 
+### 冷启动验收：`npm run cold:launch`（2026-11-07）
+
+把应用彻底退掉，再用后台方式拉起，逐步检查前台：
+
+| 应用 | 退出 | 退出后前台 | 冷启动 | 启动后前台 |
+| --- | --- | --- | --- | --- |
+| 计算器 | 成功 | DeepSeek Harness | 成功 | DeepSeek Harness |
+| 系统设置 | 成功 | DeepSeek Harness | 成功 | DeepSeek Harness |
+| 备忘录 | 成功 | DeepSeek Harness | 成功 | DeepSeek Harness |
+
+三步（退出、启动、就绪）前台都没有变化。注意：`open -g -b <bundle id>` 在这台机器上
+不一定能拉起应用（bundle 解析失败），可靠写法是 `open -g -a <本地化应用名>`；
+判断"是否在运行"用英文可执行名（`pgrep -x Calculator`）最稳，中文应用名对 AppleScript 可用但 shell 里不可靠。
+
+锁屏时矩阵/冷启动会被系统挡住（AX 整体失效），`npm run matrix` 会直接报"环境跳过"，
+不会给出"全不可读"的假结论。
+
 ### 前台看门狗（2026-11-07）
 
 任务运行时后台轮询前台（System Events，约 120ms/次），一旦发现被抢就还原到用户原来的应用：

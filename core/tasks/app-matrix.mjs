@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ensureAppRunning, frontName, state, find } from '../background.mjs';
+import { isScreenLocked } from '../platform.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -17,13 +18,13 @@ const OVERLAY = process.env.OVERLAY_URL || 'http://127.0.0.1:7788';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const APPS = [
-  { name: '备忘录', bundle: 'com.apple.Notes' },
-  { name: '文本编辑', bundle: 'com.apple.TextEdit' },
-  { name: '计算器', bundle: 'com.apple.calculator' },
-  { name: '访达', bundle: 'com.apple.finder' },
-  { name: '系统设置', bundle: 'com.apple.systempreferences' },
-  { name: 'Clash Verge', bundle: 'com.nicenormalboy.clash-verge' },
-  { name: 'Telegram', bundle: 'com.tdesktop.Telegram' },
+  { name: '备忘录', bundle: 'com.apple.Notes', process: 'Notes' },
+  { name: '文本编辑', bundle: 'com.apple.TextEdit', process: 'TextEdit' },
+  { name: '计算器', bundle: 'com.apple.calculator', process: 'Calculator' },
+  { name: '访达', bundle: 'com.apple.finder', process: 'Finder' },
+  { name: '系统设置', bundle: 'com.apple.systempreferences', process: 'System Settings' },
+  { name: 'Clash Verge', bundle: 'com.nicenormalboy.clash-verge', process: 'clash-verge' },
+  { name: 'Telegram', bundle: 'com.tdesktop.Telegram', process: 'Telegram' },
 ];
 
 async function restoreFront(target) {
@@ -69,6 +70,12 @@ async function probeCapture(session, pattern, titleHint) {
 }
 
 async function main() {
+  // 锁屏时 AX 整体不可用（已知系统限制），这时跑矩阵只会得到"全不可读"的假结论
+  if (await isScreenLocked()) {
+    console.log('环境跳过：屏幕已锁，锁屏下 AX/抓图都不可用，等解锁后再跑 npm run matrix');
+    process.exitCode = 0;
+    return;
+  }
   const titleHint = (await getJson(OVERLAY + '/health?session=__none__'))?.dshTitle || '';
   const frontStart = await frontName();
   const rows = [];
@@ -82,7 +89,7 @@ async function main() {
     const before = await frontName();
     const steps = {};
 
-    const launch = await ensureAppRunning({ bundleId: app.bundle, appName: app.name });
+    const launch = await ensureAppRunning({ bundleId: app.bundle, appName: app.name, processName: app.process });
     steps.launch = await frontName();
     row.launch = launch.error ? 'error' : (launch.launched ? 'launched' : 'running');
     row.launchFrontUnchanged = launch.frontUnchanged !== false;

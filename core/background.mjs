@@ -24,8 +24,18 @@ export async function frontName() {
   }
 }
 
-/** 应用是否在运行：优先按本地化名称问 AppleScript，其次按 bundle id 找进程 */
-export async function isAppRunning({ bundleId, appName }) {
+/**
+ * 应用是否在运行。
+ * 进程名（英文可执行名，如 Calculator / Notes）最可靠；其次问 AppleScript 本地化名称；
+ * 最后按 bundle id 匹配进程命令行。
+ */
+export async function isAppRunning({ bundleId, appName, processName }) {
+  if (processName) {
+    try {
+      const { stdout } = await exec('/usr/bin/pgrep', ['-x', processName], { timeout: 3000 });
+      if (stdout.trim()) return true;
+    } catch {}
+  }
   if (appName) {
     try {
       const { stdout } = await exec('/usr/bin/osascript', ['-e', 'application ' + JSON.stringify(appName) + ' is running'], { timeout: 4000 });
@@ -45,30 +55,37 @@ export async function isAppRunning({ bundleId, appName }) {
  * 后台启动应用：open -g 不激活前台；返回 { launched, front, frontUnchanged }。
  * 已经在运行的应用直接返回（不去碰它，避免某些应用被 open 唤起时抢前台）。
  */
-export async function ensureAppRunning({ bundleId, appName }) {
+export async function ensureAppRunning({ bundleId, appName, processName }) {
   const before = await frontName();
-  if (await isAppRunning({ bundleId, appName })) {
+  const check = { bundleId, appName, processName };
+  if (await isAppRunning(check)) {
     return { launched: false, running: true, front: before, frontUnchanged: true };
   }
   let error = '';
-  try {
-    if (appName) await exec('/usr/bin/open', ['-g', '-a', appName], { timeout: 8000 });
-    else await exec('/usr/bin/open', ['-g', '-b', bundleId], { timeout: 8000 });
-  } catch (e) {
-    error = String(e.message || e);
-  }
-  // 等进程起来（最多 6 秒）
-  for (let i = 0; i < 30; i += 1) {
-    if (await isAppRunning({ bundleId, appName })) break;
-    await sleep(200);
+  // 优先按本地化应用名，其次 bundle id；两种都尝试一遍
+  const attempts = [];
+  if (appName) attempts.push(['-a', appName]);
+  if (bundleId) attempts.push(['-b', bundleId]);
+  for (const args of attempts) {
+    try {
+      await exec('/usr/bin/open', ['-g', ...args], { timeout: 8000 });
+      for (let i = 0; i < 15; i += 1) {
+        if (await isAppRunning(check)) break;
+        await sleep(200);
+      }
+      if (await isAppRunning(check)) break;
+    } catch (e) {
+      error = String(e.message || e);
+    }
   }
   const after = await frontName();
-  const started = await isAppRunning({ bundleId, appName });
+  const started = await isAppRunning(check);
   return {
     launched: started,
     running: started,
     error: started ? '' : (error || '启动后仍检测不到进程'),
     appName,
+    processName,
     front: after,
     frontUnchanged: before === after,
     before,
