@@ -1,7 +1,7 @@
 # 评审待办（外部检查者维护）
 
 > 每次复查后更新，**只看这一页就够**。详细理由见 `REVIEW-2026-11-07.md`。
-> 更新：2026-11-08 08:55
+> 更新：2026-11-08 09:00
 >
 > 注：复查时机器处于锁屏状态（ioreg `CGSSessionScreenIsLocked = true`），GUI 类任务一律没跑。
 
@@ -30,6 +30,8 @@
 1. **发布配置不合格（补丁 `flow/patch-publish.diff` 我刚复验过，仍可干净应用）**：包名 `desktop-agent` 已被 npm 占用（发布必然 403）；缺 `bin`/`files`/`repository`；CI 矩阵跑三平台但项目只支持 macOS；README 徽章还是 `USER` 占位。补丁已备：`git apply flow/patch-publish.diff`。
 
 ## 下一批
+
+14. **「还原前台」缺失败信号**：`settleFront()` 会返回 `finalFront`，但**没有任何调用方看它**（app-matrix / cdp-driver / applescript-channel 都只取 `stolen`）。所以「尝试还原了但没成功」和「还原成功」在报告里长得一模一样。建议：① 返回值加 `restored: finalFront === expect`；② 报告加一列「前台还原 ok/失败」，失败时日志写明「还原失败，当前前台是 X」；③ README 那句改成「会尝试立刻还原；还原失败会在报告里标出来」——承诺的强度应该由「最终状态」决定，不是由「尝试过」决定。
 
 13. **锁屏跳过统一化留了三处不可达代码**：`background-stability.mjs:17/18`、`terminal-control.mjs:33/34` 连着两次同样的锁屏检查（第二段永远不执行）；`cold-launch.mjs:46` 提前 return 之后，`48-49` 的 `locked` 恒为 false，那句「提示：屏幕已锁 —— 前台断言跳过」永远打不出来。更要紧的是 cold-launch 原本有「锁屏时照跑、只跳过前台断言」的设计（注释写着），现在整任务都跳过了，**锁屏场景下不再验证后台启动能力**。建议二选一：要么删死代码统一跳过，要么 cold-launch 恢复「照跑 + 只跳过前台断言」——我倾向后者，锁屏是常态，否则「无人值守」在测试上是空的。
 
