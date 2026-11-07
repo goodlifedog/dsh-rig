@@ -289,6 +289,18 @@ flow/patch-deploy-freshness.diff     代码新鲜度检查（service:status 能�
 - 主会话在 `core/safety.mjs` 加了 `attachSpawnError(child, onError)`：只把第一次失败交给调用方，监听常驻（避免 `once` 之后再有 error 变成未捕获异常），配 `test/spawn-error.test.mjs`
 - 我当初那条扫描是**启发式误报**：它只看 spawn 后 1400 字符内有没有 `on('error')`，看不到「通过 helper 挂监听」的写法。以后同类扫描要顺带 grep 一下 helper
 
+### 2.11 仓库里 20 张开发截图没有任何文档引用（2.8 MB，建议开前清掉）
+
+- `overlay/docs/` 共 24 个图片文件，其中只有 **4 张**被 README/文档引用（`multi-session.png`、`ui-live-expanded.jpg`、`ui-live-small.png`、`ui-live2-*.png`）
+- 其余 20 张是开发过程的 UI 截图（`ui-gallery-expanded.png` 613KB、`clarity-expanded.png` 506KB、`ui-before-ux-*.png` 355KB…），合计 **2.8 MB**
+- 它们已经被排除在 npm 包外（打包白名单里排掉了），但还在 git 仓库里——克隆下来会多 2.8MB，公开后也显得仓库里有大量「过程产物」
+- 建议：删掉这 20 张（需要留档的话挪到单独分支或 gist），README 引用的 4 张保留。命令：
+  ```bash
+  git rm overlay/docs/ui-gallery-expanded.png overlay/docs/clarity-expanded.png \
+         overlay/docs/ui-before-ux-*.png overlay/docs/title-gate-a.png \
+         overlay/docs/overlay-pip*.png overlay/docs/space-own.png overlay/docs/clarity-small.png
+  ```
+
 ## 已修好（复核过，不用再看）
 
 控制面 token（daemon + overlay 全接口）· Origin/跨域拦截 · pid Helper 误匹配 · 验收覆盖新通道（10 项）·
