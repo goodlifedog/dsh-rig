@@ -430,7 +430,7 @@ boss-greet           boss-scan        （这两个随 BOSS 内容一起移除，
 改法（每个任务入口一行）：`if (await lockedSkipNotice()) return;`——helper 里已经把「打印环境跳过 + 退出 0」封装好。
 我没直接改这么多文件，是因为主会话正在这块连续动，避免撞车。
 
-### 2.20 cdp-driver 的 ok 只看「前台没被抢」，一次 CDP 都没连上也叫成功
+### 2.20 三个任务的 ok 只看「前台没被抢」——真验证项没参与判定（cdp-driver / applescript-channel / app-matrix）
 
 实测（锁屏下跑，其实锁屏无关）：
 
@@ -440,7 +440,7 @@ boss-greet           boss-scan        （这两个随 BOSS 内容一起移除，
 `ok` 的算法是 `rows.every((r) => r.frontUnchanged !== false)`——只验证了「没抢前台」，
 而任务本意是「CDP 能不能连进去读页面」。结果 0 个连上、2 个不可用，仍然 exit 0。
 
-对比同类任务的正确写法：`app-matrix` 用 `readable/clickable/liveCapture` 三个计数 + 应用名，读不到就明说；
+对比：`app-matrix` 至少把 `readable/clickable/liveCapture` 三个计数和应用名摆出来，读不到会明说（但它同样没让这些计数进 ok 判定，见下）；
 `cdp-driver` 的汇总里也有这些计数，只是没有参与 ok 判定。
 
 建议：
@@ -448,6 +448,14 @@ boss-greet           boss-scan        （这两个随 BOSS 内容一起移除，
 - 全部 `unavailable` / `skippedRunning` → 标环境跳过（验收不算失败也不算通过）
 - 有任何 `frontUnchanged === false` → 失败
 
+
+同一个模式还有两处（静态确认，未实跑失败场景）：
+
+- `applescript-channel.mjs:76`：`ok: rows.every((r) => r.frontUnchanged !== false)`，而 `helperOk`（System Events 能不能用）只出现在汇总里，不影响退出码——helper 挂了也会 exit 0
+- `app-matrix.mjs:289`：`ok: allFrontOk`，`readable` / `clickable` / `liveCapture` 三个真验证计数同样不参与判定
+
+共同问题：**「这次到底验证到了什么」没有进入成功判定**，只有「有没有打扰用户」进了。
+对验收类任务来说，前者才是主目标。建议三个任务统一成：主验证项有正向结果才算通过，全不可用标环境跳过，违纪（抢前台/改用户数据）才失败。
 这条跟之前修过的「锁屏假失败」是一对：一个是环境不行时报失败，一个是环境不行时报成功。后者更危险——因为不会有人去查一个绿点。
 ## 已修好（复核过，不用再看）
 
