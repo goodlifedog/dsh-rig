@@ -40,8 +40,9 @@ export function findForeignUiRuns(psOutput, options = {}) {
     const command = m[2];
     if (!pid || self.has(pid)) continue;
     if (!patterns.some((re) => re.test(command))) continue;
-    // 只看真正的 node 进程，避免匹配到 grep/编辑器/日志文件名
-    if (!/\bnode\b/.test(command)) continue;
+    // 只认「以 node 可执行文件开头」的命令：否则 shell 包装（bash -c node ... scripts/bg-verify.mjs）
+    // 也会被当成另一个验收，自己把自己挡住（实测踩过）
+    if (!/^(\S*\/)?node(\s|$)/.test(command)) continue;
     out.push({ pid, command: command.slice(0, 200) });
   }
   return out;

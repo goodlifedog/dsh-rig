@@ -57,9 +57,10 @@ function classify(result, name) {
     // 取最后一段 JSON 里的关键数字；锁屏时部分断言被跳过要标注出来，别让人以为全验了
     const summary = (result.out.match(/汇总:\s*(\{[^}]+\})/) || [])[1] || '';
     const partial = /前台断言跳过/.test(result.out) ? '（锁屏：前台断言跳过）' : '';
+    const isPartial = Boolean(partial);
     const skipMatch = result.out.match(/"skipped":\s*(\d+)/);
     const skipNote = skipMatch && Number(skipMatch[1]) > 0 ? '（' + skipMatch[1] + ' 个应用因安全原因跳过）' : '';
-    return { status: 'PASS', detail: (summary ? summary.replace(/"/g, '') : '通过') + partial + skipNote };
+    return { status: 'PASS', partial: isPartial, detail: (summary ? summary.replace(/"/g, '') : '通过') + partial + skipNote };
   }
   const failLine = (result.out.match(/❌[^\n]{0,80}/) || [])[0] || '有项未通过';
   return { status: 'FAIL', detail: failLine };
@@ -80,7 +81,7 @@ async function main() {
     process.stdout.write('跑 ' + check.name + ' … ');
     const result = await run(check.script, check.timeoutMs);
     const verdict = classify(result, check.name);
-    rows.push({ name: check.name, status: verdict.status, detail: verdict.detail, ms: result.ms });
+    rows.push({ name: check.name, status: verdict.status, partial: Boolean(verdict.partial), detail: verdict.detail, ms: result.ms });
     console.log(verdict.status + '  ' + (verdict.detail || '') + '  ' + (result.ms / 1000).toFixed(1) + 's');
   }
 
@@ -93,7 +94,11 @@ async function main() {
     const mark = r.status === 'PASS' ? '  ✅ ' : (r.status === 'SKIP' ? '  ⚠️ ' : '  ❌ ');
     console.log(mark + r.name.padEnd(w) + r.status.padEnd(6) + (r.detail || ''));
   }
-  console.log('\n通过 ' + passed.length + ' 项' + (skipped.length ? '，环境跳过 ' + skipped.length + ' 项' : '') + (failed.length ? '，失败 ' + failed.length + ' 项' : '') + '\n');
+  const partialPassed = passed.filter((r) => r.partial).length;
+  console.log('\n通过 ' + passed.length + ' 项'
+    + (partialPassed ? '（其中 ' + partialPassed + ' 项前台断言跳过，只验了一半）' : '')
+    + (skipped.length ? '，环境跳过 ' + skipped.length + ' 项' : '')
+    + (failed.length ? '，失败 ' + failed.length + ' 项' : '') + '\n');
 
   const dir = path.join(ROOT, 'reports');
   fs.mkdirSync(dir, { recursive: true });
@@ -102,7 +107,8 @@ async function main() {
     '# 后台控制验收报告',
     '',
     '- 时间：' + new Date().toISOString(),
-    '- 结果：通过 ' + passed.length + '，环境跳过 ' + skipped.length + '，失败 ' + failed.length,
+    '- 结果：通过 ' + passed.length + (partialPassed ? '（其中 ' + partialPassed + ' 项前台断言跳过）' : '')
+      + '，环境跳过 ' + skipped.length + '，失败 ' + failed.length,
     '',
     '| 项目 | 结果 | 说明 |',
     '| --- | --- | --- |',

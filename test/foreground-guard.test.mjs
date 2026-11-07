@@ -12,6 +12,7 @@ test('识别出别人的 acceptance / bg-verify / 矩阵进程', () => {
     '400 node /repo/core/tasks/background-control.mjs',
     '500 node /repo/core/tasks/background-stability.mjs',
     '600 /usr/bin/grep acceptance.mjs',
+    '650 bash -c node --check scripts/bg-verify.mjs && npm run bg-verify',
     '700 node /repo/core/runner.mjs run ok-task',
   ].join('\n');
   const got = findForeignUiRuns(ps);
