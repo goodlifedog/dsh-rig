@@ -2,6 +2,9 @@
 
 ## 未发布
 
+- 修「反复切屏 + 测试数据残留」的根因：外部会话在用户使用期间反复跑 `npm run accept`。验收现在：① `reports/.acceptance.lock` 互斥，两个验收不会并发；② 入口检查系统空闲时间，<180 秒直接拒绝（`ACCEPT_FORCE=1` 可强跑）；③ 结束自动 `npm run cleanup:test` 清掉笔记/文稿/测试应用
+- 新增 `npm run cleanup:test`：删备忘录里标题匹配「后台控制验证/后台写入/后台测试」的笔记（System Events 次要动作，AX 层 secondaryAction 在这种窗口上假成功）、文本编辑空/测试文稿、退出计算器等测试应用；Chrome 标签页与聊天记录只报告不动
+- 新增 `flow/AGENT-COORDINATION.md`：多会话协作约定（验收互斥、用户在用不跑、跑完清理、服务用 launchd 管理、评审只读）
 - 新增 `npm run prune` 日志/报告轮转：日志留 7 天（logs/runs 按文件名时间、logs/daemon 按 mtime）、报告留最近 200 个；默认演练，`--apply` 才删；daemon 启动时自动跑一次（`PRUNE_ON_START=0` 关）；只允许删 logs/ 与 reports/ 下的文件（`isPrunablePath` 守卫 + 4 项单测）
 - `service:uninstall` 现在会清掉控制面 token，并结束占着 7788/7789 的本项目游离进程（确认属于本项目才杀，别人占着不动）
 - 修应用锁被抢（外部评审第 25 轮）：`withAppLock` 现在先看持锁进程 pid 是否还活着，活着就不算过期；持锁期间每 staleMs/3 心跳刷新 mtime——长任务（>3 分钟）不会再被第二个任务抢锁导致两个任务同时控制同一应用；3 项单测（死锁接管 / 活锁不抢 / 心跳续期）

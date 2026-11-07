@@ -113,7 +113,67 @@ async function runTask(name, timeoutMs = 180000, env) {
   return ok;
 }
 
+
+const LOCK_FILE = path.join(ROOT, 'reports', '.acceptance.lock');
+
+/** 验收会切窗口、启动应用：同一时刻只允许一个，避免外部会话反复跑把用户屏幕切成幻灯片 */
+function acquireAcceptanceLock() {
+  try {
+    if (fs.existsSync(LOCK_FILE)) {
+      const info = String(fs.readFileSync(LOCK_FILE, 'utf8')).trim().split(' ');
+      const pid = Number(info[0]) || 0;
+      let alive = false;
+      if (pid) { try { process.kill(pid, 0); alive = true; } catch {} }
+      if (alive) {
+        console.error('另一个验收正在进行（pid ' + pid + '），本次退出（避免重复切窗口）。');
+        return false;
+      }
+    }
+    fs.mkdirSync(path.dirname(LOCK_FILE), { recursive: true });
+    fs.writeFileSync(LOCK_FILE, process.pid + ' ' + new Date().toISOString());
+    return true;
+  } catch {
+    return true;
+  }
+}
+
+function releaseAcceptanceLock() {
+  try {
+    const pid = Number(String(fs.readFileSync(LOCK_FILE, 'utf8')).trim().split(' ')[0]);
+    if (pid === process.pid) fs.unlinkSync(LOCK_FILE);
+  } catch {}
+}
+
+/** 用户最近有没有在用电脑：HID 空闲时间小于 180 秒就算在用；验收会切窗口，不该这时候跑 */
+function userRecentlyActive() {
+  if (process.env.ACCEPT_FORCE === '1') return false;
+  if (process.platform !== 'darwin') return false;
+  try {
+    const out = execFileSync('/usr/sbin/ioreg', ['-c', 'IOHIDSystem', '-d', '4'], { encoding: 'utf8', timeout: 4000 });
+    const m = out.match(/"HIDIdleTime" = (\d+)/);
+    if (!m) return false;
+    const idleSec = Number(m[1]) / 1e9;
+    if (idleSec < 180) {
+      console.error('检测到你正在使用电脑（空闲 ' + idleSec.toFixed(0) + ' 秒），验收会切窗口，先不跑。');
+      console.error('确实要跑：ACCEPT_FORCE=1 npm run accept');
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/** 验收跑完自动清理测试数据（笔记/文稿/测试应用），别把脏数据留给用户 */
+async function cleanupAfterAcceptance() {
+  try {
+    await run('node', ['scripts/cleanup-test-data.mjs'], { timeout: 240000 });
+  } catch {}
+}
+
 async function main() {
+  if (!acquireAcceptanceLock()) return;
+  if (userRecentlyActive()) { releaseAcceptanceLock(); return; }
   console.log('=== 桌面代理端到端验收 ===');
   const h = await checkOverlay();
   if (h.ok) await checkIdleHide();
@@ -143,6 +203,8 @@ async function main() {
     } catch {}
   }
 
+  await cleanupAfterAcceptance();
+
   const passed = RESULTS.filter((r) => r.ok && !r.skipped).length;
   const skipped = RESULTS.filter((r) => r.skipped).length;
   const total = RESULTS.length;
@@ -165,10 +227,12 @@ async function main() {
   fs.writeFileSync(file, lines.join('\n') + '\n');
   console.log('报告：' + file);
   // 环境跳过不算失败：只有"没通过且不是跳过"才返回 1
+  releaseAcceptanceLock();
   process.exit(passed === total - skipped ? 0 : 1);
 }
 
 main().catch((e) => {
   console.error('FAIL:', e.message);
+  releaseAcceptanceLock();
   process.exit(2);
 });

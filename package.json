@@ -56,6 +56,7 @@
     "apps:inventory": "node scripts/app-inventory.mjs",
     "dialogs:guard": "node core/dialog-guard.mjs",
     "prune": "node scripts/prune.mjs",
+    "cleanup:test": "node scripts/cleanup-test-data.mjs",
     "apps:probe": "node scripts/apps-probe.mjs",
     "app:runtime": "node scripts/app-runtime.mjs",
     "app:resolve": "node scripts/app-resolve.mjs",
