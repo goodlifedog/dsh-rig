@@ -84,7 +84,7 @@ npm run app:resolve -- "Google Chrome"   # 协商结果应变成 AppleScript（�
 node --test test/driver-resolution.test.mjs
 ```
 
-## 5. `patch-token-permissions.diff`（116 行 / 2 个文件）
+## 5. ✅ `patch-token-permissions.diff`（116 行 / 2 个文件）—— 已应用（主会话实现，覆盖更全），补丁文件已删除
 
 **实测发现**：`~/.desktop-agent` 实际是 755（文档写 700），目录里的 `chrome-profile` / `headless-profile`
 也是 755、大量文件 644 —— 浏览器 profile 里可能有登录态 cookie，本机其他用户可读。
@@ -98,6 +98,12 @@ node --test test/driver-resolution.test.mjs
 node --test test/token-perm.test.mjs
 ls -ld ~/.desktop-agent          # 跑过一次 daemon 后应为 drwx------
 ```
+
+**已应用（2026-11-08）**：实现落在 `core/local-token.cjs` 的 `hardenDataDir`（除目录/文件外，
+还把 bin/smoke/chrome-profile/headless-profile-p1/p2 六个子目录一起收紧），
+`core/browser.mjs` 建 profile 后也 chmod 700；测试在 `test/local-token.test.mjs`（而非补丁里的
+`test/token-perm.test.mjs`）。实机重启服务后复核全部 `drwx------`、token `-rw-------`。
+补丁文件已删除，可从 git 历史查到。
 
 ## 已作废（不要再应用）
 
