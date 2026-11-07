@@ -96,7 +96,7 @@ test('报告渲染：有表头、有状态列、汇总按顺序', () => {
     { name: 'B', preset: '', status: '不动', detail: '代理工具' },
     { name: 'C', preset: 'dev', status: '已适配', detail: '节点 9' },
   ], { matrixReport: 'reports/app-matrix-x.json' });
-  assert.ok(md.includes('| 应用 | 门类 | 状态 | 说明 |'));
+  assert.ok(md.includes('| 应用 | 门类 | 状态 | 建议控法 | 说明 |'));
   assert.ok(md.indexOf('已适配') < md.indexOf('不动'), '汇总按 已适配→不动 排序');
   assert.ok(md.includes('汇总：已适配 1，不动 1，未测 1'));
 });

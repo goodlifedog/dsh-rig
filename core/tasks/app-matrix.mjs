@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { ensureAppRunning, frontName, state, find, windowControls, readSafe, findSafe, settleFront, waitForWindow, dismissOnboarding, quitApp } from '../background.mjs';
 import { isScreenLocked } from '../platform.mjs';
 import { presetApps } from '../app-presets.mjs';
+import { recommendStrategy } from '../app-strategy.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -204,6 +205,11 @@ async function main() {
     row.frontUnchanged = before === after && launch.frontUnchanged !== false;
     row.frontDetail = before + ' -> ' + after;
     row.stepFronts = steps;
+    const strategy = recommendStrategy(row);
+    row.strategy = strategy.mode;
+    row.strategyLabel = strategy.label;
+    row.strategyReasons = strategy.reasons;
+    row.canType = strategy.canType;
     row.firstFocusSteal = Object.entries(steps).find(([k, v]) => v !== before) || null;
     // 探测过程中万一被抢了前台，立刻还给用户
     if (after !== before) await restoreFront(before);
@@ -252,12 +258,12 @@ async function main() {
     '- 汇总：' + summary.readable + '/' + summary.total + ' 可读界面，' + summary.clickable + '/' + summary.total +
       ' 有可点击元素，' + summary.liveCapture + '/' + summary.total + ' 画面可直接回显',
     '',
-    '| 应用 | 启动 | 窗口就绪 | 读界面 | 节点 | 按钮 | 文本区 | 菜单项 | 窗口按钮 | 画面 | 前台未变 | 收尾 |',
-    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+    '| 应用 | 启动 | 窗口就绪 | 读界面 | 节点 | 按钮 | 文本区 | 菜单项 | 窗口按钮 | 画面 | 前台未变 | 建议控法 | 收尾 |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
   ];
   for (const r of rows) {
     if (r.skipped) {
-      lines.push('| ' + r.app + ' | SKIP | - | - | - | - | - | - | - | - | - | - |');
+      lines.push('| ' + r.app + ' | SKIP | - | - | - | - | - | - | - | - | - | - | - |');
       continue;
     }
     const stealNote = (r.readStoleFront || r.queryStoleFront || r.captureStoleFront) ? '操作中短暂抢前台，已还原' : '';
@@ -266,11 +272,12 @@ async function main() {
     lines.push('| ' + r.app + ' | ' + r.launch + ' | ' + readyNote + ' | ' + (r.readable ? 'yes' : 'no') + ' | ' + r.nodes +
       ' | ' + r.buttons + ' | ' + r.textAreas + ' | ' + (r.menuItems === undefined ? '-' : r.menuItems) +
       ' | ' + (r.windowControls === undefined ? '-' : r.windowControls) + ' | ' + r.capture + ' | ' +
-      (r.frontUnchanged ? 'yes' : 'NO') + (stealNote ? '（' + stealNote + '）' : '') + ' | ' + quitNote + ' |');
+      (r.frontUnchanged ? 'yes' : 'NO') + (stealNote ? '（' + stealNote + '）' : '') + ' | ' + (r.strategyLabel || '-') + ' | ' + quitNote + ' |');
   }
   lines.push('');
   lines.push('offscreen = 窗口在别的桌面、系统返回纯色帧（仍可后台操作，只是画面抓不到）。');
-  lines.push('收尾：quit = 探测完已退出；term = 弹窗卡住 Apple 事件、按进程 TERM；already-stopped = 目标本来就在运行，没动它。');
+  lines.push('收尾：quit = 探测完已退出；term = 弹窗卡住 Apple 事件、按进程 TERM；needs-confirm = 有未保存弹窗、没强杀；already-stopped = 目标本来就在运行，没动它。');
+  lines.push('建议控法：元素级驱动 = 读树+AX 操作；只读状态 = 树可读但没可点元素；画面+坐标 = 读不到树只能看画面；应用侧限制 = 启动即退或什么都拿不到。');
   fs.writeFileSync(path.join(dir, 'app-matrix-' + stamp + '.md'), lines.join('\n'));
 
   console.log('\n汇总: ' + JSON.stringify({ ok: summary.ok, readable: summary.readable, clickable: summary.clickable, liveCapture: summary.liveCapture, total: summary.total }));

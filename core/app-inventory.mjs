@@ -11,6 +11,8 @@
  *   已适配     —— 测过，界面树可读
  */
 
+import { recommendStrategy } from './app-strategy.mjs';
+
 /** 名字归一化：去 .app 后缀、去多余空白、转小写，用于「包名对不上时按名字兜底」 */
 export function normalizeName(name) {
   return String(name || '')
@@ -116,6 +118,7 @@ export function mergeInventory({ installed = [], presetApps = [], tested = [], s
       notes.push(installedApp ? '装了但还没测' : '预设里有、本机没装');
     }
     if (specialInfo && !specialInfo.detail) notes.push('按特殊规则处理');
+    const strategy = recommendStrategy(testedRow, { special: specialInfo, installed: Boolean(installedApp) });
     rows.push({
       name: installedApp?.name || presetApp.name,
       bundle: installedApp?.bundle || bundle,
@@ -123,6 +126,9 @@ export function mergeInventory({ installed = [], presetApps = [], tested = [], s
       preset: presetApp.preset || '',
       installed: Boolean(installedApp),
       status,
+      strategy: strategy.mode,
+      strategyLabel: strategy.label,
+      canType: strategy.canType,
       detail: notes.join('；'),
     });
   }
@@ -131,6 +137,7 @@ export function mergeInventory({ installed = [], presetApps = [], tested = [], s
     if (usedInstalled.has(bundle)) continue;
     const testedRow = testedByBundle.get(bundle) || testedByName.get(normalizeName(app.name)) || null;
     const specialInfo = special[bundle] || null;
+    const strategy = recommendStrategy(testedRow, { special: specialInfo, installed: true });
     rows.push({
       name: app.name,
       bundle,
@@ -138,6 +145,9 @@ export function mergeInventory({ installed = [], presetApps = [], tested = [], s
       preset: '',
       installed: true,
       status: classifyApp({ tested: testedRow, installed: true, special: specialInfo }),
+      strategy: strategy.mode,
+      strategyLabel: strategy.label,
+      canType: strategy.canType,
       detail: specialInfo && specialInfo.detail
         ? specialInfo.detail
         : (testedRow
@@ -163,8 +173,8 @@ export function renderInventoryMarkdown(rows, meta = {}) {
     '- 数据来源：/Applications 与 /System/Applications 扫描 + core/app-presets.mjs + ' + (meta.matrixReport || '最近一次矩阵报告'),
     '- 合计：' + rows.length + ' 个应用',
     '',
-    '| 应用 | 门类 | 状态 | 说明 |',
-    '| --- | --- | --- | --- |',
+    '| 应用 | 门类 | 状态 | 建议控法 | 说明 |',
+    '| --- | --- | --- | --- | --- |',
   ];
   const order = ['已适配', '可只用画面', '专用方案', '不动', '限制', '未测', '未安装'];
   const sorted = [...rows].sort((a, b) => {
@@ -172,7 +182,7 @@ export function renderInventoryMarkdown(rows, meta = {}) {
     return d !== 0 ? d : String(a.name).localeCompare(String(b.name));
   });
   for (const row of sorted) {
-    lines.push('| ' + row.name + ' | ' + (row.preset || '-') + ' | ' + row.status + ' | ' + row.detail + ' |');
+    lines.push('| ' + row.name + ' | ' + (row.preset || '-') + ' | ' + row.status + ' | ' + (row.strategyLabel || '-') + ' | ' + row.detail + ' |');
   }
   lines.push('');
   lines.push('汇总：' + order.filter((s) => counts.has(s)).map((s) => s + ' ' + counts.get(s)).join('，'));
