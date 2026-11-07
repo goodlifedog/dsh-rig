@@ -430,6 +430,25 @@ boss-greet           boss-scan        （这两个随 BOSS 内容一起移除，
 改法（每个任务入口一行）：`if (await lockedSkipNotice()) return;`——helper 里已经把「打印环境跳过 + 退出 0」封装好。
 我没直接改这么多文件，是因为主会话正在这块连续动，避免撞车。
 
+### 2.20 cdp-driver 的 ok 只看「前台没被抢」，一次 CDP 都没连上也叫成功
+
+实测（锁屏下跑，其实锁屏无关）：
+
+    汇总: {"ok":true,"cdpOk":0,"unavailable":2,"skippedRunning":0,"total":3}
+    exit=0
+
+`ok` 的算法是 `rows.every((r) => r.frontUnchanged !== false)`——只验证了「没抢前台」，
+而任务本意是「CDP 能不能连进去读页面」。结果 0 个连上、2 个不可用，仍然 exit 0。
+
+对比同类任务的正确写法：`app-matrix` 用 `readable/clickable/liveCapture` 三个计数 + 应用名，读不到就明说；
+`cdp-driver` 的汇总里也有这些计数，只是没有参与 ok 判定。
+
+建议：
+- `cdpOk > 0` → 真通过
+- 全部 `unavailable` / `skippedRunning` → 标环境跳过（验收不算失败也不算通过）
+- 有任何 `frontUnchanged === false` → 失败
+
+这条跟之前修过的「锁屏假失败」是一对：一个是环境不行时报失败，一个是环境不行时报成功。后者更危险——因为不会有人去查一个绿点。
 ## 已修好（复核过，不用再看）
 
 控制面 token（daemon + overlay 全接口）· Origin/跨域拦截 · pid Helper 误匹配 · 验收覆盖新通道（10 项）·
