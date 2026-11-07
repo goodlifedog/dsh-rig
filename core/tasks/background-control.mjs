@@ -7,10 +7,10 @@ import { overlayBase } from '../ports.mjs';
  *
  * 结论以 JSON 输出：每个动作都带「操作前后前台是否一致」的证据。
  */
-import { ensureAppRunning, frontName, state, find, click, setValue, smartType, smartTypeWithCache, clickByText } from '../background.mjs';
+import { ensureAppRunning, frontName, state, find, click, setValue, smartType, smartTypeWithCache, clickByText, quitApp } from '../background.mjs';
 import { checkTextEditWritable } from '../text-edit-guard.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
-import { countNotes, deleteTopNotes } from '../note-cleanup.mjs';
+import { countNotes, deleteTestNotes } from '../note-cleanup.mjs';
 import { isScreenLocked } from '../platform.mjs';
 import { localHeaders } from '../local-token.mjs';
 import { fileURLToPath } from 'node:url';
@@ -61,6 +61,11 @@ async function main() {
 
   // 1. 后台启动备忘录（冷启动，最容易把前台顶掉的一步）
   const launch = await ensureAppRunning({ bundleId: 'com.apple.Notes', appName: '备忘录' });
+  // 计算器也自己拉起来：干净环境里它可能没开，不拉起的话后面「点按钮」会假失败
+  const calcLaunch = await ensureAppRunning({ bundleId: 'com.apple.calculator', appName: '计算器' });
+  const launchedByUs = [];
+  if (launch.launched) launchedByUs.push({ bundleId: 'com.apple.Notes', appName: '备忘录', processName: 'Notes' });
+  if (calcLaunch.launched) launchedByUs.push({ bundleId: 'com.apple.calculator', appName: '计算器', processName: 'Calculator' });
   record('后台启动备忘录（open -g，不激活）', launch.frontUnchanged !== false && !launch.error, {
     frontUnchanged: launch.frontUnchanged !== false,
     detail: launch.launched ? '冷启动成功，前台仍是 ' + launch.front : '本来就在运行',
@@ -202,8 +207,14 @@ async function main() {
   } else {
     const notesAfter = await countNotes();
     const delta = notesBefore >= 0 && notesAfter >= 0 ? Math.max(0, notesAfter - notesBefore) : 0;
-    const cleaned = await deleteTopNotes(delta);
+    // 按标记删（只删自己写的那条），不再直接删顶部 N 条
+    const cleaned = await deleteTestNotes({ count: delta });
     console.log('已清理测试笔记：' + cleaned + ' 条（测试前 ' + notesBefore + ' 条 → 测试后 ' + notesAfter + ' 条）');
+  }
+  // 自己拉起的应用自己关：否则每跑一次就留下一个备忘录/计算器
+  for (const app of launchedByUs) {
+    const q = await quitApp(app).catch(() => ({ quit: false, mode: 'error' }));
+    console.log('已关闭本次启动的 ' + app.appName + '：' + (q.mode || (q.quit ? 'quit' : 'needs-confirm')));
   }
   console.log('小窗已收起');
   await closeOcuMcp().catch(() => {});

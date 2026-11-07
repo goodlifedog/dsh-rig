@@ -24,6 +24,8 @@
   笔记要真删需要 `npm run cleanup:test -- --force`，而且只删标题带 `[AGENT-TEST]` 标记的笔记；
   历史测试词和「标题读不到时按条数删」都要 `--force-all` 才放开——误删用户笔记不可恢复，所以默认不动手。
 - 手动跑任何会写用户数据的新任务后，也执行一次 `npm run cleanup:test`。
+- 任务自己拉起的应用自己关（cold-launch / background-control 都已改成验证完 quitApp 收尾）；
+  不是自己拉起、用户又在用的，一律不动。
 - **不要和别的会话同时跑验收类任务**：acceptance / bg:verify / 矩阵 / 后台控制会互相抢前台、互相关应用，
   两边的报告都会变成假失败（实测踩过）。现在 bg:verify 和 acceptance 启动前会扫进程表，
   发现别的同类任务在跑就直接拒绝（bg-verify 退出码 3），等它跑完再试。
