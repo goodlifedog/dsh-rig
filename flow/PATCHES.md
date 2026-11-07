@@ -1,7 +1,8 @@
 # 外部评审提供的补丁（按需应用）
 
 > 这些不是必须打的。每个都独立可应用、互不冲突，打过之后 `npm test` 全绿。
-> 最后更新：2026-11-08 03:58。**当前剩 3 个**，其余都已被主会话自行实现并删除。
+> 最后更新：2026-11-08 04:05。**当前只剩 1 个**（`patch-publish.diff`，涉及包名/仓库地址，等用户决定）；
+> 死代码合并与代码新鲜度两个补丁已应用并删除，其余都已被主会话自行实现。
 
 ## 应用程序
 
@@ -28,14 +29,14 @@ npm publish --dry-run   # 必须显示 Publishing to https://registry.npmjs.org 
 npm pack --dry-run      # 约 138 files / 1.1 MB
 ```
 
-## 2. `patch-prune-consolidate.diff`（120 行 / 3 个文件）
+## 2. ✅ `patch-prune-consolidate.diff`（120 行 / 3 个文件）—— 已应用，补丁文件已删除
 
 `core/prune.mjs` 的四个导出全仓零引用，真实逻辑在 `scripts/prune.mjs` 里另有一份。
 补丁把 `planPrune` 归位到 `core/prune.mjs`，`scripts/prune.mjs` 只留 CLI，测试改 import。
 
 验证：`node scripts/prune.mjs`、`node --test test/prune.test.mjs`
 
-## 3. `patch-deploy-freshness.diff`（191 行 / 3 个文件）
+## 3. ✅ `patch-deploy-freshness.diff`（191 行 / 3 个文件）—— 已应用，补丁文件已删除
 
 给 `npm run service:status` 加「代码新鲜度」：把每个常驻进程启动时加载的模块 mtime 与进程启动时间比，
 落后就提示 `npm run service:restart`（只提示，不自动重启）。

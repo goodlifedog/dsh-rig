@@ -13,6 +13,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { planPrune } from '../core/prune.mjs';
+
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const KEEP_DAYS = Math.max(1, Number(process.env.KEEP_DAYS || 7));
 const KEEP_REPORTS = Math.max(10, Number(process.env.KEEP_REPORTS || 200));
@@ -27,17 +29,6 @@ function listFiles(dir) {
       .filter((p) => { try { return fs.statSync(p).isFile(); } catch { return false; } })
       .map((p) => { const st = fs.statSync(p); return { path: p, name: path.basename(p), mtimeMs: st.mtimeMs, size: st.size }; });
   } catch { return []; }
-}
-
-export function planPrune({ files, now = Date.now(), keepDays = KEEP_DAYS, keepReports = KEEP_REPORTS } = {}) {
-  const list = Array.isArray(files) ? files.slice() : [];
-  const cutoff = now - keepDays * DAY;
-  const sorted = list.sort((a, b) => b.mtimeMs - a.mtimeMs);
-  const keepSet = new Set();
-  sorted.slice(0, keepReports).forEach((f) => keepSet.add(f.path));
-  const remove = sorted.filter((f) => !keepSet.has(f.path) || f.mtimeMs < cutoff);
-  const keep = sorted.filter((f) => !remove.includes(f));
-  return { remove, keep, bytes: remove.reduce((n, f) => n + (f.size || 0), 0) };
 }
 
 function section(name, dir, keepCount) {

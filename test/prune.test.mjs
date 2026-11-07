@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { planPrune } from '../scripts/prune.mjs';
+import { planPrune } from '../core/prune.mjs';
 
 const DAY = 24 * 60 * 60 * 1000;
 

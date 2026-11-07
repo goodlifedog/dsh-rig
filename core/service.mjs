@@ -5,13 +5,14 @@
  * macOS：launchd（~/Library/LaunchAgents）
  * Windows：任务计划程序（schtasks，登录时启动）
  */
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 import { isMac, isWindows } from './platform.mjs';
+import { WATCH_FILES, checkFreshness, formatFreshness } from './deploy-freshness.mjs';
 import { tokenPath } from './local-token.mjs';
 import { parseListenerPid, diagnoseListener, parseLaunchdPid, deploymentDrift, isOurOverlayCommand } from './service-guard.mjs';
 
@@ -161,6 +162,21 @@ async function launchdPid(label) {
   return r.ok ? parseLaunchdPid(r.out) : 0;
 }
 
+
+/** 进程启动时间（毫秒）。ps lstart 受 locale 影响，这里强制 C locale；解析失败返回 0 让调用方跳过。 */
+function processStartMs(pid) {
+  if (!pid) return 0;
+  try {
+    const out = execFileSync('/bin/ps', ['-p', String(pid), '-o', 'lstart='], {
+      encoding: 'utf8',
+      env: Object.assign({}, process.env, { LC_ALL: 'C', LANG: 'C' }),
+      timeout: 3000,
+    }).trim();
+    const ms = Date.parse(out);
+    return Number.isFinite(ms) ? ms : 0;
+  } catch { return 0; }
+}
+
 async function status() {
   const listener = await listenerInfo(PORT);
   const managed = isMac ? await launchdPid(LABEL_DAEMON) : 0;
@@ -175,6 +191,11 @@ async function status() {
   console.log('部署状态：' + drift + (drift === 'stray' ? ' —— 端口被不受管进程占着，launchd 拉不起来，先跑 npm run service:restart' : ''));
   const overlayDrift = deploymentDrift({ listenerPid: overlayListener.pid, managedPid: overlayManaged });
   console.log('overlay 7788 监听者：' + (overlayListener.pid || '无') + '，launchd 受管 pid：' + (overlayManaged || '无') + '，部署状态：' + overlayDrift);
+  // 代码新鲜度：改了直接依赖却没重启时，上面的「部署状态」照样是 ok，这里补一句提醒
+  const daemonFresh = checkFreshness({ rootDir: ROOT, startedAtMs: processStartMs(listener.pid), files: WATCH_FILES.daemon });
+  const overlayFresh = checkFreshness({ rootDir: ROOT, startedAtMs: processStartMs(overlayListener.pid), files: WATCH_FILES.overlay });
+  console.log(formatFreshness('daemon', daemonFresh));
+  console.log(formatFreshness('overlay', overlayFresh));
   return { listener, managed, verdict, drift, overlayListener, overlayManaged, overlayDrift };
 }
 
