@@ -1,0 +1,146 @@
+diff --git a/core/tasks/background-control.mjs b/core/tasks/background-control.mjs
+index 37e999e..d4a4c94 100644
+--- a/core/tasks/background-control.mjs
++++ b/core/tasks/background-control.mjs
+@@ -7,6 +7,7 @@
+  * 结论以 JSON 输出：每个动作都带「操作前后前台是否一致」的证据。
+  */
+ import { ensureAppRunning, frontName, state, find, click, setValue, smartType, smartTypeWithCache, clickByText } from '../background.mjs';
++import { checkTextEditWritable } from '../text-edit-guard.mjs';
+ import { closeOcuMcp } from '../ocu-mcp.mjs';
+ import { countNotes, deleteTopNotes } from '../note-cleanup.mjs';
+ import { isScreenLocked } from '../platform.mjs';
+@@ -137,8 +138,15 @@ async function main() {
+   // 6. 文本编辑：后台设值
+   const textAreas = await find('文本编辑', { role: 'AXTextArea', limit: 5 });
+   if (textAreas[0]) {
+-    const w = await setValue('文本编辑', textAreas[0].index, '后台写入：' + new Date().toLocaleTimeString('zh-CN'));
+-    record('后台写入文本编辑（AX set_value）', w.ok && w.frontUnchanged, { frontUnchanged: w.frontUnchanged, detail: w.error || '' });
++    // set_value 是覆盖语义：用户开着有内容的文稿时，写进去就等于把人家内容盖掉。
++    // 只允许写「未命名且内容为空」的文稿，否则跳过（评审 P0）。
++    const guard = await checkTextEditWritable();
++    if (!guard.ok) {
++      recordSkipped('后台写入文本编辑（AX set_value）', '文本编辑里有用户内容，跳过写入以免覆盖：' + guard.reason);
++    } else {
++      const w = await setValue('文本编辑', textAreas[0].index, '后台写入：' + new Date().toLocaleTimeString('zh-CN'));
++      record('后台写入文本编辑（AX set_value）', w.ok && w.frontUnchanged, { frontUnchanged: w.frontUnchanged, detail: w.error || '' });
++    }
+   } else {
+     recordSkipped('后台写入文本编辑（AX set_value）', '文本编辑冷启动是打开面板，没有文稿窗口');
+   }
+diff --git a/core/text-edit-guard.mjs b/core/text-edit-guard.mjs
+new file mode 100644
+index 0000000..5c6642c
+--- /dev/null
++++ b/core/text-edit-guard.mjs
+@@ -0,0 +1,68 @@
++'use strict';
++/**
++ * 文本编辑写入前的安全检查（纯逻辑 + 一段 AppleScript 采样）。
++ *
++ * 背景：background-control 任务会 set_value 到「文本编辑」的第一个 AXTextArea，
++ * 而 set_value 是覆盖语义——用户开着有内容的文稿时，跑一次验收就把内容盖掉了（评审发现）。
++ * 这里只做一件事：确认当前打开的文稿都是「我们自己的空文稿」，否则宁可跳过写入。
++ */
++import { execFile } from 'node:child_process';
++import { promisify } from 'node:util';
++
++const exec = promisify(execFile);
++
++const SCRIPT = [
++  'tell application "TextEdit"',
++  '  set out to ""',
++  '  repeat with d in documents',
++  '    set out to out & (name of d) & tab & (length of text of d) & linefeed',
++  '  end repeat',
++  '  return out',
++  'end tell',
++].join('\n');
++
++/** 解析「名字<TAB>长度」逐行输出；解析不出的行忽略 */
++export function parseDocumentList(stdout) {
++  const lines = String(stdout || '').split('\n');
++  const docs = [];
++  for (const line of lines) {
++    const parts = line.split('\t');
++    if (parts.length < 2) continue;
++    const name = parts[0].trim();
++    const len = Number(String(parts[1]).trim());
++    if (!name && !Number.isFinite(len)) continue;
++    docs.push({ name, length: Number.isFinite(len) ? len : NaN });
++  }
++  return docs;
++}
++
++const UNTITLED_RE = /^(未命名|未命名文稿|Untitled|Untitled \d+|无标题)(\s*\d+)?$/i;
++
++/**
++ * 是否允许写入：必须至少有一个文稿，且全部是「未命名 + 空内容」。
++ * 任一条件是用户自己的文稿（有名字或非空）就判不安全——宁可跳过，也不覆盖用户内容。
++ */
++export function isSafeToWrite(docs) {
++  const list = Array.isArray(docs) ? docs : [];
++  if (!list.length) return { ok: false, reason: '没有打开的文稿' };
++  for (const d of list) {
++    if (!UNTITLED_RE.test(String(d.name || ''))) {
++      return { ok: false, reason: '有命名文稿（' + d.name + '）' };
++    }
++    if (Number(d.length) !== 0) {
++      return { ok: false, reason: '文稿里已有内容（' + d.length + ' 字符）' };
++    }
++  }
++  return { ok: true, reason: '' };
++}
++
++/** 采样当前文稿；TextEdit 没运行或读不到时返回 ok:false（调用方按跳过处理） */
++export async function checkTextEditWritable(options = {}) {
++  const run = (options && options.exec) || exec;
++  try {
++    const { stdout } = await run('/usr/bin/osascript', ['-e', SCRIPT], { timeout: 5000 });
++    return isSafeToWrite(parseDocumentList(stdout));
++  } catch (error) {
++    return { ok: false, reason: '读不到文稿状态（' + String((error && error.message) || error).slice(0, 60) + '）' };
++  }
++}
+diff --git a/test/text-edit-guard.test.mjs b/test/text-edit-guard.test.mjs
+new file mode 100644
+index 0000000..76d15f2
+--- /dev/null
++++ b/test/text-edit-guard.test.mjs
+@@ -0,0 +1,36 @@
++'use strict';
++// 写文本编辑前的安全判定：只允许往「未命名 + 空」的文稿里写，别覆盖用户内容。
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { parseDocumentList, isSafeToWrite, checkTextEditWritable } from '../core/text-edit-guard.mjs';
++
++test('解析「名字<TAB>长度」输出', () => {
++  const out = '未命名\t0\n报告.rtf\t1234\n';
++  assert.deepEqual(parseDocumentList(out), [
++    { name: '未命名', length: 0 },
++    { name: '报告.rtf', length: 1234 },
++  ]);
++});
++
++test('只有未命名空文稿才允许写', () => {
++  assert.equal(isSafeToWrite([{ name: '未命名', length: 0 }]).ok, true);
++  assert.equal(isSafeToWrite([{ name: 'Untitled 2', length: 0 }]).ok, true);
++});
++
++test('有命名文稿 / 有内容 / 没文稿 一律拒绝', () => {
++  assert.equal(isSafeToWrite([{ name: '报告.rtf', length: 0 }]).ok, false);
++  assert.equal(isSafeToWrite([{ name: '未命名', length: 42 }]).ok, false);
++  assert.equal(isSafeToWrite([]).ok, false);
++  assert.equal(isSafeToWrite(null).ok, false);
++});
++
++test('读不到文稿状态时按不安全处理', async () => {
++  const r = await checkTextEditWritable({ exec: async () => { throw new Error('osascript 失败'); } });
++  assert.equal(r.ok, false);
++  assert.match(r.reason, /读不到文稿状态/);
++});
++
++test('读到空文稿时放行', async () => {
++  const r = await checkTextEditWritable({ exec: async () => ({ stdout: '未命名\t0\n' }) });
++  assert.equal(r.ok, true);
++});
