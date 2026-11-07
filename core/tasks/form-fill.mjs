@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { ocu, guard } from '../agentd.mjs';
 
@@ -133,33 +134,36 @@ function findSearch(state) {
 }
 function valueOf(line) { var m = /Value: (.*?)(?:, Placeholder:|$)/.exec(line || ""); return m ? m[1] : null; }
 var out = { steps: [], ok: false };
+var app = null;
+var opts = { emit: false, maxTreeNodes: 8000, maxTreeDepth: 96, textLimit: 500 };
+
+// 放在 try 外面：异常时 catch 里还要用它把用户原值写回去
+async function writeValue(text, label) {
+  for (var attempt = 1; attempt <= 4; attempt++) {
+    var st = await app.getAXState(opts);
+    var hit = findSearch(st);
+    if (!hit) { await sleep(500); continue; }
+    try { await app.click(hit.index, { clickMethod: "accessibility" }); } catch (e) {}
+    await sleep(400);
+    try { await app.pressKey("cmd+a", { keyMethod: "sky_key" }); } catch (e) {}
+    await sleep(200);
+    try { await app.typeText(text, { keyMethod: "sky_key" }); } catch (e) { out.steps.push(label + " type err"); }
+    await sleep(600);
+    st = await app.getAXState(opts);
+    var now = valueOf((findSearch(st) || {}).line);
+    out.steps.push(label + " attempt" + attempt + " -> " + JSON.stringify(now));
+    if (now === text) return true;
+  }
+  return false;
+}
+
 try {
-  var app = await cua.getApp(APP, { initialState: false });
-  var opts = { emit: false, maxTreeNodes: 8000, maxTreeDepth: 96, textLimit: 500 };
+  app = await cua.getApp(APP, { initialState: false });
   var s = await app.getAXState(opts);
   out.url = (/HTML 内容.*?URL: (https?:\S+)/.exec(s) || [])[1] || null;
   var input = findSearch(s);
   out.found = input && input.line;
   out.original = input ? valueOf(input.line) : null;
-
-  async function writeValue(text, label) {
-    for (var attempt = 1; attempt <= 4; attempt++) {
-      var st = await app.getAXState(opts);
-      var hit = findSearch(st);
-      if (!hit) { await sleep(500); continue; }
-      try { await app.click(hit.index, { clickMethod: "accessibility" }); } catch (e) {}
-      await sleep(400);
-      try { await app.pressKey("cmd+a", { keyMethod: "sky_key" }); } catch (e) {}
-      await sleep(200);
-      try { await app.typeText(text, { keyMethod: "sky_key" }); } catch (e) { out.steps.push(label + " type err"); }
-      await sleep(600);
-      st = await app.getAXState(opts);
-      var now = valueOf((findSearch(st) || {}).line);
-      out.steps.push(label + " attempt" + attempt + " -> " + JSON.stringify(now));
-      if (now === text) return true;
-    }
-    return false;
-  }
 
   if (out.original !== null) {
     out.setNew = await writeValue(NEWVAL, "setNew");
@@ -170,12 +174,69 @@ try {
     out.valueAfterRestore = valueOf((findSearch(s3) || {}).line);
     out.ok = out.setNew === true && out.restored === true && out.valueAfterRestore === out.original;
   }
-} catch (e) { out.error = String((e && e.message) || e); }
+} catch (e) {
+  out.error = String((e && e.message) || e);
+  // 中途抛异常也要把搜索框恢复成用户原来的值：停在测试关键词会影响用户下次使用
+  try {
+    if (app && out.original !== null) {
+      out.restoredAfterError = await writeValue(out.original, "restore-after-error");
+      var sErr = await app.getAXState(opts);
+      out.valueAfterRestore = valueOf((findSearch(sErr) || {}).line);
+    }
+  } catch (e2) {
+    out.restoreError = String((e2 && e2.message) || e2);
+  }
+  out.ok = false;
+}
 nodeRepl.write("FILL_JSON=" + JSON.stringify(out));
 `
     .replaceAll('__APP__', JSON.stringify(APP))
     .replaceAll('__NEW__', JSON.stringify(NEW_KEYWORD))
     .replaceAll('__FRAG__', JSON.stringify(FRAG));
+}
+
+/**
+ * 兜底恢复脚本：页面侧脚本整个崩掉、没留下恢复结果时，主进程再单独跑一次。
+ * 只做「把搜索框写回原值」这一件事，参数只有原值和 APP，失败也会返回结构化结果。
+ */
+function buildRestore(original) {
+  return String.raw`
+var APP = __APP__;
+var TARGET = __ORIG__;
+function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+function findSearch(state) {
+  var lines = state.split("\n");
+  for (var i = 0; i < lines.length; i++) {
+    var m = /^\t*(\d+)\s+文本栏.*搜索职位、公司/.exec(lines[i]);
+    if (m) return { index: m[1], line: lines[i].trim() };
+  }
+  return null;
+}
+function valueOf(line) { var m = /Value: (.*?)(?:, Placeholder:|$)/.exec(line || ""); return m ? m[1] : null; }
+try {
+  var app = await cua.getApp(APP, { initialState: false });
+  var opts = { emit: false, maxTreeNodes: 8000, maxTreeDepth: 96, textLimit: 500 };
+  var ok = false;
+  for (var attempt = 1; attempt <= 4 && !ok; attempt++) {
+    var st = await app.getAXState(opts);
+    var hit = findSearch(st);
+    if (!hit) { await sleep(500); continue; }
+    try { await app.click(hit.index, { clickMethod: "accessibility" }); } catch (e) {}
+    await sleep(400);
+    try { await app.pressKey("cmd+a", { keyMethod: "sky_key" }); } catch (e) {}
+    await sleep(200);
+    try { await app.typeText(TARGET, { keyMethod: "sky_key" }); } catch (e) {}
+    await sleep(600);
+    st = await app.getAXState(opts);
+    ok = valueOf((findSearch(st) || {}).line) === TARGET;
+  }
+  nodeRepl.write("RESTORE_JSON=" + JSON.stringify({ ok: ok, target: TARGET }));
+} catch (e) {
+  nodeRepl.write("RESTORE_JSON=" + JSON.stringify({ ok: false, error: String((e && e.message) || e) }));
+}
+`
+    .replaceAll('__APP__', JSON.stringify(APP))
+    .replaceAll('__ORIG__', JSON.stringify(original));
 }
 
 async function main() {
@@ -207,6 +268,17 @@ async function main() {
   console.log('    恢复:', JSON.stringify(fill.valueAfterRestore));
   console.log('    步骤:', JSON.stringify(fill.steps));
 
+  // 页面侧脚本如果整个崩了（拿不到结果/没走到恢复），主进程再单独恢复一次：
+  // 搜索框停在测试关键词会影响用户下一次使用，这一层不能省。
+  let restoredValue = fill.valueAfterRestore === undefined ? null : fill.valueAfterRestore;
+  if (fill.original !== null && fill.original !== undefined && restoredValue !== fill.original) {
+    console.log('    恢复未确认，主进程再试一次 …');
+    const fallback = await runOcuJs(buildRestore(fill.original), 'RESTORE_JSON=').catch(() => null);
+    evidence.restoreFallback = fallback;
+    if (fallback && fallback.ok) restoredValue = fill.original;
+    else console.log('    ⚠️ 搜索框可能仍停在测试值，请手动恢复原搜索词：' + fill.original);
+  }
+
   const frontAfter = await ocu.frontmost();
   evidence.frontmostAfter = frontAfter;
   console.log('[4] 结束前台:', frontAfter);
@@ -214,7 +286,7 @@ async function main() {
   const checks = [
     ['搜索框定位成功', !!fill.found],
     ['改成了指定关键词', fill.valueAfterNew === NEW_KEYWORD],
-    ['已恢复原值', fill.ok === true && fill.valueAfterRestore === fill.original],
+    ['已恢复原值', fill.original !== null && restoredValue === fill.original],
     ['全程前台不是 Chrome', frontBefore !== APP && frontAfter !== APP && guarded.after !== APP],
   ];
   console.log('');
@@ -235,14 +307,21 @@ async function main() {
 // 断言失败（页面结构变了/改不成关键词）仍然按 FAIL 报真失败，不许再借环境规则洗掉。
 const ENV_CONDITIONS = /当前就是前台|无法切回 BOSS 职位页|没有 BOSS 职位页标签/;
 
-main()
-  .then((code) => process.exit(code))
-  .catch((e) => {
-    const message = String((e && e.message) || e);
-    if (ENV_CONDITIONS.test(message)) {
-      console.log('环境跳过：' + message);
-      process.exit(0);
-    }
-    console.error('FAIL:', message);
-    process.exit(1);
-  });
+const invokedDirectly = Boolean(process.argv[1])
+  && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (invokedDirectly) {
+  main()
+    .then((code) => process.exit(code))
+    .catch((e) => {
+      const message = String((e && e.message) || e);
+      if (ENV_CONDITIONS.test(message)) {
+        console.log('环境跳过：' + message);
+        process.exit(0);
+      }
+      console.error('FAIL:', message);
+      process.exit(1);
+    });
+}
+
+export { buildFill, buildRestore };
