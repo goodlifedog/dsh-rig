@@ -316,7 +316,12 @@ const server = http.createServer(async (req, res) => {
   }
   // 只读的 /status、/tasks、/ 不需要票据；会动东西的接口必须带
   const needsToken = (p === '/run' || p === '/stop' || p === '/selftest');
-  if (needsToken && !isAuthorized(req.headers, TOKEN, { allowQueryToken: url.searchParams.get('token') || '' })) {
+  // 默认只认请求头；?token= 会漏进 shell history / 进程列表，需要显式开 AGENT_ALLOW_QUERY_TOKEN=1
+  const allowQueryToken = process.env.AGENT_ALLOW_QUERY_TOKEN === '1';
+  if (needsToken && !isAuthorized(req.headers, TOKEN, {
+    queryToken: url.searchParams.get('token') || '',
+    allowQuery: allowQueryToken,
+  })) {
     return json(res, 401, { ok: false, error: '缺少或无效的 X-Agent-Token（从 ~/.desktop-agent/api-token 读取）' });
   }
 

@@ -33,10 +33,16 @@ export function readTokenSync(options = {}) {
   return token.readTokenSync((options && options.path) || token.tokenPath());
 }
 
-/** 判断请求是否带对 token */
+/**
+ * 判断请求是否带对 token。
+ * @param {object} headers
+ * @param {string} expected 服务端 token
+ * @param {{queryToken?: string, allowQuery?: boolean}} [options]
+ *   queryToken 是请求里的 ?token= 值；默认不认查询参数，必须 allowQuery:true 才生效。
+ */
 export function isAuthorized(headers, expected, options = {}) {
-  const query = options && options.allowQueryToken;
-  return token.isAuthorized(headers, expected, query);
+  const opts = options || {};
+  return token.isAuthorized(headers, expected, opts.queryToken || '', { allowQuery: opts.allowQuery === true });
 }
 
 /** 本地接口请求头：自动带 token（服务端未配置 token 时不加，兼容测试环境） */

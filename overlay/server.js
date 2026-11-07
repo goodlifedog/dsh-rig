@@ -169,7 +169,9 @@ function createOverlayServer(options) {
     }
     assertLocalClient(req, method);
     // 控制面票据：挡"本机别的用户/别的进程"随意读写窗口、推帧、改会话
-    if (token && !isAuthorized(req.headers, token, url.searchParams.get('token') || '')) {
+    // 默认只认请求头；?token= 需要显式开 AGENT_ALLOW_QUERY_TOKEN=1（查询串会漏进日志和 shell history）
+    const allowQueryToken = process.env.AGENT_ALLOW_QUERY_TOKEN === '1';
+    if (token && !isAuthorized(req.headers, token, url.searchParams.get('token') || '', { allowQuery: allowQueryToken })) {
       throw httpError(401, '缺少或无效的 X-Agent-Token（从 ~/.desktop-agent/api-token 读取）');
     }
 

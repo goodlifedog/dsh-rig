@@ -51,12 +51,35 @@ function withTokenHeaders(token, extra) {
   return headers;
 }
 
-/** 校验请求是否带对 token */
-function isAuthorized(headers, token, queryToken) {
+/** 定长比较：长度不同直接 false，避免 timingSafeEqual 抛错、也避免长度差泄露信息 */
+function safeEqual(a, b) {
+  const left = Buffer.from(String(a || ''), 'utf8');
+  const right = Buffer.from(String(b || ''), 'utf8');
+  if (!left.length || left.length !== right.length) return false;
+  try {
+    return crypto.timingSafeEqual(left, right);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 校验请求是否带对 token。
+ *
+ * 默认只认请求头。查询参数 ?token= 会进 shell history、进程列表和访问日志，
+ * 属于「方便但会漏」的用法，所以必须显式打开（settings.allowQuery === true）才认。
+ *
+ * @param {object} headers
+ * @param {string} token 服务端持有的 token
+ * @param {string} [queryToken] 查询参数里的 token
+ * @param {{allowQuery?: boolean}} [settings]
+ */
+function isAuthorized(headers, token, queryToken, settings = {}) {
   if (!token) return false;
   const header = String((headers && (headers[TOKEN_HEADER] || headers['X-Agent-Token'])) || '').trim();
-  if (header && header === token) return true;
-  return Boolean(queryToken) && queryToken === token;
+  if (header && safeEqual(header, token)) return true;
+  const allowQuery = Boolean(settings && settings.allowQuery);
+  return allowQuery && Boolean(queryToken) && safeEqual(queryToken, token);
 }
 
 module.exports = { TOKEN_HEADER, tokenPath, newToken, ensureTokenSync, readTokenSync, withTokenHeaders, isAuthorized };

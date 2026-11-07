@@ -199,7 +199,21 @@ test('控制面票据：带对 token 就正常；错的照样 401', async () => 
     assert.equal(ok.status, 200);
     const wrong = await fetch(base + '/windows', { headers: { 'X-Agent-Token': 'nope' } });
     assert.equal(wrong.status, 401);
-    const viaQuery = await fetch(base + '/health?token=test-token-123');
-    assert.equal(viaQuery.status, 200);
+  });
+});
+
+test('控制面票据：?token= 默认不认，显式开 AGENT_ALLOW_QUERY_TOKEN 才认', async () => {
+  await withTokenServer(async (base) => {
+    const byDefault = await fetch(base + '/health?token=test-token-123');
+    assert.equal(byDefault.status, 401, '查询串会漏进 shell history/日志，默认必须拒绝');
+    const prev = process.env.AGENT_ALLOW_QUERY_TOKEN;
+    process.env.AGENT_ALLOW_QUERY_TOKEN = '1';
+    try {
+      const allowed = await fetch(base + '/health?token=test-token-123');
+      assert.equal(allowed.status, 200, '明确打开开关后可以用查询串（给不好设 header 的客户端留路）');
+    } finally {
+      if (prev === undefined) delete process.env.AGENT_ALLOW_QUERY_TOKEN;
+      else process.env.AGENT_ALLOW_QUERY_TOKEN = prev;
+    }
   });
 });

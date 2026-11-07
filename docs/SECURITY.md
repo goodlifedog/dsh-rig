@@ -8,7 +8,7 @@
 | 攻击面 | 后果 | 现在的处理 |
 | --- | --- | --- |
 | 浏览器页面调本地接口 | 任何网页能读窗口标题（隐私）、往浮窗塞图（钓鱼）、让守护进程跑任务（打字/退出应用） | overlay 7788 和 daemon 7789 都**拒绝带 Origin 的请求**（403），并拒掉跨域预检；POST 必须 `Content-Type: application/json`（415），表单式跨站提交进不来 |
-| 本机任意进程驱动守护进程 / 小窗 | 任何本地进程都能 POST /run 让后台跑任务，或调 overlay 读窗口标题、往浮窗塞图 | **daemon 与 overlay 的全部接口都要 `X-Agent-Token`**；token 启动时随机生成写到 `~/.desktop-agent/api-token`（文件 600、目录 700），客户端自动读取；实测两个服务无 token 均 401 |
+| 本机任意进程驱动守护进程 / 小窗 | 任何本地进程都能 POST /run 让后台跑任务，或调 overlay 读窗口标题、往浮窗塞图 | **daemon 与 overlay 的全部接口都要 `X-Agent-Token`**；token 启动时随机生成写到 `~/.desktop-agent/api-token`（文件 600、目录 700），客户端自动读取；实测两个服务无 token 均 401。默认只认请求头：`?token=` 会漏进 shell history/访问日志，必须显式 `AGENT_ALLOW_QUERY_TOKEN=1` 才认（实测默认下查询串 401） |
 | AppleScript 注入 | 应用名/进程名里塞引号或换行把脚本截断，执行任意命令 | 拼进脚本的名字走白名单校验（`isSafeIdentifier`），含引号/反斜杠/控制字符一律不执行；`isSafeScriptLiteral` 再做一层 |
 | AppleScript 授权弹窗 | 后台流程被系统弹框打断，或替用户点"允许" | 先用 `AEDeterminePermissionToAutomateTarget(askUserIfNeeded=false)` 静默查授权，没授权**不发 Apple 事件** |
 | CDP 端口劫持 | 本地进程抢先监听调试端口冒充 CDP，我们连上去等于把页面内容/输入交给它 | 连之前用 `lsof` 查端口主人，必须等于目标应用 pid，否则拒绝（`debugPortTrust`） |
@@ -18,7 +18,8 @@
 | 任务名目录穿越 | `/run` 传 `../core/runner` 执行目录外脚本 | daemon 只接受白名单任务名，未知任务 400 |
 | 队列无限堆积 | 有人反复塞任务把内存/队列打爆 | 队列上限 50，满了 429 |
 
-以上每一条都有单测或集成测试钉住（见 `test/security-boundaries.test.mjs`、`test/overlay-server.test.mjs`、`test/daemon-integration.test.mjs`）。
+以上每一条都有单测或集成测试钉住（见 `test/security-boundaries.test.mjs`、`test/local-token.test.mjs`、`test/overlay-server.test.mjs`、`test/daemon-integration.test.mjs`）。
+票据校验用定长比较，长度不同直接拒；token 文件被写坏（不是 32 字节 hex）会重新生成，不会把坏值当 token。
 
 ## 二、刻意不做的（授权和越权）
 
@@ -53,7 +54,7 @@
 ## 五、怎么自查
 
 ```bash
-npm test                            # 372 项，含安全边界专项
+npm test                            # 全量单测，含安全边界与票据专项
 npm run repo:check                  # 文档/命令/绝对路径泄漏等体检
 curl -s -H 'Origin: https://evil' http://127.0.0.1:7788/windows   # 应 403
 ```
