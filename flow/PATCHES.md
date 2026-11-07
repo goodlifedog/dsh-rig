@@ -1,6 +1,6 @@
 # 外部评审提供的补丁
 
-> 最后更新：2026-11-08 04:25。**4 个待应用补丁**，其余都已被主会话实现并删除。
+> 最后更新：2026-11-08 04:40。**3 个待应用补丁**，其余都已被主会话实现并删除。
 
 ## 待应用
 
@@ -64,6 +64,22 @@ node --test test/overlay-packaging.test.mjs
 验证：
 ```bash
 npm run repo:check   # 应显示「29 份文档都有入口」
+```
+
+### patch-tasks-catalog.diff（207 行 / 6 个文件）
+
+**问题**：31 个任务脚本没有任何地方列全过。`desktop-agent tasks` 只输出名字，用户不知道每个任务是干什么的；
+其中 3 个（browser-background / cold-launch / user-active-demo）在所有文档里一个字都没提到。
+
+补丁：
+- 新增 `scripts/tasks-doc.mjs` + `npm run tasks:doc`：扫描 `core/tasks/*.mjs` 的文件头注释，生成 `flow/TASKS.md`
+- 写操作类任务自动标 ⚠️；缺文件头说明的标「（文件头没写用途说明）」——目前 17 个属于这种
+- `repo:check` 增加「任务清单与 core/tasks 同步」：改了任务没重新生成就报红
+- 4 条单测覆盖解析/标记/缺说明
+
+验证：
+```bash
+npm run tasks:doc && npm run repo:check
 ```
 
 ## 已采纳并删除的补丁
