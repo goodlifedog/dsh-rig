@@ -2,12 +2,13 @@
 
 ## 未发布
 
+- 小窗自恢复两条路径都完成实机验证：绑定窗口关掉→0.5s 内 live 变 no-window（解绑路径）；关掉文稿再新建→约 1s 内 windowId 自动从旧窗口切到新窗口（找回路径）。测试全程后台，前台一直是 Google Chrome，没用可视小窗弹你屏幕
 - 新增自检开关 `OVERLAY_CAPTURE_WHILE_HIDDEN=1`：隐藏会话也抓帧，用于在不弹窗的前提下验证"目标窗口失效→自动找回/解绑"；默认关闭，正常路径仍然隐藏即暂停抓帧
 - 小窗宿主检测支持浏览器里的 Web 界面：原来只认 owner === 「DeepSeek Harness」的原生窗口，用户改用 Chrome 里的 Web 界面时找不到宿主、小窗按设计隐藏；现在优先原生窗口，找不到时退回「浏览器窗口标题含 DeepSeek Harness」的窗口（overlay/host-select.js 纯函数 + 5 项单测），健康信息新增 hostKind（native/browser）
 - 实测宿主检测恢复正常：重启 overlay 后 hostVisible=true、hostKind=native、dshTitle 正确、stale=false
 - 收起 README 里"全程不抢焦点"的绝对表述：改成"尽量不抢"，并写明个别应用（Telegram/部分 Electron）读取时会被短暂顶到前台、工具会立即还原并记录；Chrome 那行同步修正
 - flow/INDEX.md 常用命令补齐 cleanup:test / prune / service:status，并注明验收在用户忙时会拒绝运行（ACCEPT_FORCE=1 强跑）
-- 修小窗画面卡死（外部评审第 57 轮）：抓帧连续失败到阈值后原来只切 error 状态、不解绑也不重新找窗口，目标窗口关掉重开后会一直红字；现在会按上次绑定的 owner/title 自动找回同一应用的新窗口，找不到就解绑（不再卡错误态）；新增 `overlay/recover.js` 纯函数 + 4 项单测。**实机验证（补上）**：加了自检开关 `OVERLAY_CAPTURE_WHILE_HIDDEN=1`（隐藏会话也抓帧，不弹窗），实测绑定 FastZip 窗口后关掉它：0.5 秒内状态从 live 变为 no-window、windowId 清空——不再卡在「目标窗口已失效」，解绑路径通过。自动找回新窗口那条路径仍只有单测覆盖
+- 修小窗画面卡死（外部评审第 57 轮）：抓帧连续失败到阈值后原来只切 error 状态、不解绑也不重新找窗口，目标窗口关掉重开后会一直红字；现在会按上次绑定的 owner/title 自动找回同一应用的新窗口，找不到就解绑（不再卡错误态）；新增 `overlay/recover.js` 纯函数 + 4 项单测。**实机验证（补上）**：加了自检开关 `OVERLAY_CAPTURE_WHILE_HIDDEN=1`（隐藏会话也抓帧，不弹窗），实测绑定 FastZip 窗口后关掉它：0.5 秒内状态从 live 变为 no-window、windowId 清空——不再卡在「目标窗口已失效」，解绑路径通过。自动找回新窗口那条路径**也实测通过**：绑定的文本编辑文稿窗口关掉后再新建文稿，小窗在约 1 秒内自动把 windowId 从旧窗口（7841）切到新窗口（7842），不需要调用方重新绑定
 - docs/SECURITY.md 去重（同一段"token 挡不住同用户恶意进程"写了两遍）并把测试数量更新到 372，补「测试不拿用户数据」的具体策略（计数差删除 + --force）
 - 锁屏跳过统一化：新增 `lockedSkipNotice()`，background-stability / cold-launch / terminal-control / user-active-demo 四个依赖 AX 的任务入口都加锁屏检查（锁屏直接标环境跳过、退出码 0）；实测四个任务锁屏下都正确跳过，出口分类认得出
 - 修后台控制任务锁屏时误报失败：任务入口加锁屏检查，锁屏直接标「环境跳过」并退出（之前会继续跑、所有 AX 调用报 NSPOSIXErrorDomain Code=2 被当失败）；实测排查确认锁屏下 ocu 报错属环境限制，不是工具损坏
