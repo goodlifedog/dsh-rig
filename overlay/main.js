@@ -159,18 +159,22 @@ function ensureSession(id, source) {
     // 否则调用方忘了 /close 时，后续任务会因为"会话数已达上限"整块失败（实测踩过：矩阵跑完不关会话）。
     // DSH 不在前台时所有会话都 visible=false，所以「不可见」不能当成「没在用」：
     // 最近一分钟内有活动的由 pickEvictionVictim 跳过，防止把正在被任务使用的会话回收掉。
+    // 「正在显示」以窗口实际可见为准：窗口刚建好时 ready-to-show 会先 showInactive 并把
+    // state.visible 置 true，若只看状态里这个标记，一批刚建的会话会把上限顶死、后续任务全 409。
     const evictionList = [...sessions].map(([sid, sess]) => ({
       id: sid,
-      visible: Boolean(sess.state && sess.state.visible),
+      visible: Boolean(sess.state && sess.state.visible
+        && sess.win && !sess.win.isDestroyed() && sess.win.isVisible()),
       lastActivityAt: sess.state && sess.state.lastActivityAt,
       createdAt: sess.createdAt,
       pinned: Boolean(sess.flags && sess.flags.pinned),
     }));
-    const victimId = pickEvictionVictim(evictionList, {
-      now: Date.now(),
-      protectMs: SESSION_RECENT_MS,
-      defaultSession: DEFAULT_SESSION,
-    });
+    const now = Date.now();
+    // 两轮挑：先只动「最近没活动」的，避免把正在被任务用的会话关掉；
+    // 全都刚活动过（比如调用方一口气建满）时退回原策略挑最久没活动的，
+    // 否则一次泄漏就会把后续任务全部顶成 409——这是实机踩过的故障模式。
+    const victimId = pickEvictionVictim(evictionList, { now, protectMs: SESSION_RECENT_MS, defaultSession: DEFAULT_SESSION })
+      || pickEvictionVictim(evictionList, { now, protectMs: 0, defaultSession: DEFAULT_SESSION });
     if (victimId) {
       closeSession(victimId);
       console.log('[overlay] 会话数到上限，回收闲置会话 ' + victimId);
