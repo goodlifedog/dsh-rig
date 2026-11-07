@@ -3,6 +3,8 @@
 ## 未发布
 
 - bg:verify 汇总里标注「锁屏：前台断言跳过」，避免把部分验证当成全部通过
+- 补三类 AX 能力封装：`secondaryAction`（元素自带次要动作，如笔记行的「删除/置顶」）、`scrollElement`（滚动）、`selectTextIn`（选中文本），均带前台保护，6 项单测
+- 矩阵支持「中途锁屏」：剩余应用标 SKIP，不再输出「全部不可读」的假结论
 - 矩阵默认覆盖扩到 11 个门类（新增 Safari 原生浏览器、WPS Office 办公文档）；README 增「后台能控制哪些软件（实测）」表与已知边界
 - 新增应用能力缓存 `core/capabilities.mjs` + `smartTypeWithCache()`：记住每个应用吃哪种输入方式（成功提前/失败押后），写 `~/.desktop-agent/capabilities.json`，9 项单测；后台控制验收改用它
 - 终端后台控制验收：`npm run terminal:bg` 在 Ghostty 敲 echo + 回车，5 项全过且前台未变；已并入 bg:verify（现 6 项）

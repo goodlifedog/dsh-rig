@@ -100,6 +100,12 @@ async function main() {
   for (const app of APPS) {
     seq += 1;
     const session = 'matrix-' + seq;
+    // 跑一半锁屏了：剩下的标环境跳过，不要产出"全部不可读"的假结论
+    if (await isScreenLocked()) {
+      rows.push({ app: app.name, skipped: true, reason: '中途锁屏' });
+      console.log(JSON.stringify({ app: app.name, skipped: true, reason: '中途锁屏' }));
+      continue;
+    }
     const pattern = new RegExp(app.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '|' + app.bundle.split('.').pop(), 'i');
     const row = { app: app.name, bundle: app.bundle };
     const before = await frontName();
@@ -156,9 +162,12 @@ async function main() {
   }
 
   const frontEnd = await frontName();
-  const allFrontOk = rows.every((r) => r.frontUnchanged);
+  const allFrontOk = rows.filter((r) => !r.skipped).every((r) => r.frontUnchanged);
+  const skippedRows = rows.filter((r) => r.skipped);
   const summary = {
     ok: allFrontOk,
+    skipped: skippedRows.length,
+    skippedApps: skippedRows.map((r) => r.app),
     frontStart,
     frontEnd,
     frontUnchangedAll: allFrontOk,
@@ -187,6 +196,10 @@ async function main() {
     '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
   ];
   for (const r of rows) {
+    if (r.skipped) {
+      lines.push('| ' + r.app + ' | SKIP | - | - | - | - | - | - | - | - |');
+      continue;
+    }
     const stealNote = (r.readStoleFront || r.queryStoleFront) ? '读取会抢前台' : '';
     lines.push('| ' + r.app + ' | ' + r.launch + ' | ' + (r.readable ? 'yes' : 'no') + ' | ' + r.nodes +
       ' | ' + r.buttons + ' | ' + r.textAreas + ' | ' + (r.menuItems === undefined ? '-' : r.menuItems) +

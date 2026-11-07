@@ -417,3 +417,74 @@ export async function smartTypeWithCache(app, options = {}) {
   }
   return result;
 }
+
+/**
+ * 调用元素暴露的「次要动作」（secondary action）。
+ * 例如备忘录的笔记行有「置顶 / 删除」，Finder 的项有「显示简介」。
+ * 这类动作不在菜单里、也不是普通按钮，必须走 AX 的 perform action。
+ */
+export async function secondaryAction(app, elementIndex, action, options = {}) {
+  const opts = options || {};
+  const call = typeof opts.call === 'function'
+    ? opts.call
+    : async (tool, args) => (await getOcuMcp()).callTool(tool, args);
+  const before = await frontName();
+  let result = { ok: false, error: '' };
+  try {
+    const r = await call('perform_secondary_action', { app, element_index: String(elementIndex), action: String(action) });
+    result = { ok: !r.isError, error: r.isError ? firstText(r) : '' };
+  } catch (error) {
+    result = { ok: false, error: String(error && error.message || error).slice(0, 120) };
+  }
+  const after = await frontName();
+  const stolen = before !== after;
+  if (stolen) await restoreFront(before);
+  return Object.assign(result, { action: String(action), frontUnchanged: !stolen });
+}
+
+/** 滚动某个元素（列表/文档），不移动系统指针 */
+export async function scrollElement(app, options = {}) {
+  const opts = options || {};
+  const call = typeof opts.call === 'function'
+    ? opts.call
+    : async (tool, args) => (await getOcuMcp()).callTool(tool, args);
+  const before = await frontName();
+  let result = { ok: false, error: '' };
+  try {
+    const args = { app, direction: opts.direction || 'down', pages: String(opts.pages || 1) };
+    if (opts.elementIndex != null) args.element_index = String(opts.elementIndex);
+    const r = await call('scroll', args);
+    result = { ok: !r.isError, error: r.isError ? firstText(r) : '' };
+  } catch (error) {
+    result = { ok: false, error: String(error && error.message || error).slice(0, 120) };
+  }
+  const after = await frontName();
+  const stolen = before !== after;
+  if (stolen) await restoreFront(before);
+  return Object.assign(result, { frontUnchanged: !stolen });
+}
+
+/** 在文本元素里选中一段文字 / 放置光标 */
+export async function selectTextIn(app, options = {}) {
+  const opts = options || {};
+  const call = typeof opts.call === 'function'
+    ? opts.call
+    : async (tool, args) => (await getOcuMcp()).callTool(tool, args);
+  const before = await frontName();
+  let result = { ok: false, error: '' };
+  try {
+    const args = { app, element_index: String(opts.elementIndex) };
+    if (opts.text) args.text = String(opts.text);
+    if (opts.prefix) args.prefix = String(opts.prefix);
+    if (opts.suffix) args.suffix = String(opts.suffix);
+    if (opts.selection) args.selection = String(opts.selection);
+    const r = await call('select_text', args);
+    result = { ok: !r.isError, error: r.isError ? firstText(r) : '' };
+  } catch (error) {
+    result = { ok: false, error: String(error && error.message || error).slice(0, 120) };
+  }
+  const after = await frontName();
+  const stolen = before !== after;
+  if (stolen) await restoreFront(before);
+  return Object.assign(result, { frontUnchanged: !stolen });
+}
