@@ -17,6 +17,7 @@ const TASKS = [
   'parallel-real-demo',
   'user-chrome-demo',
   'human-demo',
+  'multi-app',
 ];
 
 function runTask(name) {

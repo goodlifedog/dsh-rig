@@ -1,3 +1,4 @@
+import { isScreenLocked, lockedSkipNotice } from '../platform.mjs';
 import { ocu, overlay, guard, withAppLock, countElements } from '../agentd.mjs';
 
 // 同时控制两个应用：每个应用独立加锁，互不阻塞。
@@ -18,6 +19,11 @@ async function probe(app) {
 }
 
 async function main() {
+  // 锁屏下 AX 不可用：不跳过会得到「节点 0 / 前台 (unknown)」还 exit 0，看着像全部正常
+  if (await isScreenLocked()) {
+    console.log(lockedSkipNotice('multi-app.mjs'));
+    return;
+  }
   await overlay.status('并行读取 ' + TARGETS.length + ' 个应用');
   const t0 = Date.now();
 
