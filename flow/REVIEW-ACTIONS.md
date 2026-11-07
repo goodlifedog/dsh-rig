@@ -324,6 +324,16 @@ flow/patch-deploy-freshness.diff     代码新鲜度检查（service:status 能�
 - 对比：`background-stability` 任务已经改成「只关自己拉起来的应用」（`launchedByUs`），清理脚本还没这个意识
 - 建议：① 记录本次运行自己启动过的应用，只退这些；或 ② 退出前加 HID 空闲判断（用户最近 60 秒动过键鼠就不退）；或 ③ 至少把「退出应用」收进 `--force`，默认只报告
 
+### 2.13 31 个任务里 17 个没写文件头用途说明（任务清单生成器会标出来）
+
+- 任务脚本统一约定是文件头 `/** 一句话说明 */`，但有一半没写：
+  `boss-candidates` `boss-greet` `boss-scan` `boss-scan-dedicated` `greet-inner` `greet-verify`
+  `browser-demo` `coverage-probe` `electron-demo` `form-fill` `form-fill-local`
+  `headless-demo` `human-demo` `mcp-demo` `multi-app` `platform-demo` `user-chrome-demo`
+- 影响：`desktop-agent tasks` 只给名字，用户不知道这些任务是干嘛的；任务清单（`npm run tasks:doc`）里只能显示「（文件头没写用途说明）」
+- 建议：采纳 `patch-tasks-catalog.diff` 后，给这 17 个补一行说明；之后可以再加一条 repo:check 规则「每个任务必须有文件头说明」，把它变成硬约束
+- BOSS 相关的六个会随 BOSS 内容一起移除，可以先不动
+
 ## 已修好（复核过，不用再看）
 
 控制面 token（daemon + overlay 全接口）· Origin/跨域拦截 · pid Helper 误匹配 · 验收覆盖新通道（10 项）·
