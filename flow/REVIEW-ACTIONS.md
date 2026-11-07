@@ -67,6 +67,21 @@
 
 ## P2 · 打磨（按需，不阻塞发布）
 
+### 3.4 「并发抢锁」测试是顺序模拟，不是真并发（**补丁已备**：`flow/patch-lock-race-test.diff`）
+
+- `test/acceptance-lock.test.mjs` 里那条「并发抢锁：两个进程同时抢只有一个成功」，实际是**同一个进程里连续调两次** `acquireLock`，传不同的假 pid
+- 它能验证「后来者看到活锁会退让」，但验证不到 `link(2)` 的原子性——真正的竞态是两个进程同时 link，只有一个收到 EEXIST
+- 我写了一个真并发的版本：spawn 两个 node 子进程同时抢同一把锁，断言恰好一个成功。对着当前实现跑，**通过**（说明实现是对的，只是测试没覆盖到）
+- 补丁：`git apply flow/patch-lock-race-test.diff`（新增 `test/acceptance-lock-race.test.mjs`，49 行）
+
+### 3.45 抢锁 fail-open 没有测试
+
+- `acceptance-lock.mjs` 在非 EEXIST 异常时返回 `{ ok: true, warning: ... }`（拿不到锁照跑）
+- 这条分支没有任何测试；如果将来决定改成 fail-closed，也没有测试会失败提醒
+
+## P2（续）
+
+
 ### 3.5 会话「真的可见」这条判断还没进单测（`b931e02` 修的）
 
 - `b931e02` 把「正在显示」从 `state.visible` 改成 `state.visible && win.isVisible()`，方向对：窗口刚建好时 `showInactive` 会先把 `state.visible` 置 true，只看状态会把上限顶死
