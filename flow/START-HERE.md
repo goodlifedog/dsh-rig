@@ -4,10 +4,10 @@
 
 ## 现在的状态
 
-- 代码：`npm run verify` 全绿，单测 500+，`repo:check` 20 项全过
+- 代码：`npm run verify` 全绿，单测 542 项（541 过 / 0 失败），`repo:check` 19 项全过
 - 发布链路：干净副本里完整彩排过（补丁 → 测试 → 体检 → 打包 → 安装 → publish dry-run），六步全通
 - 真实验收：跑过一次完整验收，13 项里 11 项通过/跳过，2 项失败都是测试设计问题（已修一处、一处已给方案）
-- 待应用补丁：**只剩 1 个**（`patch-publish.diff`），其余 20+ 个都已采纳并删除
+- 待应用补丁：**3 个**（发布配置、巡检明细显示、multi-app 锁屏跳过），其余 20+ 个都已采纳并删除
 
 ## 你要做的四件事（都只要一次决定）
 
@@ -18,7 +18,7 @@
 | 3 | **GitHub 仓库地址** | 替换补丁里的 `github.com/tester/desktop-agent` |
 | 4 | **git 提交身份** | `git config user.email "<id>+<用户名>@users.noreply.github.com"` |
 
-做完这四件，应用 `patch-publish.diff`，再跑一遍 `npm run verify`，就能发。
+做完这四件，应用 `flow/` 下的 3 个补丁（顺序见 PATCHES.md），再跑一遍 `npm run verify`，就能发。
 
 ## 发布前的最后一屏
 
