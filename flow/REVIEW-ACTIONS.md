@@ -1,7 +1,7 @@
 # 评审待办（外部检查者维护）
 
 > 每次复查后更新，**只看这一页就够**。详细理由见 `REVIEW-2026-11-07.md`。
-> 更新：2026-11-08 03:30
+> 更新：2026-11-08 03:45
 
 ## 本轮我直接改的（请审 diff 再提交）
 
@@ -14,8 +14,7 @@
 
 ## 现在就做
 
-1. **`docs/USAGE.md` 四处 curl 会 401**：第 243/273/283/296 行是给用户复制粘贴的，token 上线后全部失效。要么加 `-H "X-Agent-Token: $(cat ~/.desktop-agent/api-token)"`，要么改推 `npm run health`。
-2. **发布配置不合格**：包名 `desktop-agent` 已被 npm 占用（发布必然 403）；缺 `bin`/`files`/`repository`；CI 矩阵跑三平台但项目只支持 macOS；README 徽章还是 `USER` 占位。补丁已备：`git apply flow/patch-publish.diff`。
+1. **发布配置不合格**：包名 `desktop-agent` 已被 npm 占用（发布必然 403）；缺 `bin`/`files`/`repository`；CI 矩阵跑三平台但项目只支持 macOS；README 徽章还是 `USER` 占位。补丁已备：`git apply flow/patch-publish.diff`。
 
 ## 下一批
 
@@ -33,5 +32,6 @@
 - 失败归类放水（ENOENT / 未送达）
 - 启动应用把窗口丢到用户桌面（改 `open -g -j` 隐藏启动）
 - `npm run doctor` 误报小窗红叉
+- `docs/USAGE.md` 的 curl 示例已全部带票（现在 0 处无票，15 处带票）
 - 应用锁会被偷
 - 小窗圆角随尺寸自适应、软件自身弹窗守卫
