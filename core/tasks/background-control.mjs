@@ -98,7 +98,8 @@ async function main() {
   // 4. 后台写入正文并校验
   const areas = await find('备忘录', { role: 'AXTextArea', limit: 5 });
   const area = areas[0];
-  const text = '后台控制验证：' + new Date().toLocaleTimeString('zh-CN');
+  // 标题带显式标记：清理时只删带标记的笔记，不靠"删最上面几条"猜
+  const text = '[AGENT-TEST] 后台控制验证：' + new Date().toLocaleTimeString('zh-CN');
   if (area) {
     // 智能输入：先 AX 设值，读回不通过再降级到后台键入
     const w = await smartTypeWithCache('备忘录', { elementIndex: area.index, text });

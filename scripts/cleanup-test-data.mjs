@@ -13,12 +13,14 @@ import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { ensureAppRunning, frontName, quitApp } from '../core/background.mjs';
 import { closeOcuMcp } from '../core/ocu-mcp.mjs';
-import { countNotes, deleteTopNotes } from '../core/note-cleanup.mjs';
+import { countNotes, deleteTopNotes, deleteMarkedTestNotes } from '../core/note-cleanup.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const dryRun = process.argv.includes('--dry-run');
-const forceNotes = process.argv.includes('--force') || process.env.NOTES_CLEANUP_FORCE === '1';
-const TEST_NOTE_RE = /后台控制验证|后台写入|后台测试|pta 测试/i;
+const forceNotes = process.argv.includes('--force') || process.argv.includes('--force-all') || process.env.NOTES_CLEANUP_FORCE === '1';
+// 只有明确加 --force-all 才允许退回「按条数删最上面几条」；普通 --force 只删带测试标记的笔记
+const forceAllNotes = process.argv.includes('--force-all');
+const TEST_NOTE_RE = /\[\s*AGENT-TEST\s*\]|后台控制验证|后台写入|后台测试|pta 测试/i;
 
 function osa(script, timeoutMs = 20000) {
   try {
@@ -33,12 +35,23 @@ async function purgeNotes(report) {
   report.push({ kind: 'note-count', count });
   if (count <= 0) return 0;
   if (!forceNotes) {
-    report.push({ kind: 'note-skip', note: '当前文件夹有 ' + count + ' 条笔记；清理需要 --force（会把这些都删掉，确认都是测试数据再执行）' });
+    report.push({ kind: 'note-skip', note: '当前文件夹有 ' + count + ' 条笔记；清理需要 --force（只删带 [AGENT-TEST] 标记或历史测试词的笔记，不动用户笔记）' });
     return 0;
   }
-  const removed = await deleteTopNotes(count);
-  report.push({ kind: 'note-deleted', removed });
-  return removed;
+  // 第一层：按标题标记删（写测试数据时都会带 [AGENT-TEST]）
+  const marked = await deleteMarkedTestNotes(count);
+  if (marked.readable > 0) {
+    report.push({ kind: 'note-deleted', removed: marked.removed, readable: marked.readable });
+    return marked.removed;
+  }
+  // 第二层：这个 Notes 版本列表完全读不到标题。按条数删有可能误伤，必须显式 --force-all
+  if (forceAllNotes) {
+    const removed = await deleteTopNotes(count);
+    report.push({ kind: 'note-deleted-fallback', removed, note: '列表标题读不到，按 --force-all 删了最上面 ' + removed + ' 条' });
+    return removed;
+  }
+  report.push({ kind: 'note-unreadable', note: '列表标题读不到，无法确认哪条是测试笔记；未删除。确需按条数删请加 --force-all' });
+  return 0;
 }
 
 async function cleanupNotes(report) {
