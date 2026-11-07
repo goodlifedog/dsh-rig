@@ -2,6 +2,9 @@
 
 ## 未发布
 
+- 修应用锁被抢（外部评审第 25 轮）：`withAppLock` 现在先看持锁进程 pid 是否还活着，活着就不算过期；持锁期间每 staleMs/3 心跳刷新 mtime——长任务（>3 分钟）不会再被第二个任务抢锁导致两个任务同时控制同一应用；3 项单测（死锁接管 / 活锁不抢 / 心跳续期）
+- 修状态看板「最近验收」：原来对 reports 里所有 .md 做字典序排序，挑中的是 app-matrix 之类报告、会把当天失败盖掉；新增 `core/report-index.mjs` 只认 `acceptance-*.md` 并按文件名时间戳取最新，3 项单测
+- docs/USAGE.md 所有 curl 示例补 `X-Agent-Token`（本地接口加票据后，复制粘贴会 401）
 - 弹窗守卫（外部协作者提案，我改了数据源）：`core/dialog-guard.mjs` 扫自家进程（默认 overlay 的 Electron 与 Desktop Agent，不碰用户 Chrome），自动点掉崩溃/更新弹窗的「确定/好/关闭/稍后」；**权限类弹窗绝不代点**，只提醒。原实现调 `ocu call dialogs`（ocu 没这个工具，会静默失效），改成走本地 AX 层 `dialogs()` + System Events 点按钮；`--dry-run/--watch`；补 4 项单测（默认目标、权限文案、注入防护、dry-run）
 - 后台启动默认改为 `open -g -j`（连窗口都不显示）：实测 FastZip / iRightMouse 窗口仍建出来、AX 树可读写、画面能抓，前台全程不变；需要窗口正常显示时设 `AGENT_LAUNCH_HIDDEN=0`；`launchFlags()` 纯函数 + 2 项单测
 - 验收「活动触发显示」改成确定性检查并定位到真正原因：小窗按「会话标题 = 宿主窗口标题」门控，验收用的 default 会话标签还是旧标题（规划布局探讨），与当前宿主标题（项目详情）不匹配 → 按设计隐藏，不是偶发 bug。现在验收先切宿主到前台、带上当前宿主标题触发活动、断言可见、再还原前台；实测从未知状态变为稳定 PASS

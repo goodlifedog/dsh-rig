@@ -237,10 +237,17 @@ npm run service:uninstall # 移除 launchd 自启（daemon + overlay 两个 plis
 
 ### 3.6 用 HTTP 读小窗状态
 
-小窗自己有完整状态接口，比肉眼看更准：
+小窗自己有完整状态接口，比肉眼看更准。
+
+> **2026-11-08 起本地接口要票据**：daemon(7789) 和 overlay(7788) 的所有请求都要带
+> `X-Agent-Token`。先取一次，后面的 curl 都带上：
+>
+> ```bash
+> TOKEN=$(cat ~/.desktop-agent/api-token)
+> ```
 
 ```bash
-curl -s http://127.0.0.1:7788/health | head -c 600
+curl -s -H "X-Agent-Token: $TOKEN" http://127.0.0.1:7788/health | head -c 600
 ```
 
 关键字段：
@@ -270,7 +277,7 @@ npm run health                                   # 一条命令看全局（服�
 npm run health -- --deep                         # 上面这些 + 跑一遍小窗效果回归
 npm run doctor                                   # 环境 + 两个服务在不在
 npm run status                                   # 小窗状态 + 有没有任务占着应用锁
-curl -s http://127.0.0.1:7788/health | head -c 400   # 小窗自己怎么说
+curl -s -H "X-Agent-Token: $TOKEN" http://127.0.0.1:7788/health | head -c 400   # 小窗自己怎么说
 ```
 
 ### 4.1 小窗不出现
@@ -280,7 +287,7 @@ curl -s http://127.0.0.1:7788/health | head -c 400   # 小窗自己怎么说
 1. **服务到底在不在**
 
    ```bash
-   curl -s -m 2 http://127.0.0.1:7788/health || echo OFFLINE
+   curl -s -m 2 -H "X-Agent-Token: $TOKEN" http://127.0.0.1:7788/health || echo OFFLINE
    launchctl list | grep desktop-agent
    ```
 
@@ -293,7 +300,7 @@ curl -s http://127.0.0.1:7788/health | head -c 400   # 小窗自己怎么说
 
    | health 线索 | 原因 | 处理 |
    | --- | --- | --- |
-   | 刚空闲 5 秒 | 空闲自动隐藏 | 推一次活动验证：`curl -s -X POST http://127.0.0.1:7788/status -H 'Content-Type: application/json' -d '{"text":"ping"}'` |
+   | 刚空闲 5 秒 | 空闲自动隐藏 | 推一次活动验证：`curl -s -X POST http://127.0.0.1:7788/status -H "X-Agent-Token: $TOKEN" -H 'Content-Type: application/json' -d '{"text":"ping"}'` |
    | 前台不是 DSH | 不在前台时隐藏（设计如此） | 切回 DSH |
    | `matched:false` | 该会话 titleHint 与当前 DSH 标题不匹配 | 推 `/status` 时带当前 `titleHint`，或看是不是推到了别的 session |
    | `hostVisible:false` | DSH 最小化/隐藏/在别的 Space | 切回 DSH 所在 Space，等它重新出现 |
@@ -311,10 +318,10 @@ curl -s http://127.0.0.1:7788/health | head -c 400   # 小窗自己怎么说
 
 1. **没有「屏幕录制」权限**：小窗会显示「画面暂时不可用：…」+ 红色胶囊，按钮是 **打开设置**。
    去 系统设置 → 隐私与安全性 → 屏幕录制，勾选启动小窗的终端/Electron/App，然后重启小窗。
-   判定：`curl -s http://127.0.0.1:7788/windows` 返回 500 也说明权限缺失。
+   判定：`curl -s -H "X-Agent-Token: $TOKEN" http://127.0.0.1:7788/windows` 返回 500 也说明权限缺失。
 2. **绑定的窗口 ID 失效 / 窗口在别的 Space / 已最小化**：`/health` 的 `thumbnail.state` 是 error。
-   - 重新拿窗口列表：`curl -s http://127.0.0.1:7788/windows`（带 `self:true` 的是我们自己的窗口，别绑）
-   - 重新绑：`curl -s -X POST http://127.0.0.1:7788/window -H 'Content-Type: application/json' -d '{"windowId":123456}'`
+   - 重新拿窗口列表：`curl -s -H "X-Agent-Token: $TOKEN" http://127.0.0.1:7788/windows`（带 `self:true` 的是我们自己的窗口，别绑）
+   - 重新绑：`curl -s -X POST http://127.0.0.1:7788/window -H "X-Agent-Token: $TOKEN" -H 'Content-Type: application/json' -d '{"windowId":123456}'`
    - 或者直接点小窗上的 **重试** 按钮。
 3. **headless 推帧没到**：headless 模式屏幕本来没有窗口，画面只能靠 `POST /frame`。
    - 看 `/health` 的 `frames` 是否在涨、`frameBytes` 是否非 0。
@@ -329,12 +336,12 @@ curl -s http://127.0.0.1:7788/health | head -c 400   # 小窗自己怎么说
 
    ```bash
    npm run status
-   curl -s http://127.0.0.1:7789/status
+   curl -s -H "X-Agent-Token: $TOKEN" http://127.0.0.1:7789/status
    ```
 
    `/status` 的 `current` 是正在跑的任务（带 pid、日志路径），`queue` 是排队。
 
-2. **想马上停**：`curl -s -X POST http://127.0.0.1:7789/stop`（清空队列并 SIGTERM 当前任务）。
+2. **想马上停**：`curl -s -X POST -H "X-Agent-Token: $TOKEN" -H 'Content-Type: application/json' http://127.0.0.1:7789/stop`（清空队列并 SIGTERM 当前任务）。
 
 3. **超时规则**（不是卡住，是还没到点）：
 
@@ -468,8 +475,8 @@ node core/tasks/<任务>.mjs          # 单跑一个任务文件（不经 runner
 | POST | `/close` | `{}` 关掉该会话窗口 |
 
 ```bash
-curl -s http://127.0.0.1:7788/health | head -c 400
-curl -s -X POST http://127.0.0.1:7788/status -H 'Content-Type: application/json' \
+curl -s -H "X-Agent-Token: $TOKEN" http://127.0.0.1:7788/health | head -c 400
+curl -s -X POST http://127.0.0.1:7788/status -H "X-Agent-Token: $TOKEN" -H 'Content-Type: application/json' \
   -d '{"text":"手动验证一下","state":"running"}'
 curl -s -X POST http://127.0.0.1:7788/visible -H 'Content-Type: application/json' \
   -d '{"visible":true}'
@@ -491,9 +498,9 @@ curl -s -X POST http://127.0.0.1:7788/close -H 'Content-Type: application/json' 
 
 ```bash
 curl -s http://127.0.0.1:7789/
-curl -s http://127.0.0.1:7789/status | head -c 500
+curl -s -H "X-Agent-Token: $TOKEN" http://127.0.0.1:7789/status | head -c 500
 curl -s -X POST http://127.0.0.1:7789/run -H 'Content-Type: application/json' -d '{"task":"headless-demo"}'
-curl -s -X POST http://127.0.0.1:7789/stop
+curl -s -X POST -H "X-Agent-Token: $TOKEN" -H 'Content-Type: application/json' http://127.0.0.1:7789/stop
 ```
 
 ### 5.5 launchctl（macOS 服务）

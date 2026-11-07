@@ -143,7 +143,15 @@ export async function withAppLock(app, fn, { timeoutMs = 120000, staleMs = 18000
       let stale = false;
       try {
         const st = fs.statSync(file);
-        stale = Date.now() - st.mtimeMs > staleMs;
+        // 先看持锁进程还活着没：活着就不算过期，否则长任务（>staleMs）会被后来者抢锁，
+        // 两个任务同时控制同一个应用——这正是这把锁要防的事。
+        let holder = 0;
+        try { holder = Number.parseInt(String(fs.readFileSync(file, 'utf8')).trim(), 10) || 0; } catch {}
+        let alive = false;
+        if (holder > 0) {
+          try { process.kill(holder, 0); alive = true; } catch { alive = false; }
+        }
+        stale = !alive && Date.now() - st.mtimeMs > staleMs;
       } catch { stale = true; }
       if (stale) {
         try { fs.unlinkSync(file); } catch {}
@@ -156,9 +164,16 @@ export async function withAppLock(app, fn, { timeoutMs = 120000, staleMs = 18000
     }
   }
 
+  // 持锁期间心跳续期：mtime 一直被刷新，配合上面的 pid 存活性判断，双保险
+  const heartbeat = setInterval(() => {
+    try { fs.utimesSync(file, new Date(), new Date()); } catch {}
+  }, Math.max(1000, Math.floor(staleMs / 3)));
+  if (typeof heartbeat.unref === 'function') heartbeat.unref();
+
   try {
     return await fn();
   } finally {
+    clearInterval(heartbeat);
     try { fs.unlinkSync(file); } catch {}
   }
 }

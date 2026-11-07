@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { overlay } from './agentd.mjs';
+import { latestReport } from './report-index.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -89,7 +90,8 @@ async function main() {
 
   const reports = path.join(ROOT, 'reports');
   if (fs.existsSync(reports)) {
-    const last = fs.readdirSync(reports).filter((f) => f.endsWith('.md')).sort().pop();
+    // 只认 acceptance-*.md，并按文件名里的时间戳取最新（字典序会把别的报告排进来）
+    const last = latestReport(fs.readdirSync(reports));
     if (last) console.log('\n最近验收 : reports/' + last);
   }
 }
