@@ -276,23 +276,10 @@ flow/patch-deploy-freshness.diff     代码新鲜度检查（service:status 能�
 - 影响：打包给用户后，daemon 一崩就是「小窗看起来正常、点什么都失败」且没有任何提示
 - 建议：加 error 监听转成可读错误；加 exit 监听——可以限次自动重启（带退避），或至少把状态写进 `/health` 并在小窗上显示「后台服务已退出」
 
-### 2.06 `spawn` 后没有 `error` 监听的地方还有 11 处（同一类问题，建议统一收口）
+### 2.06 ✅ 已解决：抽了 `attachSpawnError` 统一收口（cli/electron-task/runner/daemon 都在用，带测试）
 
-扫全仓 `spawn(`/`fork(` 后 1400 字符内没有 `on('error')` 的位置：
-
-```
-core/runner.mjs:51            拉起任务子进程      ← 最该修
-core/daemon.mjs:178           拉起 runner         ← 同上
-overlay/supervisor.js:34      拉起 daemon（打包版）
-core/cli.mjs:42               拉起 daemon
-core/electron-task.mjs:345    拉起 Electron
-core/tasks/cdp-channel.mjs:46 拉起浏览器
-core/tasks/form-fill-local.mjs:329
-scripts/humanize-live.mjs:13  scripts/bg-verify.mjs:35  scripts/start-all.mjs:50/67（开发脚本）
-```
-
-- 这些调用点的二进制大多是事先解析过的（`resolveElectronBinary`、`process.execPath`），所以**概率不高**；但 `runner`/`daemon` 这两处一旦触发就是「任务/服务整个没了且没有可读原因」，和之前 `ocu-mcp` 那个 1.4 完全同类
-- 建议：至少在 `runner`、`daemon`、`supervisor` 三处加 `child.on('error', ...)`，转成一条可读错误（类似 ocu-mcp 的「ocu 可执行文件无法启动（路径）：原因」）；有空再清理脚本那些
+- 主会话在 `core/safety.mjs` 加了 `attachSpawnError(child, onError)`：只把第一次失败交给调用方，监听常驻（避免 `once` 之后再有 error 变成未捕获异常），配 `test/spawn-error.test.mjs`
+- 我当初那条扫描是**启发式误报**：它只看 spawn 后 1400 字符内有没有 `on('error')`，看不到「通过 helper 挂监听」的写法。以后同类扫描要顺带 grep 一下 helper
 
 ## 已修好（复核过，不用再看）
 
