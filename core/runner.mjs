@@ -32,10 +32,14 @@ function stamp() {
   return new Date().toISOString().replace(/[:.]/g, '-');
 }
 
-async function runOnce(task, { timeoutMs }) {
+export async function runOnce(task, options = {}) {
+  const opts = options || {};
+  const timeoutMs = opts.timeoutMs;
+  const logDir = opts.logDir || LOG_DIR;
+  const spawnFn = opts.spawn || spawn;
   const startedAt = Date.now();
-  const logFile = path.join(LOG_DIR, stamp() + '-' + task.name + '.jsonl');
-  await fsp.mkdir(LOG_DIR, { recursive: true });
+  const logFile = path.join(logDir, stamp() + '-' + task.name + '.jsonl');
+  await fsp.mkdir(logDir, { recursive: true });
   const fd = await fsp.open(logFile, 'a');
 
   const record = (entry) => {
@@ -48,7 +52,7 @@ async function runOnce(task, { timeoutMs }) {
 
   return await new Promise((resolve) => {
     // detached 让任务自成进程组：超时/取消时按组杀，避免任务脚本拉起的 ocu/Chrome 变成孤儿
-    const child = spawn(process.execPath, [task.file], {
+    const child = spawnFn(process.execPath, [task.file], {
       detached: true,
       cwd: path.join(__dirname, '..'),
       env: { ...process.env, AGENTD_RUNNER: '1' },
@@ -92,13 +96,29 @@ async function runOnce(task, { timeoutMs }) {
       hardTimer.unref();
     }, timeoutMs);
 
-    child.on('close', async (code, signal) => {
+    // spawn 失败（ENOENT/权限/资源不足）只会发 'error'，不保证发 'close'：
+    // 不接住就是主进程未捕获异常，任务「凭空消失」且日志里没有原因。
+    let settled = false;
+    const finish = async (payload) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
       if (currentChild === child) currentChild = null;
       const durationMs = Date.now() - startedAt;
-      record({ event: 'end', code, signal, durationMs, stdoutBytes: stdout.length, stderrBytes: stderr.length });
-      await fd.close();
-      resolve({ code, signal, durationMs, stdout, stderr, logFile, lastLineAt });
+      record({ event: 'end', code: payload.code, signal: payload.signal, durationMs, stdoutBytes: stdout.length, stderrBytes: stderr.length, spawnError: payload.spawnError || undefined });
+      try { await fd.close(); } catch {}
+      resolve(Object.assign({ durationMs, stdout, stderr, logFile, lastLineAt }, payload));
+    };
+
+    child.on('error', (error) => {
+      const message = '任务进程启动失败：' + ((error && error.message) || error);
+      record({ event: 'spawn-error', error: message });
+      console.error('[runner] ' + message);
+      void finish({ code: null, signal: '', spawnError: message });
+    });
+
+    child.on('close', (code, signal) => {
+      void finish({ code, signal });
     });
   });
 }
@@ -156,6 +176,9 @@ async function runTask(name, { retries = 1, timeoutMs = 300000 } = {}) {
 }
 
 // ---------- CLI ----------
+// 被测试 import 时不能执行 CLI（否则会按 argv 直接 process.exit）
+const invokedDirectly = Boolean(process.argv[1])
+  && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 const argv = process.argv.slice(2);
 const cmd = argv[0];
 const opt = (key, dflt) => {
@@ -163,25 +186,27 @@ const opt = (key, dflt) => {
   return i >= 0 ? argv[i + 1] : dflt;
 };
 
-if (!cmd || cmd === 'list') {
-  const tasks = listTasks();
-  console.log('可用任务（' + tasks.length + '）：');
-  for (const t of tasks) console.log('  ' + t.name.padEnd(20) + path.relative(process.cwd(), t.file));
-  process.exit(0);
-}
+if (invokedDirectly) {
+  if (!cmd || cmd === 'list') {
+    const tasks = listTasks();
+    console.log('可用任务（' + tasks.length + '）：');
+    for (const t of tasks) console.log('  ' + t.name.padEnd(20) + path.relative(process.cwd(), t.file));
+    process.exit(0);
+  }
 
-if (cmd === 'run') {
-  const name = argv[1];
-  runTask(name, {
-    retries: Math.max(1, Number(opt('retries', 1)) || 1),
-    timeoutMs: Math.max(1000, Number(opt('timeout', 300000)) || 300000),
-  })
-    .then((r) => process.exit(r.ok ? 0 : 1))
-    .catch((e) => {
-      console.error('[runner] ' + e.message);
-      process.exit(2);
-    });
-} else {
-  console.error('未知命令：' + cmd + '（可用：list / run）');
-  process.exit(2);
+  if (cmd === 'run') {
+    const name = argv[1];
+    runTask(name, {
+      retries: Math.max(1, Number(opt('retries', 1)) || 1),
+      timeoutMs: Math.max(1000, Number(opt('timeout', 300000)) || 300000),
+    })
+      .then((r) => process.exit(r.ok ? 0 : 1))
+      .catch((e) => {
+        console.error('[runner] ' + e.message);
+        process.exit(2);
+      });
+  } else {
+    console.error('未知命令：' + cmd + '（可用：list / run）');
+    process.exit(2);
+  }
 }
