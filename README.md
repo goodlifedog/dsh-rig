@@ -121,7 +121,7 @@ await mcp.callTool('get_app_state', { app: 'Google Chrome' });
 | `core/` | 12500+ | daemon、任务队列、平台抽象、MCP 客户端、CDP 客户端、拟人输入、验收框架、31 个任务 |
 | `overlay/` | 4000+ | Electron 多会话小窗主进程、HTTP 服务、渲染层、会话门控、点击穿透 |
 | `scripts/` | 2300+ | 仓库体检、重启自检、版本同步、效率基准、打包、清理、巡检 |
-| `test/` + `tools/` | 4000+ | 381 项单元/集成测试、Windows UIA 桥 |
+| `test/` + `tools/` | 4000+ | 500+ 项单元/集成测试、Windows UIA 桥 |
 
 其中**完全自主设计的部分**：
 

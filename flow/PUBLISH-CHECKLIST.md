@@ -43,7 +43,7 @@ node core/cli.mjs foo; echo $? # 应为 2（P1 已实现，无需打补丁）
 
 ```
 1) git apply patch-publish.diff     OK
-2) npm test                          507 项 / 506 过 / 0 失败
+2) npm test                          全绿（当时 528 项 / 527 过 / 1 跳过；数量随开发变化）
 3) npm run repo:check                全部通过
 4) npm pack                          147 文件 / 1.1 MB
 5) npm i -g --prefix /tmp/… 后跑 CLI   status / tasks 正常
