@@ -119,7 +119,7 @@ node scripts/bundle-ocu.mjs --with-binary && cat third_party/open-computer-use/N
 验证：应用后在真实仓库跑 `npm run accept`，这一项应稳定 PASS。
 （我在临时克隆里跑这个任务时 ocu 运行时缺失导致 MCP 崩溃，无法在克隆里端到端验证。）
 
-### patch-accept-front.diff（105 行 / 2 个文件，含 5 条单测）
+### ✅ patch-accept-front.diff（105 行 / 2 个文件，含 5 条单测）—— 已应用，补丁文件已删除
 
 **问题（实测抓到的验收失败链）**：完整验收里 `background-control` 记录「全程前台未被抢占 Calculator → Calculator」——
 **任务开始时前台就已经是 Calculator**，不是用户的 Chrome。说明前面某个任务（multi-app 读 Finder/Calculator）

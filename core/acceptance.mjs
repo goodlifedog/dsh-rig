@@ -125,6 +125,34 @@ function frontmostBundle() {
   } catch { return null; }
 }
 
+
+// 验收里有些 demo 会把目标应用留到前台：每个任务之后都还原一次，
+// 否则后面任务的「起点前台」会是测试应用，判定链一路歪（实测踩过：multi-app 之后 Calculator 留前台）。
+// 用户中途自己切走了（浏览器/终端）就不动，避免被硬拽。
+export const TEST_APPS = ['Calculator', 'Notes', 'TextEdit', 'DeepSeek Harness', 'iMovie', 'Steam', 'FastZip', 'iRightMouse', 'TencentMeeting', 'Keynote', 'Numbers', 'Pages'];
+
+/**
+ * 该不该把前台还给用户（纯函数，便于单测）：
+ * current 是测试应用或用户原来的应用时才还；用户自己切到别处（浏览器/终端）就不动。
+ */
+export function shouldRestoreFront(current, frontAtStart, testApps = TEST_APPS) {
+  const cur = String(current || '');
+  const start = String(frontAtStart || '');
+  if (!start) return false;
+  if (!cur || cur === start) return false;
+  return (testApps || []).some((name) => cur === name || cur.includes(name)) || cur === start;
+}
+
+function restoreUserFront() {
+  if (process.platform !== 'darwin' || !FRONT_AT_START) return false;
+  const current = frontmostApp();
+  if (!shouldRestoreFront(current, FRONT_AT_START)) return false;
+  try {
+    execFileSync('/usr/bin/osascript', ['-e', 'tell application "System Events" to set frontmost of first process whose name is ' + JSON.stringify(FRONT_AT_START) + ' to true'], { timeout: 5000 });
+    return true;
+  } catch { return false; }
+}
+
 async function runTask(name, timeoutMs = 180000, env) {
   const r = await run('node', ['core/runner.mjs', 'run', name, '--timeout', String(timeoutMs)], env ? { env } : {});
   const out = r.stdout + r.stderr;
@@ -133,6 +161,8 @@ async function runTask(name, timeoutMs = 180000, env) {
   const skipped = Boolean(reason);
   const ok = r.code === 0 || skipped;
   record('任务 ' + name, ok, ok ? (reason ? '环境跳过（' + reason + '）' : '') : out.slice(-200).replace(/\n/g, ' '), skipped);
+  // 每个任务之后把前台还给用户：下一个任务的判定基线必须是「用户原来的应用」
+  if (restoreUserFront()) console.log('  （已把前台还给 ' + FRONT_AT_START + '）');
   return ok;
 }
 
@@ -230,18 +260,8 @@ async function main() {
     ]),
   });
 
-  // 验收里有些 demo 会把目标应用留到前台；结束时按"用户原来所在的应用"还原。
-  // 用户中途自己切走了（浏览器/终端）就不要动，避免被硬拽。
-  if (process.platform === 'darwin' && FRONT_AT_START) {
-    const TARGETS = ['Calculator', 'Notes', 'TextEdit', 'DeepSeek Harness', 'iMovie', 'Steam', 'FastZip', 'iRightMouse', 'TencentMeeting', 'Keynote', 'Numbers', 'Pages'];
-    const current = frontmostApp();
-    const isTouched = TARGETS.some((name) => current === name || current.includes(name)) || current === FRONT_AT_START;
-    if (current !== FRONT_AT_START && isTouched) {
-      try {
-        execFileSync('/usr/bin/osascript', ['-e', 'tell application "System Events" to set frontmost of first process whose name is ' + JSON.stringify(FRONT_AT_START) + ' to true'], { timeout: 5000 });
-      } catch {}
-    }
-  }
+  // 收尾再还原一次（正常情况下每个任务之后已经还过了）
+  restoreUserFront();
 
   await cleanupAfterAcceptance();
 
