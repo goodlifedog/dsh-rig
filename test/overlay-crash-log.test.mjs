@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { createCrashLog } = require('../overlay/crash-log.js');
+const { createCrashLog, shouldReloadAfterCrash } = require('../overlay/crash-log.js');
 
 test('初始为空；记录后能取到最后一次', () => {
   const log = createCrashLog({ now: () => '2026-01-01T00:00:00.000Z' });
@@ -21,6 +21,20 @@ test('超长 detail 截断，空值有兜底', () => {
   assert.equal(log.note('x', 'a'.repeat(100)).detail.length, 10);
   assert.equal(log.note(null, null).kind, 'unknown');
   assert.equal(log.get().detail, '');
+});
+
+test('崩溃重载有次数上限：时间窗内崩太多次就停手', () => {
+  const now = 1_700_000_000_000;
+  assert.equal(shouldReloadAfterCrash([now - 5000], now).reload, true);
+  assert.equal(shouldReloadAfterCrash([now - 5000, now - 3000], now).reload, true);
+  const third = shouldReloadAfterCrash([now - 5000, now - 3000, now - 1000], now);
+  assert.equal(third.reload, false, '窗内第 3 次就应该停，避免崩溃循环');
+  assert.match(third.reason, /循环/);
+  // 窗口外的旧崩溃不算
+  assert.equal(shouldReloadAfterCrash([now - 120000, now - 110000, now - 100000], now).reload, true);
+  // 非法输入不抛错
+  assert.doesNotThrow(() => shouldReloadAfterCrash(null, now));
+  assert.equal(shouldReloadAfterCrash(null, now).reload, true);
 });
 
 test('异常输入不抛错（崩溃处理本身不能把进程搞崩）', () => {

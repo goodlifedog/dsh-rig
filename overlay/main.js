@@ -34,7 +34,7 @@ const layout = require('./layout.js');
 const { appleScriptQuote } = require('./quote.js');
 const { nextCaptureDelay } = require('./capture-policy.js');
 const { shouldEvictSession, pickEvictionVictim, isSessionReallyVisible } = require('./session-policy.js');
-const { createCrashLog } = require('./crash-log.js');
+const { createCrashLog, shouldReloadAfterCrash } = require('./crash-log.js');
 
 const APP_NAME = 'desktop-agent-overlay';
 
@@ -1557,6 +1557,18 @@ function createWindowForSession(s) {
   win.webContents.on('render-process-gone', (_event, details) => {
     noteCrash('render-process-gone', (details && (details.reason + '/' + details.exitCode)) || '');
     if (!sessions.has(s.id) || !s.win || s.win.isDestroyed()) return;
+    // 重载要限次：坏页面会一启动就崩，无脑重载会变成无限崩溃循环
+    s.crashTimes = (Array.isArray(s.crashTimes) ? s.crashTimes : []).concat(Date.now());
+    const now = Date.now();
+    const decision = shouldReloadAfterCrash(s.crashTimes, now);
+    s.crashTimes = s.crashTimes.filter((t) => now - t <= 60000);
+    if (!decision.reload) {
+      noteCrash('render-crash-loop', s.id + '：' + decision.reason);
+      if (s.state && s.state.thumbnail) {
+        s.state.thumbnail = Object.assign({}, s.state.thumbnail, { state: 'error', error: '渲染进程反复崩溃，已停止自动重载' });
+      }
+      return;
+    }
     setTimeout(() => {
       try { if (!s.win.isDestroyed()) s.win.reload(); } catch {}
     }, 800);
