@@ -59,19 +59,32 @@ test('daemon：队列串行、环境失败不重试、临时失败重试一次',
     await fs.rm(dir, { recursive: true, force: true });
   });
 
+  const gets = (p) => fetch(BASE + p, { headers: TOKEN_HEADERS, signal: AbortSignal.timeout(3000) });
+
   const up = await waitFor(async () => {
-    const r = await fetch(BASE + '/status', { signal: AbortSignal.timeout(1000) });
+    const r = await gets('/');
     return r.ok ? true : null;
   }, 15000);
   assert.ok(up, 'daemon 没能在 15 秒内起来');
 
-  // 控制面票据：会动东西的接口都必须带 token，否则 401
+  // 控制面票据：写接口必须带 token，否则 401
   const noToken = await fetch(BASE + '/run', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ task: 'ok-task' }),
   });
   assert.equal(noToken.status, 401, '没带 token 的 /run 必须拒绝');
+
+  // 只读接口也要票据（会带出任务历史与日志路径），唯一例外是 GET / 存活探测：
+  // 它只回 ok/pid/uptime，不能带任务列表，否则等于变相绕过票据读 /status。
+  assert.equal((await fetch(BASE + '/status')).status, 401, '无票读 /status 必须拒绝');
+  assert.equal((await fetch(BASE + '/tasks')).status, 401, '无票读 /tasks 必须拒绝');
+  assert.equal((await fetch(BASE + '/stats')).status, 401, '无票读 /stats 必须拒绝');
+  const bareRoot = await (await fetch(BASE + '/')).json();
+  assert.equal(bareRoot.ok, true);
+  assert.equal(bareRoot.tasks, undefined, '存活探测不能暴露任务列表');
+  assert.equal(bareRoot.current, undefined, '存活探测不能暴露当前任务');
+  assert.ok((await gets('/status')).ok, '带票读 /status 必须正常');
 
   // 目录穿越：不存在的任务名必须被拒，且不能真的去执行目录外脚本
   for (const evil of ['../core/runner', '../../etc/passwd', 'ok-task/../../x', 'ok-task.mjs']) {
@@ -106,7 +119,7 @@ test('daemon：队列串行、环境失败不重试、临时失败重试一次',
     body: JSON.stringify({ tasks: ['ok-task', 'ok-task', 'ok-task', 'ok-task'] }),
   });
   assert.equal(overflow.status, 429, '超过队列上限应返回 429');
-  const afterOverflow = await (await fetch(BASE + '/status')).json();
+  const afterOverflow = await (await gets('/status')).json();
   assert.equal(afterOverflow.queue.length, 0, '被拒绝的请求不应入队');
 
   const started = Date.now();
@@ -118,7 +131,7 @@ test('daemon：队列串行、环境失败不重试、临时失败重试一次',
 
   // 必须同时满足：没有正在跑、没有排队、也没有「等待退避重跑」的待办
   const idle = await waitFor(async () => {
-    const st = await (await fetch(BASE + '/status')).json();
+    const st = await (await gets('/status')).json();
     const idleNow = !st.current && (!st.queue || st.queue.length === 0) && !st.pendingRetry;
     return idleNow && st.history.length >= 4 ? st : null;
   }, 30000);
@@ -140,7 +153,7 @@ test('daemon：队列串行、环境失败不重试、临时失败重试一次',
   const elapsed = Date.now() - started;
   assert.ok(elapsed >= 3000, '重试有退避，总耗时应该超过 3 秒');
 
-  const stats = await (await fetch(BASE + '/stats')).json();
+  const stats = await (await gets('/stats')).json();
   assert.equal(stats.runs, 4, '统计应包含 4 次运行（3 + 1 次重试）');
   assert.equal(stats.retries, 1, '统计里应记录 1 次重试');
   assert.equal(stats.okRate, 25, '4 次里只有 1 次成功');

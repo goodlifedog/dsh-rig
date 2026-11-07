@@ -1843,7 +1843,14 @@ function toggleExpand(s) {
 async function stopBackgroundTask(s) {
   const url = (process.env.AGENTD_URL || 'http://127.0.0.1:7789') + '/stop';
   try {
-    const res = await fetch(url, { method: 'POST', signal: AbortSignal.timeout(2000) });
+    // daemon 的写接口要票据 + JSON Content-Type；之前这里两样都没带，点「■」其实一直 401
+    const token = ensureTokenSync();
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json' }, token ? { 'X-Agent-Token': token } : {}),
+      body: '{}',
+      signal: AbortSignal.timeout(2000),
+    });
     const data = await res.json().catch(() => null);
     const stopped = Boolean(data && data.stopped);
     if (s) {

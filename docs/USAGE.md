@@ -253,7 +253,8 @@ npm run service:uninstall # 移除 launchd 自启（daemon + overlay 两个 plis
 小窗自己有完整状态接口，比肉眼看更准。
 
 > **2026-11-08 起本地接口要票据**：daemon(7789) 和 overlay(7788) 的所有请求都要带
-> `X-Agent-Token`。先取一次，后面的 curl 都带上：
+> `X-Agent-Token`（唯一例外：daemon 的 `GET /` 存活探测，只回 pid/uptime，不带任务列表）。
+> 先取一次，后面的 curl 都带上：
 >
 > ```bash
 > TOKEN=$(cat ~/.desktop-agent/api-token)
@@ -502,9 +503,11 @@ curl -s -X POST -H "X-Agent-Token: $TOKEN" -H 'Content-Type: application/json' h
 
 ### 5.4 daemon HTTP（127.0.0.1:7789）
 
+除 `GET /` 外都要带 `X-Agent-Token`；`GET /` 是给启动脚本/看门狗用的存活探测，只回 pid 和运行时长。
+
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
-| GET | `/` | 健康检查 + 任务列表 + 队列长度 |
+| GET | `/` | 存活探测（无需票据，只回 pid/uptime） |
 | GET | `/status` | 完整状态：current / queue / history |
 | GET | `/selftest` | 后台服务自检：系统事件、ocu 在当前服务身份下是否可用 |
 | GET | `/stats` | 按任务聚合最近运行：次数、成功率、平均/最慢耗时、重试次数 |
@@ -513,9 +516,9 @@ curl -s -X POST -H "X-Agent-Token: $TOKEN" -H 'Content-Type: application/json' h
 | POST | `/stop` | 清队列并停当前任务 |
 
 ```bash
-curl -s http://127.0.0.1:7789/
+curl -s http://127.0.0.1:7789/                                   # 存活探测，不需要票据
 curl -s -H "X-Agent-Token: $TOKEN" http://127.0.0.1:7789/status | head -c 500
-curl -s -X POST http://127.0.0.1:7789/run -H 'Content-Type: application/json' -d '{"task":"headless-demo"}'
+curl -s -X POST -H "X-Agent-Token: $TOKEN" -H 'Content-Type: application/json' http://127.0.0.1:7789/run -d '{"task":"headless-demo"}'
 curl -s -X POST -H "X-Agent-Token: $TOKEN" -H 'Content-Type: application/json' http://127.0.0.1:7789/stop
 ```
 

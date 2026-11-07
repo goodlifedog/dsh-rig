@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { overlay } from './agentd.mjs';
 import { latestReport } from './report-index.mjs';
+import { localHeaders } from './local-token.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -64,7 +65,10 @@ async function main() {
 
   // 耗时趋势（daemon 侧聚合）：哪个任务慢、成功率多少
   try {
-    const stats = await (await fetch('http://127.0.0.1:7789/stats', { signal: AbortSignal.timeout(2000) })).json();
+    const stats = await (await fetch('http://127.0.0.1:7789/stats', {
+      headers: localHeaders(),
+      signal: AbortSignal.timeout(2000),
+    })).json();
     if (stats && stats.runs) {
       const secs = (ms) => (ms >= 1000 ? (ms / 1000).toFixed(1) + 's' : Math.round(ms) + 'ms');
       const slowest = (stats.tasks || []).slice().sort((a, b) => b.avgMs - a.avgMs)[0];

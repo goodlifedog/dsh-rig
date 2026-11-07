@@ -314,8 +314,10 @@ const server = http.createServer(async (req, res) => {
   } catch (error) {
     return json(res, error.statusCode || 403, { ok: false, error: String(error.message || error) });
   }
-  // 只读的 /status、/tasks、/ 不需要票据；会动东西的接口必须带
-  const needsToken = (p === '/run' || p === '/stop' || p === '/selftest');
+  // 除 GET /（存活探测，只回 pid/uptime）外，所有接口都要票据：
+  // /status、/tasks、/stats 会带出任务历史与日志路径，也算信息泄漏；之前只挡写接口，
+  // 和 SECURITY.md 写的「全部接口都要 token」不一致（评审指出）。
+  const needsToken = p !== '/';
   // 默认只认请求头；?token= 会漏进 shell history / 进程列表，需要显式开 AGENT_ALLOW_QUERY_TOKEN=1
   const allowQueryToken = process.env.AGENT_ALLOW_QUERY_TOKEN === '1';
   if (needsToken && !isAuthorized(req.headers, TOKEN, {
@@ -326,14 +328,13 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (p === '/' && req.method === 'GET') {
+    // 存活探测要能无票调用（启动脚本/看门狗用），所以只回最小信息；
+    // 任务列表、当前任务、日志路径这些一律放 /status（需要票）。
     return json(res, 200, {
       ok: true,
       service: 'desktop-agent-daemon',
       pid: state.pid,
       uptimeSec: Math.round((Date.now() - new Date(state.startedAt).getTime()) / 1000),
-      current: state.current,
-      queued: state.queue.length,
-      tasks: listTasks(),
     });
   }
 
