@@ -8,6 +8,7 @@ import {
   checkStrategyConsistency,
   flattenPresets,
   classifyApp,
+  summarizeByFamily,
   mergeInventory,
   renderInventoryMarkdown,
 } from '../core/app-inventory.mjs';
@@ -176,6 +177,41 @@ test('报告里的下一步补测段落只对未测应用出现', () => {
   ]);
   assert.ok(!noPending.includes('下一步补测'));
 });
+test('按运行时族汇总：计数、默认通道链、未识别族兜底', () => {
+  const rows = [
+    { name: 'Notes', runtime: 'native', status: '已适配' },
+    { name: 'Calculator', runtime: 'native', status: '已适配' },
+    { name: 'Keynote', runtime: 'native', status: '可只用画面' },
+    { name: 'ChatGPT', runtime: 'electron', status: '已适配' },
+    { name: 'Antigravity', runtime: 'electron', status: '限制' },
+    { name: 'Chrome', runtime: 'chromium', status: '专用方案' },
+    { name: 'Safari', runtime: '', status: '可只用画面' },
+  ];
+  const families = summarizeByFamily(rows);
+  const native = families.find((f) => f.family === 'native');
+  assert.equal(native.total, 3);
+  assert.equal(native.adapted, 2);
+  assert.equal(native.visual, 1);
+  assert.equal(native.chain, 'ax → applescript → visual');
+  const electron = families.find((f) => f.family === 'electron');
+  assert.equal(electron.limited, 1);
+  assert.equal(electron.chain, 'ax → cdp → applescript → visual');
+  const unknown = families.find((f) => f.family === '未识别');
+  assert.equal(unknown.total, 1, '没有运行时信息的应用不能丢');
+  assert.equal(unknown.chain, '-');
+  assert.equal(families[0].family, 'native', '按族固定顺序排，native 在前');
+});
+
+test('报告里要有一段按运行时族的适配汇总', () => {
+  const md = renderInventoryMarkdown([
+    { name: 'Notes', preset: 'system', runtime: 'native', status: '已适配', strategy: 'ax', detail: 'ok' },
+    { name: 'ChatGPT', preset: 'im', runtime: 'electron', status: '已适配', strategy: 'ax', detail: 'ok' },
+  ]);
+  assert.ok(md.includes('## 按运行时族看适配'));
+  assert.ok(md.includes('| 运行时族 | 装了几个 |'));
+  assert.ok(md.includes('ax → cdp → applescript → visual'), '要写清每族默认通道顺序');
+});
+
 test('状态与建议控法一致时没有问题', () => {
   const problems = checkStrategyConsistency([
     { name: 'A', status: '已适配', strategy: 'ax' },

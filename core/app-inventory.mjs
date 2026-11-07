@@ -13,6 +13,7 @@
  */
 
 import { recommendStrategy } from './app-strategy.mjs';
+import { RUNTIME_CHAINS } from './app-runtime.mjs';
 
 /** 名字归一化：去 .app 后缀、去多余空白、转小写，用于「包名对不上时按名字兜底」 */
 export function normalizeName(name) {
@@ -212,6 +213,51 @@ export function checkStrategyConsistency(rows) {
 }
 
 /**
+ * 按运行时族汇总适配情况（纯函数）。
+ *
+ * 为什么按族看：用户问「还有什么软件能适配」时，逐个应用列表回答不了这个问题；
+ * 同一族共用一套通道（原生 AX / Electron CDP / Chromium CDP…），族里有一个跑通，
+ * 其余应用大概率直接可用。这里把「每族装了多少、适配到什么程度、默认通道链」列清楚。
+ *
+ * @param {Array<{name:string, runtime?:string, status:string}>} rows
+ * @returns {Array<{family:string, total:number, adapted:number, visual:number, dedicated:number, limited:number, untouched:number, untested:number, apps:string[], chain:string}>}
+ */
+export function summarizeByFamily(rows) {
+  const buckets = new Map();
+  for (const row of rows || []) {
+    const family = String((row && row.runtime) || '') || '未识别';
+    if (!buckets.has(family)) {
+      buckets.set(family, { family, total: 0, adapted: 0, visual: 0, dedicated: 0, limited: 0, untouched: 0, untested: 0, apps: [] });
+    }
+    const b = buckets.get(family);
+    b.total += 1;
+    if (row.name) b.apps.push(String(row.name));
+    switch (row.status) {
+      case '已适配': b.adapted += 1; break;
+      case '可只用画面': b.visual += 1; break;
+      case '专用方案': b.dedicated += 1; break;
+      case '限制': b.limited += 1; break;
+      case '不动': b.untouched += 1; break;
+      default: b.untested += 1; break;
+    }
+  }
+  const order = ['native', 'electron', 'chromium', 'flutter', 'qt', 'java', '未识别'];
+  const list = Array.from(buckets.values());
+  for (const b of list) {
+    b.chain = (RUNTIME_CHAINS[b.family] || []).join(' → ') || '-';
+    b.apps.sort((a, c) => a.localeCompare(c));
+  }
+  list.sort((a, c) => {
+    const ia = order.indexOf(a.family);
+    const ic = order.indexOf(c.family);
+    const da = ia < 0 ? order.length : ia;
+    const dc = ic < 0 ? order.length : ic;
+    return da !== dc ? da - dc : c.total - a.total;
+  });
+  return list;
+}
+
+/**
  * 给「未测」的应用生成下一步要跑的命令，省得人手写 MATRIX_APPS_JSON。
  * @param {Array<{name:string, bundle:string, process:string, installed:boolean, status:string}>} rows
  * @returns {string[]}
@@ -253,6 +299,20 @@ export function renderInventoryMarkdown(rows, meta = {}) {
   }
   lines.push('');
   lines.push('汇总：' + order.filter((s) => counts.has(s)).map((s) => s + ' ' + counts.get(s)).join('，'));
+
+  // 按运行时族汇总：回答「还有什么软件能适配」要看族，不是逐个应用看
+  lines.push('');
+  lines.push('## 按运行时族看适配');
+  lines.push('');
+  lines.push('同一族共用一套通道：族里有应用跑通，新装同类软件通常直接可用。');
+  lines.push('');
+  lines.push('| 运行时族 | 装了几个 | 已适配 | 可只用画面 | 专用方案 | 限制 | 不动 | 未测 | 默认通道链 |');
+  lines.push('| --- | --- | --- | --- | --- | --- | --- | --- | --- |');
+  for (const family of summarizeByFamily(rows)) {
+    lines.push('| ' + family.family + ' | ' + family.total + ' | ' + family.adapted + ' | ' + family.visual
+      + ' | ' + family.dedicated + ' | ' + family.limited + ' | ' + family.untouched + ' | '
+      + family.untested + ' | ' + family.chain + ' |');
+  }
   const problems = checkStrategyConsistency(rows);
   lines.push('');
   lines.push(problems.length
