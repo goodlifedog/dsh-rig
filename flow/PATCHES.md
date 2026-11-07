@@ -1,7 +1,7 @@
 # 外部评审提供的补丁（按需应用）
 
 > 这些不是必须打的。每个都独立可应用、互不冲突，打过之后 `npm test` 全绿。
-> 最后更新：2026-11-08 03:05。当前共 3 个，均已 `git apply --check` 通过。
+> 最后更新：2026-11-08 03:10。当前共 2 个待打，均已 `git apply --check` 通过；第 4 个已应用。
 
 ## 顺序建议
 
@@ -63,7 +63,7 @@ touch core/agentd.mjs && npm run service:status
 git checkout -- core/agentd.mjs   # 撤销 touch
 ```
 
-## 4. `patch-chromium-applescript.diff`（37 行 / 2 个文件）
+## 4. ✅ `patch-chromium-applescript.diff`（37 行 / 2 个文件）—— 已应用，补丁文件已删除
 
 **实测发现的问题**：`npm run app:resolve -- "Google Chrome"` 在 CDP 与 AX 都不可用时，
 协商结果是「画面 + 坐标」，但 Chrome 的 AppleScript 字典是**可用**的（23 条命令、已授权）。
@@ -72,6 +72,11 @@ git checkout -- core/agentd.mjs   # 撤销 touch
 
 补丁给 chromium 链加上 applescript（排在 visual 之前），并补一条断言：
 CDP/AX 都不通时应退到 applescript，而不是直接画面坐标。
+
+**已应用（2026-11-08）**：`core/app-runtime.mjs` 的 chromium 链已改为
+`cdp → ax → applescript → visual`，`test/driver-resolution.test.mjs` 有对应断言。
+实测 `npm run app:resolve -- "Google Chrome"` 协商结果已变成
+「AppleScript 脚本字典 → 画面 + 坐标」。补丁文件已删除，可从 git 历史查到。
 
 验证：
 ```bash

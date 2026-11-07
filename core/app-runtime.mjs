@@ -66,7 +66,7 @@ export function classifyRuntime(frameworks = [], info = {}) {
 export const RUNTIME_CHAINS = Object.freeze({
   native: ['ax', 'applescript', 'visual'],
   electron: ['ax', 'cdp', 'applescript', 'visual'],
-  chromium: ['cdp', 'ax', 'visual'],
+  chromium: ['cdp', 'ax', 'applescript', 'visual'],
   flutter: ['ax', 'visual'],
   qt: ['ax', 'applescript', 'visual'],
   java: ['ax', 'visual'],

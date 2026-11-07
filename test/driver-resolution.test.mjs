@@ -3,6 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { choosePlan, driverLabel, negotiateChannels } from '../core/driver-resolution.mjs';
+import { RUNTIME_CHAINS } from '../core/app-runtime.mjs';
 
 test('choosePlan：保留默认顺序，跳过不可用的并记原因', () => {
   const r = choosePlan(['ax', 'cdp', 'visual'], { ax: true, cdp: false, visual: true });
@@ -102,4 +103,12 @@ test('协商结果里四条通道都要出现，方便排障时看清为什么�
   );
   const drivers = r.channels.map((c) => c.driver).sort();
   assert.deepEqual(drivers, ['applescript', 'ax', 'cdp', 'visual']);
+});
+
+test('chromium 族：CDP/AX 都不通时退到 AppleScript，而不是直接落到画面坐标', () => {
+  const chain = RUNTIME_CHAINS.chromium;
+  assert.ok(chain.includes('applescript'), 'chromium 链里应有 applescript 兜底');
+  assert.ok(chain.indexOf('applescript') < chain.indexOf('visual'), 'applescript 应排在 visual 之前');
+  const plan = choosePlan(chain, { cdp: false, ax: false, applescript: true, visual: true });
+  assert.deepEqual(plan.plan, ['applescript', 'visual']);
 });
