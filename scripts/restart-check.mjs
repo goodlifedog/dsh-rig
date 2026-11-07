@@ -4,6 +4,7 @@
 import { execFile } from 'node:child_process';
 import { isMac, isWindows } from '../core/platform.mjs';
 import { localHeaders } from '../core/local-token.mjs';
+import { daemonUrl, daemonPort } from '../core/ports.mjs';
 
 const LABELS = ['com.desktop-agent.daemon', 'com.desktop-agent.overlay'];
 
@@ -48,10 +49,10 @@ async function main() {
   else await restartWin();
 
   const overlay = await probe('http://127.0.0.1:7788/health', 'overlay');
-  const daemon = await probe('http://127.0.0.1:7789/', 'daemon');
+  const daemon = await probe(daemonUrl(), 'daemon');
   const rows = [
     ['小窗服务 7788', overlay.ok, 'pid=' + (overlay.pid || '-')],
-    ['后台 daemon 7789', daemon.ok, 'pid=' + (daemon.pid || '-')],
+    ['后台 daemon ' + daemonPort(), daemon.ok, 'pid=' + (daemon.pid || '-')],
   ];
   console.log('');
   for (const [name, ok, detail] of rows) console.log((ok ? '  ✅ ' : '  ❌ ') + name + '  ' + detail);

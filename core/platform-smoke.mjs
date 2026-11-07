@@ -9,6 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMac, isWindows, platform, controlBackend, resolveOcu, dataDir } from './platform.mjs';
 import { localHeaders } from './local-token.mjs';
+import { daemonUrl, daemonPort } from './ports.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -70,12 +71,12 @@ add('小窗服务 7788', overlayOk, overlayInfo);
 let daemonOk = false;
 let daemonInfo = '';
 try {
-  const r = await fetch('http://127.0.0.1:7789/', { signal: AbortSignal.timeout(2000) });
+  const r = await fetch(daemonUrl(), { signal: AbortSignal.timeout(2000) });
   const d = await r.json();
   daemonOk = Boolean(d.ok);
   daemonInfo = 'pid=' + d.pid + ' tasks=' + (d.tasks ? d.tasks.length : 0);
 } catch (e) { daemonInfo = '未启动'; }
-add('后台 daemon 7789', daemonOk, daemonInfo);
+add('后台 daemon ' + daemonPort(), daemonOk, daemonInfo);
 
 const width = Math.max(...rows.map((r) => r.name.length)) + 2;
 console.log('\n平台自检（' + platform + '）\n');

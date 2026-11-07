@@ -8,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { classifyRun } from '../core/run-classify.mjs';
 import { localHeaders } from '../core/local-token.mjs';
+import { daemonUrl, daemonPort } from '../core/ports.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -49,13 +50,13 @@ function sh(cmd, args, timeout = 5000) {
 async function main() {
   // 1. 服务
   // 用 /status：它才带 history 和 queueLength；GET / 只剩 ok/pid/uptimeSec
-  const daemon = await getJson('http://127.0.0.1:7789/status');
+  const daemon = await getJson(daemonUrl('/status'));
   // /status 返回 queue(数组) 与 queueLength，没有 queued 字段；之前这里读 daemon.queued 一直显示 undefined
   const queueLen = daemon && (daemon.queueLength != null ? daemon.queueLength : (Array.isArray(daemon.queue) ? daemon.queue.length : null));
-  add('后台 daemon 7789', Boolean(daemon && daemon.ok), daemon ? 'pid=' + daemon.pid + ' 队列=' + (queueLen == null ? '-' : queueLen) : '未启动');
+  add('后台 daemon ' + daemonPort(), Boolean(daemon && daemon.ok), daemon ? 'pid=' + daemon.pid + ' 队列=' + (queueLen == null ? '-' : queueLen) : '未启动');
 
   // 后台服务是 launchd 起的，权限身份和终端里跑不同：实际探一次系统事件与 ocu 是否可控
-  const selftest = await getJson('http://127.0.0.1:7789/selftest', 20000);
+  const selftest = await getJson(daemonUrl('/selftest'), 20000);
   if (selftest) {
     const se = (selftest.checks && selftest.checks.systemEvents) || {};
     const ocu = (selftest.checks && selftest.checks.ocu) || {};
@@ -81,8 +82,8 @@ async function main() {
 
   // 安全边界实机自检：这几条是「承诺过必须挡住」的，服务在跑就顺手验一遍
   if (daemon && daemon.ok) {
-    const noToken = await httpStatus('http://127.0.0.1:7789/status');
-    const withToken = await httpStatus('http://127.0.0.1:7789/status', { headers: localHeaders() });
+    const noToken = await httpStatus(daemonUrl('/status'));
+    const withToken = await httpStatus(daemonUrl('/status'), { headers: localHeaders() });
     add('接口票据（daemon）', noToken === 401 && withToken === 200, '无票=' + noToken + '｜带票=' + withToken);
     const daemonHost = await httpStatus('http://127.0.0.1:7789/', { host: 'evil.example:7789' });
     add('Host 校验（daemon 防 DNS rebinding）', daemonHost === 403, 'Host=evil.example → ' + daemonHost);

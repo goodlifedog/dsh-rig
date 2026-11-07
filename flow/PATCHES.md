@@ -6,7 +6,7 @@
 
 ```bash
 git apply flow/patch-publish.diff        # 发布配置（发布前必打）
-git apply flow/patch-ports.diff          # 端口配置单一来源（AGENTD_PORT 现在真的全生效）
+# patch-ports 已应用（端口单一来源 core/ports.mjs），文件已删
 # repocheck-zip / packaging-files 已应用（ZIP 降级 + 打包白名单），文件已删
 ```
 
@@ -132,7 +132,7 @@ node scripts/bundle-ocu.mjs --with-binary && cat third_party/open-computer-use/N
 验证：应用后跑 `npm run accept`，日志里每个任务后应出现「（已把前台还给 …）」，
 `background-control` 的起点前台应是用户应用而不是 Calculator。
 
-### patch-ports.diff（191 行 / 6 个文件）
+### ✅ patch-ports.diff（191 行 / 6 个文件）—— 已应用，补丁文件已删除
 
 **问题（实测）**：文档写着 `AGENTD_PORT` 可改 daemon 端口，但只有 `daemon.mjs` / `cli.mjs` /
 `service.mjs` 读它；`health` / `status` / `doctor` / `restart-check` 里写死 7789。
