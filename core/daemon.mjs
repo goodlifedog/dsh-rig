@@ -139,6 +139,18 @@ function readBody(req) {
   });
 }
 
+// 全局只保留一个看门狗；任务结束或新任务开始时先停掉旧的，避免泄漏
+let activeFrontWatch = null;
+let lastFrontWatchStats = null;
+
+function stopActiveFrontWatch() {
+  if (activeFrontWatch) {
+    lastFrontWatchStats = activeFrontWatch.stats();
+    activeFrontWatch.stop();
+    activeFrontWatch = null;
+  }
+}
+
 function runTask(name, attempt = 0) {
   return new Promise((resolve) => {
     // 任务名必须是任务目录里真实存在的名字：不做校验会被 ../ 跳出目录执行任意脚本
@@ -162,10 +174,15 @@ function runTask(name, attempt = 0) {
 
     // 前台看门狗：任务期间前台被抢就还原（用户反复切同一应用 3 次以上则认账）
     // FRONT_GUARD=0 可整体关闭（调试或特殊场景用）
-    let frontWatch = null;
+    //
+    // 注意这里的竞态：frontAppFast 是异步的（约 120ms），如果任务很快就结束，
+    // 回调会在任务结束后才创建看门狗 —— 那样它会一直轮询下去（泄漏）。
+    // 所以用 taskSettled 标记，任务已结束就不再创建；并用模块级引用兜底停掉旧的。
+    let taskSettled = false;
     if (process.env.FRONT_GUARD !== '0') frontAppFast().then((expect) => {
-      if (!expect) return;
-      frontWatch = startFrontWatch({
+      if (!expect || taskSettled) return;
+      stopActiveFrontWatch();
+      activeFrontWatch = startFrontWatch({
         expect,
         onSteal: (e) => {
           if (e.userSwitched) return;
@@ -191,7 +208,8 @@ function runTask(name, attempt = 0) {
     const failEarly = (err) => {
       clearInterval(beat);
       clearTimeout(timer);
-      if (frontWatch) frontWatch.stop();
+      taskSettled = true;
+      stopActiveFrontWatch();
       try { out.end(); } catch {}
       const entry = { name, attempt, ok: false, code: null, error: String(err && err.message || err), startedAt: new Date(startedAt).toISOString(), durationMs: Date.now() - startedAt, logFile };
       state.current = null;
@@ -207,13 +225,14 @@ function runTask(name, attempt = 0) {
     child.on('close', async (code) => {
       clearInterval(beat);
       clearTimeout(timer);
+      taskSettled = true;
+      stopActiveFrontWatch();
       try { out.end(); } catch {}
       const durationMs = Date.now() - startedAt;
       const ok = code === 0;
       // 用户主动停止不是失败：单独标记，健康统计和自动重试都不该把它算进去
       const cancelled = state.cancelled === true;
-      const guard = frontWatch ? frontWatch.stats() : null;
-      if (frontWatch) frontWatch.stop();
+      const guard = lastFrontWatchStats;
       const entry = { name, attempt, ok, code, cancelled, frontSteals: guard ? guard.steals : 0, startedAt: new Date(startedAt).toISOString(), durationMs, logFile };
       state.current = null;
       state.history.unshift(entry);
