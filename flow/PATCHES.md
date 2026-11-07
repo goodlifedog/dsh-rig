@@ -107,7 +107,7 @@ node scripts/bundle-ocu.mjs --with-binary && cat third_party/open-computer-use/N
 
 实测：在 README 里加一句引用 `core/deleted-file.mjs` 立刻报红；恢复后全绿。
 
-### patch-calc-flaky.diff（38 行 / 1 个文件）
+### ✅ patch-calc-flaky.diff（38 行 / 1 个文件）—— 已应用，补丁文件已删除
 
 **问题（实测抓到）**：完整验收跑下来 `background-control` 偶发失败：
 `{"name":"后台点击计算器按钮","ok":false,"frontUnchanged":true,"detail":"7 → 7"}` ——
