@@ -15,7 +15,7 @@ test('普通失败算真实失败', () => {
   const v = classifyRun(end(1) + '\nFAIL: 断言不成立');
   assert.equal(v.failed, true);
   assert.equal(v.envSkip, false);
-  assert.equal(v.reason, '真实失败');
+  assert.match(v.reason, /真实失败/);
 });
 
 test('任务自报环境跳过优先采信', () => {
@@ -24,21 +24,48 @@ test('任务自报环境跳过优先采信', () => {
   assert.equal(v.reason, '任务自报环境跳过');
 });
 
-test('常见环境原因都能识别', () => {
+test('常见环境原因都能识别（环境跳过只认显式声明/环境字样，不认 FAIL 断言）', () => {
   const cases = [
-    ['FAIL: 目标应用当前就是前台，为避免干扰用户', '用户正在使用目标应用'],
-    ['FAIL: Electron 宿主窗口没起来', 'Electron 宿主被占用或窗口读不到'],
-    ['  FAIL  改成了指定关键词', '目标页面结构已变'],
-    ['FAIL: 无法切回 BOSS 职位页：没有 BOSS 职位页标签', '用户 Chrome 里没开 BOSS 职位页'],
-    ['FAIL: 读不到 Google Chrome 的界面树', '目标应用没运行或缺辅助功能权限'],
-    ['FAIL: 锁屏中，跳过前台与窗口数校验', '锁屏'],
-    ['FAIL: headless Chrome 还有 null 个窗口', '读不到窗口数（缺辅助功能权限）'],
+    ['跳过扫描：当前就是前台，为避免干扰用户', '用户正在使用目标应用'],
+    ['cgWindowNotFound: Electron 宿主窗口没起来', 'Electron 宿主被占用或窗口读不到'],
+    ['SKIP 无法切回 BOSS 职位页：没有 BOSS 职位页标签', '用户 Chrome 里没开 BOSS 职位页'],
+    ['SKIP 读不到 Google Chrome 的界面树', '目标应用没运行或缺辅助功能权限'],
+    ['SKIP 锁屏中，跳过前台与窗口数校验', '锁屏'],
+    ['SKIP headless Chrome 还有 null 个窗口', '读不到窗口数（缺辅助功能权限）'],
     ['env: node: No such file or directory', '环境缺少可执行文件'],
-    ['FAIL: 该岗位已联系过，跳过', '目标岗位已联系过'],
+    ['该岗位已联系过，跳过', '目标岗位已联系过'],
   ];
   for (const [text, expected] of cases) {
     assert.equal(envSkipReason(end(1) + '\n' + text), expected, text);
   }
+});
+
+test('form-fill 的 FAIL 断言不能被「页面结构已变」豁免（评审复现的假绿）', () => {
+  const text = [
+    end(1),
+    '--- 验收 ---',
+    '  PASS  搜索框定位成功',
+    '  FAIL  改成了指定关键词',
+    '  PASS  已恢复原值',
+    '结果: 存在失败项',
+  ].join('\n');
+  assert.equal(envSkipReason(text), '', '有 FAIL 就不是环境跳过');
+  const v = classifyRun(text);
+  assert.equal(v.failed, true);
+  assert.equal(v.envSkip, false, '断言失败必须算真实失败');
+});
+
+test('PASS/FAIL 两套前缀的任务：FAIL 与「存在失败项」都按真实失败处理', () => {
+  for (const text of [
+    end(1) + '\n  PASS  第一步\n  FAIL  第二步',
+    end(1) + '\n结果: 存在失败项',
+  ]) {
+    assert.equal(envSkipReason(text), '', text);
+    assert.equal(classifyRun(text).envSkip, false, text);
+  }
+  // 只有 PASS/全通过时不算失败
+  assert.equal(isFailedRun(end(0)), false);
+  assert.deepEqual(classifyRun(end(0) + '\n  PASS  第一步\n结果: 全部通过'), { failed: false, envSkip: false, reason: '' });
 });
 
 test('成功运行里出现环境字样也不算失败', () => {

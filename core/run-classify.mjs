@@ -9,7 +9,6 @@ const ENV_RULES = [
   [/环境跳过/, '任务自报环境跳过'],
   [/当前就是前台|不打扰用户|跳过扫描/, '用户正在使用目标应用'],
   [/cgWindowNotFound|宿主窗口/, 'Electron 宿主被占用或窗口读不到'],
-  [/改成了指定关键词|已恢复原值/, '目标页面结构已变'],
   [/读不到 .*界面树|没有辅助功能权限/, '目标应用没运行或缺辅助功能权限'],
   [/没有 BOSS 职位页标签|无法切回 BOSS 职位页|"attempts":\["no-tab"\]/, '用户 Chrome 里没开 BOSS 职位页'],
   [/锁屏/, '锁屏'],
@@ -32,13 +31,21 @@ export function isFailedRun(text) {
  *   { failed, envSkip, reason }
  * failed=false 表示没失败；failed=true 且 envSkip=true 表示环境跳过。
  */
+/**
+ * 真失败的硬信号：命中任意一条就不许再判环境跳过。
+ *
+ * 为什么要有 FAIL 这一条：有些任务（form-fill / browser-demo / boss-scan）用 PASS/FAIL
+ * 两套前缀，不用 ❌。以前只挡 ❌，于是「FAIL 改成了指定关键词」这种断言失败会被
+ * 「页面结构已变」的环境规则豁免掉，验收显示 PASS——假绿，评审已经复现过。
+ *
+ * 「结果: 存在失败项」是这些任务自己的总结论，也必须当硬失败。
+ */
+const HARD_FAIL = /❌|未送达|存在失败项|(^|\n)[ \t]*FAIL\b/;
+
 export function envSkipReason(text) {
   const raw = String(text || '');
-  // 「未送达」是明确失败：即使日志里同时出现「已联系」也不能判成环境跳过
-  if (/未送达/.test(raw)) return '';
-  // 任务标了 ❌ 就是真失败：验收走的是这个函数（不是 classifyRun），
-  // 不加这条的话「部分项跳过 + 部分项真失败」的轮次仍会被整轮判成跳过。
-  if (/❌/.test(raw)) return '';
+  // 真失败优先：即使同一份日志里既有失败项又有环境字样，也不能整轮豁免
+  if (HARD_FAIL.test(raw)) return '';
   for (const [re, reason] of ENV_RULES) {
     if (re.test(raw)) return reason;
   }
@@ -52,6 +59,7 @@ export function classifyRun(text) {
   // 否则「部分项环境跳过 + 部分项真失败」会被整轮吞成跳过（实测踩过：
   // background-control 里有 ❌ 后台点击计算器按钮，但因为同一份日志还有「环境跳过」，被判成环境跳过）。
   if (/❌/.test(raw)) return { failed: true, envSkip: false, reason: '真实失败（任务标了 ❌）' };
+  if (HARD_FAIL.test(raw)) return { failed: true, envSkip: false, reason: '真实失败（任务标了 FAIL/存在失败项）' };
   const reason = envSkipReason(raw);
   return reason
     ? { failed: true, envSkip: true, reason }
