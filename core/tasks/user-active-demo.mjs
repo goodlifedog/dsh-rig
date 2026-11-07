@@ -66,9 +66,16 @@ async function main() {
   const afterTarget = displayValue(await state(target).catch(() => ''));
   const frontEnd = await frontName();
 
-  const userTreeChanged = beforeUserTree && afterUserTree ? beforeUserTree !== afterUserTree : null;
+  // 如果"用户应用"就是 DSH 宿主本身，它的界面树会被本轮对话/日志持续改动，
+  // 拿整棵树比对会把正常变化误判成"被我们改了"。这种情况只比对前台与目标应用。
+  const userAppIsHost = /DeepSeek Harness/i.test(userApp);
+  const userTreeChanged = userAppIsHost
+    ? null
+    : (beforeUserTree && afterUserTree ? beforeUserTree !== afterUserTree : null);
   const report = {
-    ok: frontSteals === 0 && frontEnd === userApp && userTreeChanged === false,
+    ok: frontSteals === 0 && frontEnd === userApp && userTreeChanged !== true,
+    userAppIsHost,
+    userTreeNote: userAppIsHost ? '用户应用是 DSH 宿主，界面树由本轮对话驱动，跳过树比对' : '',
     userApp,
     target,
     actions: steps.length,

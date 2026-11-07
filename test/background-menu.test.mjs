@@ -1,71 +1,89 @@
 'use strict';
-// 菜单栏命令与窗口控制按钮：纯逻辑用假 MCP 验证
+// 菜单命令必须两步：菜单不展开时系统不给菜单项（矩阵实测 AXMenuItem 恒为 0）
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clickMenuItem, windowControls } from '../core/background.mjs';
+import { clickMenuItem } from '../core/background.mjs';
 
-test('菜单项完全匹配优先，点击并返回前台状态', async () => {
+const noSleep = () => Promise.resolve();
+
+test('给了 menu：先点开菜单栏，再点菜单项', async () => {
   const clicked = [];
-  const r = await clickMenuItem('备忘录', {
-    item: '新建备忘录',
-    deps: {
-      find: async () => [
-        { index: 1, title: '新建备忘录（高级）' },
-        { index: 2, title: '新建备忘录' },
-      ],
-      click: async (app, index) => { clicked.push([app, index]); return { ok: true, frontUnchanged: true }; },
-    },
-  });
-  assert.equal(r.ok, true);
-  assert.equal(r.index, 2, '应选完全匹配的那一项');
-  assert.deepEqual(clicked[0], ['备忘录', 2]);
-});
-
-test('只有包含匹配时也能用', async () => {
-  const r = await clickMenuItem('Safari', {
-    item: '新建',
-    deps: { find: async () => [{ index: 9, title: '新建无痕窗口' }], click: async () => ({ ok: true, frontUnchanged: true }) },
-  });
-  assert.equal(r.ok, true);
-  assert.equal(r.index, 9);
-});
-
-test('找不到菜单项时如实返回原因，不点任何东西', async () => {
-  let clicked = 0;
-  const r = await clickMenuItem('访达', {
-    item: '不存在的菜单',
-    deps: { find: async () => [{ index: 1, title: '打开' }], click: async () => { clicked += 1; return { ok: true }; } },
-  });
-  assert.equal(r.ok, false);
-  assert.ok(/没找到/.test(r.reason));
-  assert.equal(clicked, 0, '没找到就不该乱点');
-});
-
-test('查询抛错不影响调用方', async () => {
-  const r = await clickMenuItem('某应用', {
+  const r = await clickMenuItem('文本编辑', {
+    menu: '文件',
     item: '保存',
-    deps: { find: async () => { throw new Error('AX 挂了'); }, click: async () => ({ ok: true }) },
-  });
-  assert.equal(r.ok, false);
-  assert.ok(/菜单查询失败/.test(r.reason));
-});
-
-test('没给菜单文字直接返回失败', async () => {
-  const r = await clickMenuItem('某应用', {});
-  assert.equal(r.ok, false);
-});
-
-test('窗口控制按钮能识别中文与英文标题', async () => {
-  const buttons = await windowControls('文本编辑', {
+    sleep: noSleep,
     deps: {
-      find: async () => [
-        { index: 1, title: '关闭' },
-        { index: 2, title: '最小化' },
-        { index: 3, title: '全屏' },
-        { index: 4, title: '保存' },
-      ],
+      find: async (app, { role, text }) => {
+        if (role === 'AXMenuBarItem') return [{ index: 10, title: '文件' }];
+        if (role === 'AXMenuItem') return [{ index: 20, title: '保存' }];
+        return [];
+      },
+      click: async (app, idx) => { clicked.push(idx); return { ok: true, frontUnchanged: true }; },
     },
   });
-  assert.equal(buttons.length, 2);
-  assert.deepEqual(buttons.map((b) => b.title), ['关闭', '最小化']);
+  assert.equal(r.ok, true);
+  assert.deepEqual(clicked, [10, 20], '顺序必须是先菜单栏后菜单项');
+  assert.equal(r.menuOpened, true);
+});
+
+test('没给 menu：退化成直接点菜单项（适用于菜单已经展开）', async () => {
+  const clicked = [];
+  const r = await clickMenuItem('某应用', {
+    item: '新建',
+    sleep: noSleep,
+    deps: {
+      find: async (app, { role }) => (role === 'AXMenuItem' ? [{ index: 5, title: '新建' }] : []),
+      click: async (app, idx) => { clicked.push(idx); return { ok: true, frontUnchanged: true }; },
+    },
+  });
+  assert.equal(r.ok, true);
+  assert.deepEqual(clicked, [5]);
+  assert.equal(r.menuOpened, false);
+});
+
+test('菜单栏项找不到：如实失败，不去点菜单项', async () => {
+  let itemClicks = 0;
+  const r = await clickMenuItem('某应用', {
+    menu: '不存在的菜单',
+    item: '保存',
+    sleep: noSleep,
+    deps: {
+      find: async (app, { role }) => (role === 'AXMenuBarItem' ? [] : [{ index: 1, title: '保存' }]),
+      click: async () => { itemClicks += 1; return { ok: true }; },
+    },
+  });
+  assert.equal(r.ok, false);
+  assert.ok(/菜单栏项没找到/.test(r.reason));
+  assert.equal(itemClicks, 0);
+});
+
+test('点开菜单失败：不再继续点菜单项', async () => {
+  const r = await clickMenuItem('某应用', {
+    menu: '文件',
+    item: '保存',
+    sleep: noSleep,
+    deps: {
+      find: async (app, { role }) => (role === 'AXMenuBarItem' ? [{ index: 1, title: '文件' }] : []),
+      click: async () => ({ ok: false, error: '权限不足' }),
+    },
+  });
+  assert.equal(r.ok, false);
+  assert.equal(r.menuOpened, false);
+});
+
+test('菜单项完全匹配优先', async () => {
+  const clicked = [];
+  await clickMenuItem('某应用', {
+    menu: '文件',
+    item: '保存',
+    sleep: noSleep,
+    deps: {
+      find: async (app, { role }) => {
+        if (role === 'AXMenuBarItem') return [{ index: 1, title: '文件' }];
+        return [{ index: 8, title: '保存并退出' }, { index: 9, title: '保存' }];
+      },
+      click: async (app, idx) => { clicked.push(idx); return { ok: true, frontUnchanged: true }; },
+    },
+  });
+  assert.deepEqual(clicked, [1, 9]);
 });

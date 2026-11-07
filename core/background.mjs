@@ -210,26 +210,51 @@ export async function smartType(app, options = {}) {
  * @param {{item:string, deps?:object}} options item 为菜单项文字（如「保存」「新建窗口」）
  * @returns {{ok:boolean, index?:number|string, frontUnchanged?:boolean, reason?:string}}
  */
+/**
+ * 菜单栏命令：分两步——先点开菜单栏项（File / 文件），再点菜单项（保存）。
+ * 为什么必须两步：菜单不展开时，系统根本不会把菜单项放进无障碍树
+ * （实测矩阵里 AXMenuItem 数量恒为 0 就是这个原因）。
+ *
+ * @param {string} app
+ * @param {{menu?:string, item:string, deps?:object, menuOpenMs?:number}} options
+ */
 export async function clickMenuItem(app, options = {}) {
   const opts = options || {};
   const item = String(opts.item == null ? '' : opts.item).trim();
+  const menu = String(opts.menu == null ? '' : opts.menu).trim();
   const deps = Object.assign({ find, click }, opts.deps || {});
+  const waitMs = Number.isFinite(opts.menuOpenMs) ? opts.menuOpenMs : 250;
+  const sleepFn = typeof opts.sleep === 'function' ? opts.sleep : (ms) => new Promise((r) => setTimeout(r, ms));
   if (!item) return { ok: false, reason: '没有指定菜单项文字' };
 
+  // 第一步：点开菜单栏项（给了 menu 才做）
+  if (menu) {
+    let bars = [];
+    try {
+      bars = await deps.find(app, { role: 'AXMenuBarItem', text: menu, limit: 8 });
+    } catch (error) {
+      return { ok: false, reason: '菜单栏查询失败：' + String(error && error.message || error).slice(0, 80) };
+    }
+    const bar = bars.find((b) => String(b.title || '').trim() === menu) || bars[0];
+    if (!bar) return { ok: false, reason: '菜单栏项没找到：' + menu };
+    const opened = await deps.click(app, bar.index);
+    if (!opened || !opened.ok) return { ok: false, reason: '点开菜单失败：' + menu, menuOpened: false };
+    await sleepFn(waitMs);
+  }
+
+  // 第二步：点菜单项
   let matches = [];
   try {
     matches = await deps.find(app, { role: 'AXMenuItem', text: item, limit: 12 });
   } catch (error) {
-    return { ok: false, reason: '菜单查询失败：' + String(error && error.message || error).slice(0, 80) };
+    return { ok: false, reason: '菜单项查询失败：' + String(error && error.message || error).slice(0, 80) };
   }
-  // 优先完全匹配，其次包含
   const exact = matches.find((m) => String(m.title || '').trim() === item);
   const partial = matches.find((m) => String(m.title || '').includes(item));
   const hit = exact || partial;
-  if (!hit) return { ok: false, reason: '菜单项没找到：' + item };
-
+  if (!hit) return { ok: false, reason: '菜单项没找到：' + item, menuOpened: Boolean(menu) };
   const r = await deps.click(app, hit.index);
-  return { ok: Boolean(r && r.ok), index: hit.index, frontUnchanged: r ? r.frontUnchanged !== false : true };
+  return { ok: Boolean(r && r.ok), index: hit.index, menuOpened: Boolean(menu), frontUnchanged: r ? r.frontUnchanged !== false : true };
 }
 
 /** 窗口控制按钮（关闭 / 最小化 / 缩放）：不同应用角色名不完全一样，两者都找 */
