@@ -570,7 +570,7 @@ plist 在 `~/Library/LaunchAgents/`：`com.desktop-agent.daemon.plist`、`com.de
 | `CHROME_BIN` / `CHROME_APP` | 系统 Chrome | 指定浏览器二进制 / 应用名 |
 | `AGENT_CHROME_PROFILE` | `~/.desktop-agent/chrome-profile` | 离屏实例 profile |
 | `HEADLESS_PROFILE` | `~/.desktop-agent/headless-profile` | headless demo 的 profile |
-| `OVERLAY_PORT` / `OVERLAY_HOST` | `7788` / `127.0.0.1` | 小窗 HTTP 端口/监听地址（改 0.0.0.0 会暴露局域网，不建议） |
+| `OVERLAY_PORT` / `OVERLAY_HOST` | `7788` / `127.0.0.1` | 小窗 HTTP 端口/监听地址（改 0.0.0.0 会暴露局域网，不建议）。**改端口要同时设 `OVERLAY_URL`**，否则任务仍往 7788 推 |
 | `OVERLAY_WINDOW_ID` | — | 启动时绑定的被控窗口 ID |
 | `OVERLAY_FPS` | `15`（1–30） | 缩略图帧率 |
 | `OVERLAY_WIDTH` / `OVERLAY_HEIGHT` | `300` / `190` | 小窗尺寸 |
