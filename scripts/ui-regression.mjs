@@ -1,9 +1,16 @@
 import { overlayBase } from '../core/ports.mjs';
 import { localHeaders } from '../core/local-token.mjs';
+import { isScreenLocked } from '../core/platform.mjs';
 'use strict';
 // 小窗效果回归：把「能不能看见、会不会消失、出错说不说人话、放大后比例对不对」都断言一遍。
 //   node scripts/ui-regression.mjs
 const BASE = overlayBase();
+
+// 锁屏时小窗按设计隐藏，可见性/显示相关断言没有意义：按环境跳过，别报成回归
+if (await isScreenLocked()) {
+  console.log('环境跳过：屏幕已锁，小窗视觉效果无法验证');
+  process.exit(0);
+}
 const results = [];
 function record(name, ok, detail) { results.push({ name, ok, detail: detail || '' }); }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

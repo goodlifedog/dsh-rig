@@ -78,6 +78,9 @@ export function parseScreenLocked(output) {
 }
 
 export function isScreenLocked() {
+  // 测试用开关：锁屏状态下没法真跑 UI，但「锁屏时任务应该环境跳过」这条路径必须能验，
+  // 用 AGENT_FAKE_LOCKED=1 强制判锁（只影响这个函数，不碰真实系统状态）。
+  if (process.env.AGENT_FAKE_LOCKED === '1') return true;
   if (!isMac) return false;
   try {
     const out = execFileSync('/usr/sbin/ioreg', ['-n', 'Root', '-d1'], { encoding: 'utf8', timeout: 3000 });

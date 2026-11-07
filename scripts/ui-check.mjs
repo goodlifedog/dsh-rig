@@ -7,11 +7,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { localHeaders } from '../core/local-token.mjs';
+import { isScreenLocked } from '../core/platform.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
 const BASE = overlayBase();
 const label = process.argv[2] || 'ui';
+
+// 锁屏时截不到小窗区域（窗口本来就隐藏），按环境跳过
+if (await isScreenLocked()) {
+  console.log('环境跳过：屏幕已锁，截不到小窗（按设计隐藏）');
+  process.exit(0);
+}
 
 function sh(cmd, args) {
   return execFileSync(cmd, args, { encoding: 'buffer', maxBuffer: 64 * 1024 * 1024 });

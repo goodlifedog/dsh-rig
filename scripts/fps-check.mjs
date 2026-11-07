@@ -8,10 +8,17 @@ import os from 'node:os';
 import path from 'node:path';
 import { launch } from '../core/browser.mjs';
 import { localHeaders } from '../core/local-token.mjs';
+import { isScreenLocked } from '../core/platform.mjs';
 
 const OVERLAY = overlayBase();
 const SESSION = 'fps-check';
 const SECONDS = Math.max(5, Number(process.env.FPS_CHECK_SECONDS) || 20);
+
+// 锁屏时渲染路径和可见态都不同，帧率数据没有参考价值，按环境跳过
+if (await isScreenLocked()) {
+  console.log('环境跳过：屏幕已锁，帧率数据不可信');
+  process.exit(0);
+}
 const TARGET_FPS = Math.max(2, Number(process.env.FPS_CHECK_TARGET) || 13);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
