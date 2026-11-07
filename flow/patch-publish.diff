@@ -7,13 +7,11 @@
    "version": "0.7.0",
    "private": false,
    "type": "module",
-@@ -73,5 +73,41 @@
-     "bg:verify": "node scripts/bg-verify.mjs",
+@@ -74,5 +74,41 @@
      "ui:check": "node scripts/ui-check.mjs",
-     "health": "node scripts/health.mjs"
+     "health": "node scripts/health.mjs",
+     "tasks:doc": "node scripts/tasks-doc.mjs"
 -  }
--}
-\ No newline at end of file
 +  },
 +  "repository": {
 +    "type": "git",
@@ -51,7 +49,7 @@
 +    "CHANGELOG.md",
 +    "ARCHITECTURE.md"
 +  ]
-+}
+ }
 --- a/.github/workflows/ci.yml
 +++ b/.github/workflows/ci.yml
 @@ -10,7 +10,7 @@
