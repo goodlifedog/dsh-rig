@@ -295,7 +295,7 @@ parallel-demo / parallel-real-demo / scripts/app-resolve.mjs。
 - 4 个没人引用的任务（`boss-candidates` `human-demo` `parallel-demo` `parallel-real-demo`）
 - 1 个没人引用的脚本（`scripts/ui-gallery.mjs`）
 
-### 14. `repo:check` 在非 git 目录会报红
+### 14. ✅ 已解决：依赖 git 的检查标 ⏭️ 跳过（`hasGit`），ZIP 场景不再报红
 
 - 下载 ZIP 的用户跑会看到 `❌ git 仓库可用 / git ls-files 失败`；建议降级为「跳过（非 git 目录）」
 
@@ -304,14 +304,14 @@ parallel-demo / parallel-real-demo / scripts/app-resolve.mjs。
 - `git config user.email` 未设置（作者是 `tester@goodlifedogdeMacBook-Pro.local`），设置成 GitHub noreply
 - 历史里有 20 个 `goodlifedog@users.noreply.github.com` 自动检查点提交，公开前建议 squash
 
-### 2.1 会话标题门控用子串匹配，名字相近的会话会互相点亮小窗
+### 2.1 ✅ 已解决：全等或「去掉 hint 后只剩标点」，`f7eaa78` + 2 条测试
 
 - `overlay/session-gate.js` 的 `matchesTitle` 归一后用 `host.indexOf(hint) !== -1`，只要包含就算匹配
 - 实测：hint「规划布局探讨」对 host「规划布局探讨（二） — DeepSeek Harness」返回 true（误判）
 - 影响：同时开着名字相近的两个会话时，A 的小窗会在 B 里显示，违反「只在召唤它的会话里显示」
 - 现有测试只覆盖全等与完全不同，没覆盖前缀关系；建议归一后优先全等，装饰符另作容错
 
-### 2.05 `overlay/supervisor.js` 带起 daemon 后不管它死活（打包版才会走到）
+### 2.05 ✅ 已解决：`/health` 增加 `supervisor` 字段（managed/pid/spawnError/lastExit）
 
 - 这个模块负责「打包成单个 App 后，Electron 里把 daemon 作为子进程拉起来」，只在打包版生效，开发环境走 launchd，所以平时测不到
 - 两个缺口：① `spawn` 后没有 `child.on('error')`——启动失败会变成未捕获异常（**和之前 ocu-mcp 那个 1.4 是同一种 bug，那边修了这边漏了**）；② 没有 `child.on('exit')`——daemon 中途崩掉后没人知道，小窗还在、但所有任务都会 127.0.0.1:7789 连不上
@@ -335,7 +335,7 @@ parallel-demo / parallel-real-demo / scripts/app-resolve.mjs。
          overlay/docs/overlay-pip*.png overlay/docs/space-own.png overlay/docs/clarity-small.png
   ```
 
-### 2.12 清理脚本会退出用户自己的备忘录/计算器（不区分「谁开的」）
+### 2.12 ✅ 已解决：`launchedByUs` 只关自己拉起的，`shouldQuitApp` 纯函数 + HID 空闲判据
 
 - `scripts/cleanup-test-data.mjs` 的 `quitTestApps()` 无条件 `quitApp` 计算器和备忘录，注释写「Notes 自动保存，关掉不会丢用户内容」
 - 实测跑一次 `npm run cleanup:test`（默认就执行，不需要 --force）：报告里出现 `{"kind":"quit","app":"Notes","mode":"quit"}`
@@ -374,7 +374,7 @@ iRightMouse | ... | none   | ...   ← 菜单栏应用，本来就没有可抓�
 
 两处都不是新代码坏了——`元素级驱动` 那部分 2/2 可读可点、前台也没被抢。但**验收偶发红会让人误以为功能坏了**，发布后更明显。
 
-### 2.15 跨会话互斥只在入口查一次，跑到一半别的会话开始就管不住了
+### 2.15 ✅ 已解决：`runTask` 循环里每轮复查（`midRunAbortReason`，纯函数 + 测试）
 
 - `13008e4` 加的互斥很对症（我实测过：能识别别人在跑 app-matrix，也不会误判测试文件），但**只在验收开始那一刻查一次**
 - 验收一轮要跑几分钟：如果开始后另一个会话手动跑 `app-matrix` 或 `background-control`，两边还是会同时切窗口、互相污染结果——而这正是这条互斥想防的事
@@ -388,7 +388,7 @@ iRightMouse | ... | none   | ...   ← 菜单栏应用，本来就没有可抓�
 - 建议：① `findForeignUiRuns` 支持按父进程链排除（`isDescendantOf` 已经在 acceptance-lock 里实现，可以直接复用）；② 至少把命中进程的 pid 写进中止原因，方便一眼看出是谁
 - 实测当前环境返回 0 个外来任务，规则本身工作正常，属于极端时序下的诊断准确性问题
 
-### 2.17 端口收口还漏了 8 处（`3c2bbc8` 说「都走 ports.mjs」，实测没有）
+### 2.17 ✅ 已解决：`44334e5` 第二轮收口，实测写死端口 0 处
 
 `grep` 实测仍有 8 行写死 127.0.0.1:7788/7789：
 
