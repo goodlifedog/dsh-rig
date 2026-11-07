@@ -9,8 +9,7 @@
 ```bash
 git apply flow/patch-publish.diff            # 发布配置（发布前必打）
 git apply flow/patch-prune-consolidate.diff  # prune 死代码合并（建议打）
-git apply flow/patch-deploy-freshness.diff   # 代码新鲜度检查（建议打）
-git apply flow/patch-title-gate.diff          # 会话标题门控不再用裸子串匹配（建议打）
+# patch-title-gate 已应用（标题门控去掉裸子串匹配），文件已删
 # patch-watchdog-hid 已应用（看门狗 HID 判据），文件已删
 npm test && npm run repo:check
 ```
@@ -72,7 +71,7 @@ node --test test/front-watch.test.mjs   # 7 项全过
 node --test test/text-edit-guard.test.mjs
 ```
 
-## 4. patch-title-gate.diff（40 行 / 2 个文件）
+## 4. ✅ patch-title-gate.diff（40 行 / 2 个文件）—— 已应用，补丁文件已删除
 
 **问题**：会话标题门控用 host.indexOf(hint) 裸子串匹配，实测：
   hint 规划布局探讨 vs host 规划布局探讨（二） → true（误判），
@@ -103,3 +102,4 @@ node --test test/session-gate.test.mjs   # 7 项全过
 | `patch-formfill-restore.diff` | 主会话改成「catch 里补一次 restore-after-error」，语义等价且不会在成功路径重复写 |
 | `patch-textedit-guard.diff` | 已采纳：core/text-edit-guard.mjs 落地，background-control 写入前先判空文稿 |
 | `patch-cleanup-idle.diff` | 主会话做得更全：launchedByUs + shouldQuitApp + HID 空闲，三条件都判 |
+| `patch-deploy-freshness.diff` | 已采纳：core/deploy-freshness.mjs + service.mjs 接线，并补了单测 |
