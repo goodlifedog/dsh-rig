@@ -102,7 +102,7 @@ flow/patch-deploy-freshness.diff     代码新鲜度检查（service:status 能�
 
 ## P1.5 · 安全边界的四处不一致
 
-### 2.2 非中文/英文系统上，权限弹窗可能被当成普通弹窗自动点掉
+### 2.2 ✅ 已解决：弹窗守卫改结构判定 + 兜底 unknown 不点（含多语言词条）
 
 - `core/dialog-guard.mjs` 的策略是：弹窗文字命中 `PERMISSION_HINTS`（中文/英文关键词）就**绝不代点**，否则当普通弹窗，允许点白名单里的安全按钮
 - 问题：`PERMISSION_HINTS` 只有中文和英文。**德语「Bedienungshilfen」、法语「Accessibilité」、日语「アクセシビリティ」都匹配不到**，会被判成 benign
@@ -111,7 +111,7 @@ flow/patch-deploy-freshness.diff     代码新鲜度检查（service:status 能�
 - 建议改成**结构判定**而不是语言判定：只要弹窗里出现授予类按钮（允许/Allow/好/許可/Erlauben/Autoriser/Zulassen/Consenti/Accetta…），或出现「系统设置/System Settings/Systemeinstellungen」字样，就一律不点；再加一条测试覆盖非中英文文案
 
 
-### 2.3 daemon 有三个只读接口无票可读，与 SECURITY.md 的说法矛盾
+### 2.3 ✅ 已解决：/status /tasks 要票，/ 保留为最小存活探测并同步文档
 
 - 文档两处写「**daemon 与 overlay 的全部接口**都要 `X-Agent-Token`」「实测两个服务无 token 均 401」
 - 实测：`GET /`、`GET /status`、`GET /tasks` **无 token 均返回 200**（代码里 `needsToken` 只覆盖 `/run` `/stop` `/selftest`）
@@ -120,7 +120,7 @@ flow/patch-deploy-freshness.diff     代码新鲜度检查（service:status 能�
 - 建议二选一：① 让 daemon 也全接口要票（和 overlay 一致，最省心）；② 保留只读免票，但把文档改成「写接口要票，只读接口免票」并说明原因。无论哪种，都建议加一条 Host 白名单校验（只认 127.0.0.1 / localhost），把 DNS rebinding 这条堵死
 
 
-### 2.4 数据目录实际是 755，文档和安全模型都假设它是 700
+### 2.4 ✅ 已解决：hardenDataDir 收紧目录与敏感子目录
 
 - `docs/SECURITY.md` 两处写「token 文件 600、**目录 700**」，代码注释也这么假设
 - 实测：`~/.desktop-agent` 是 `drwxr-xr-x`（755），里面还有 `chrome-profile` / `headless-profile` 三个目录，全部 755，大量文件 644
@@ -128,12 +128,12 @@ flow/patch-deploy-freshness.diff     代码新鲜度检查（service:status 能�
 - 根因：`ensureTokenSync` 用 `mkdirSync(..., { mode: 0o700 })`，但**目录已存在时 mode 不生效**；而且早退路径（已有合法 token）直接 return，不修正文件/目录权限
 - 建议：启动时幂等地 `chmod(数据目录, 0o700)`、`chmod(token 文件, 0o600)`；顺手评估把两个 chrome profile 目录也收紧到 700（Chrome 一般不受影响）；文档口径与实现对齐
 
-### 2.45 token 文件已合法时不再检查权限
+### 2.45 ✅ 已解决：复用 token 时也会校正 600/700
 
 - `ensureTokenSync` 读到内容合法就 return，不 chmod。若文件曾被备份/恢复成 644，服务不会纠正它，文档里「600」的保证就落空了
 
 
-### 2.5 CDP 端口主人校验存在，但主路径没调用
+### 2.5 ✅ 已解决：cdp-driver 任务已传 expectedPid
 
 - `core/safety.mjs` 有 `debugPortTrust()`（端口主人 pid 必须等于期望应用 pid），`cdp-driver.mjs:161` 也确实调用了——**但只在调用方显式传 `expectedPid` 时才校验**
 - 实际情况：`core/tasks/cdp-driver.mjs:55` 在 `launchWithDebug` 之后直接 `attachPage({ port })`，没传 expectedPid；`launchWithDebug` 也只返回 version，不返回应用 pid
@@ -171,14 +171,14 @@ flow/patch-deploy-freshness.diff     代码新鲜度检查（service:status 能�
 - **补丁已实现**：新增 `core/deploy-freshness.mjs`（纯函数 + 5 条测试）、接线到 `service.mjs status()`。实测：`touch core/agentd.mjs overlay/server.js` 后输出「落后 —— core/agentd.mjs 比进程新 14 分钟，建议 npm run service:restart」
 
 
-### 3.1 `ensureAppWindow`（新加的组合动作，任务全靠它兜「进程在但没窗口」）没有单测（**补丁已备**：`flow/patch-ensure-app-window-test.diff`）
+### 3.1 ✅ 已解决：ensureAppWindow 分支测试已落地
 
 - 它把「确保在跑 → 等窗口 → 没有就用 bundleId/appName 唤起 → 仍没有就如实报错」串在一起，分支不少，但测试是 0
 - 好在完全靠 `deps` 注入，不起任何应用就能测完：未运行、已有窗口、窗口计数 0 但 probe 可读（viaProbe）、唤起后成功、唤起后仍失败、唤起中前台被换
 - 补丁：`git apply flow/patch-ensure-app-window-test.diff`（6 条测试 / 99 行，已对着当前实现跑通）
 
 
-### 3.2 `core/electron-task.mjs`（500+ 行，overlay 的关键依赖）没有任何单测（**补丁已备**：`flow/patch-electron-task-test.diff`）
+### 3.2 ✅ 已解决：electron-task 已有单测
 
 - 全仓 41 个 core 模块，38 个被测试引用；没被引用的三个是 `platform-smoke`（脚本）、`permissions`（读 TCC，纯 IO）、`electron-task`
 - `electron-task` 里至少两个函数不启动 Electron 就能测：`readDevToolsActivePort()`（解析 `DevToolsActivePort` 文件：正常、缺失、端口非法）和 `resolveElectronBinary()`（显式路径优先 / 退到随包 / 都找不到时报可读错误）
@@ -197,7 +197,7 @@ flow/patch-deploy-freshness.diff     代码新鲜度检查（service:status 能�
 - 主会话采纳了我给的 `patch-lock-race-test.diff`，并**修掉了它的一个缺陷**：抢到锁的子进程如果立刻退出，另一个进程重试时会把已退出的持有者判成死锁并回收——那是正确行为，但会让测试偶发失败。他们让胜者多占 1.2 秒，问题消失
 - 我对着改进版连跑 8 次，全过
 
-### 3.45 抢锁 fail-open 没有测试
+### 3.45 ✅ 已解决：fail-open 有测试，且借此抓出 mkdir EEXIST 误判
 
 - `acceptance-lock.mjs` 在非 EEXIST 异常时返回 `{ ok: true, warning: ... }`（拿不到锁照跑）
 - 这条分支没有任何测试；如果将来决定改成 fail-closed，也没有测试会失败提醒
@@ -205,14 +205,14 @@ flow/patch-deploy-freshness.diff     代码新鲜度检查（service:status 能�
 ## P2（续）
 
 
-### 3.5 会话「真的可见」这条判断还没进单测（`b931e02` 修的）
+### 3.5 ✅ 已解决：抽成 isSessionReallyVisible + 单测
 
 - `b931e02` 把「正在显示」从 `state.visible` 改成 `state.visible && win.isVisible()`，方向对：窗口刚建好时 `showInactive` 会先把 `state.visible` 置 true，只看状态会把上限顶死
 - 但这条逻辑留在 `overlay/main.js` 里，纯函数测试覆盖不到——而它恰恰是刚修的一个坑，容易回归
 - 建议抽成纯函数放进 `session-policy.js`：`isTrulyVisible(session, windowVisible)`，main 传 `sess.win && !sess.win.isDestroyed() && sess.win.isVisible()`，再补一条「state.visible=true 但窗口不可见 → 可回收」的测试
 
 
-### 8.6 ✅ overlay 折叠路径读真实前台（已实现）
+### 8.6 ✅ 已解决：折叠路径读真实前台
 
 - `overlay/main.js:1810`（从放大态还原成小窗时）调用 `attachToDsh(s, 'com.deepseek.dsh', ...)`，硬编码宿主 bundle
 - 后果：`frontOk` 恒为 true，即使用户已经切到别的应用，折叠后小窗仍按「宿主在前台」处理 → 该隐藏时没隐藏
