@@ -483,7 +483,16 @@
       syncInteractive(event.clientX, event.clientY);
     });
 
-    window.addEventListener('resize', () => { repositionCursor(); });
+    window.addEventListener('resize', () => { repositionCursor(); syncRadius(); });
+
+    // 圆角跟着窗口尺寸走：小窗时不显得过圆，放大到 4:3 时不显得过方
+    function syncRadius() {
+      const min = Math.min(window.innerWidth, window.innerHeight);
+      const radius = Math.round(Math.min(22, Math.max(12, min * 0.06)));
+      document.documentElement.style.setProperty('--radius-window', radius + 'px');
+      document.documentElement.style.setProperty('--radius-frame', Math.max(6, radius - 5) + 'px');
+    }
+    syncRadius();
   }
 
   async function boot() {
