@@ -1,7 +1,7 @@
 # 外部评审提供的补丁（按需应用）
 
 > 这些不是必须打的。每个都独立可应用、互不冲突，打过之后 `npm test` 全绿。
-> 最后更新：2026-11-08 03:55。**当前剩 5 个**，其余都已被主会话自行实现并删除。
+> 最后更新：2026-11-08 03:58。**当前剩 3 个**，其余都已被主会话自行实现并删除。
 
 ## 应用程序
 
@@ -70,20 +70,6 @@ node --test test/front-watch.test.mjs   # 7 项全过
 node --test test/text-edit-guard.test.mjs
 ```
 
-## 7. patch-cleanup-idle.diff（99 行 / 1 个文件）
-
-**问题**：npm run cleanup:test 默认就会退出「计算器」和「备忘录」（报告里 kind=quit mode=quit），
-不区分是谁开的。数据不会丢（备忘录自动保存），但用户正开着备忘录写东西时跑清理会被关掉，
-与项目反复强调的「不打扰」冲突。
-
-补丁：退出应用前先读 HID 空闲时间，**最近 60 秒内用户动过键鼠就跳过**，报告里写 quit-skip；
-复用 core/front-watch.mjs 已有的 hidIdleMs()。
-
-验证：
-```bash
-npm run cleanup:test          # 你在用电脑时跑，应看到 quit-skip 而不是 quit
-```
-
 ## 已采纳并删除的补丁（留档，不要再找）
 
 | 补丁 | 落地情况 |
@@ -99,3 +85,5 @@ npm run cleanup:test          # 你在用电脑时跑，应看到 quit-skip 而�
 | `patch-retry-unify.diff` | `retry-policy` 已复用 `ENV_RULES` |
 | `patch-health-queue.diff` | `health` 队列显示已改读 `queueLength` |
 | `patch-formfill-restore.diff` | 主会话改成「catch 里补一次 restore-after-error」，语义等价且不会在成功路径重复写 |
+| `patch-textedit-guard.diff` | 已采纳：core/text-edit-guard.mjs 落地，background-control 写入前先判空文稿 |
+| `patch-cleanup-idle.diff` | 主会话做得更全：launchedByUs + shouldQuitApp + HID 空闲，三条件都判 |
