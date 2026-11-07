@@ -140,6 +140,21 @@ curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:7789/                 
 node --test test/dialog-i18n.test.mjs
 ```
 
+## 7. `patch-retry-unify.diff`（32 行 / 1 个文件）
+
+**发现的不一致**：`d49be81` 已从 `run-classify.mjs` 删掉「改成了指定关键词|已恢复原值」这条规则，
+但 `core/retry-policy.mjs` 的 `NO_RETRY` 里还留着同一份规则——两处规则开始分叉。
+这正是当初把规则抽成一份时要避免的（文件头注释写着「避免两套正则各说各话」）。
+
+补丁：`retry-policy.mjs` 改为 `import { ENV_RULES } from './run-classify.mjs'`，
+`NO_RETRY` 由 `ENV_RULES` 映射生成 + 额外保留 `/环境跳过/`，以后只需维护一份。
+
+验证：
+```bash
+node --test test/retry-policy.test.mjs   # 6 项全过
+npm test                                  # 全量全绿
+```
+
 ## 已作废（不要再应用）
 
 `patch-token-permissions.diff`：权限校正已由主会话自行实现（`hardenDataDir`，更完整——连 chrome-profile 等敏感子目录一起收紧），
