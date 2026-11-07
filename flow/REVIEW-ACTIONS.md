@@ -1,7 +1,7 @@
 # 评审待办（外部检查者维护）
 
 > 每次复查后更新，**只看这一页就够**。详细理由见 `REVIEW-2026-11-07.md`。
-> 更新：2026-11-08 07:45
+> 更新：2026-11-08 08:20
 >
 > 注：复查时机器处于锁屏状态（ioreg `CGSSessionScreenIsLocked = true`），GUI 类任务一律没跑。
 
@@ -22,16 +22,18 @@
 
 ## 现在就做
 
-0. **✅【出口关卡已经补上】验收分类路径**
-   - 我这轮直接在 `core/run-classify.mjs` 的 `envSkipReason()` 里加了 `if (/❌/.test(raw)) return '';`（验收实际调用的就是这个函数）
-   - 实测同一份日志：改前 `envSkipReason` 返回「任务自报环境跳过」→ 验收判 PASS；改后返回 `""` → 判真实失败
-   - 补了两项单测（有 ❌ 时必须返回空、纯跳过仍然认），全量 367 项、366 过、0 失败
-   - 请审这个 diff 再提交；注意副作用：`background-control` 如果还有 ❌，`npm run accept` 会真的判红（这是对的）
+0. **✅【出口关卡已补上，但请审一处我可能过时的描述】**
+   - 第 56 轮我在 `envSkipReason()` 里加了 `if (/❌/.test(raw)) return '';`，验收现在会把带 ❌ 的轮次判成真实失败
+   - **更正**：我之前写「验收清理走 dry-run 安全阀」，现在代码里已经没有 `--dry-run` 了——你们改成了清理脚本内部默认不删（要 `--force` 才动手），这个更彻底，我的描述作废
 
 
 1. **发布配置不合格（补丁 `flow/patch-publish.diff` 我刚复验过，仍可干净应用）**：包名 `desktop-agent` 已被 npm 占用（发布必然 403）；缺 `bin`/`files`/`repository`；CI 矩阵跑三平台但项目只支持 macOS；README 徽章还是 `USER` 占位。补丁已备：`git apply flow/patch-publish.diff`。
 
 ## 下一批
+
+11. **`flow/AGENT-COORDINATION.md` 第 23 行的说法要补一句**：现在写「`npm run accept` 结束会自动调用 `npm run cleanup:test`」，但清理脚本默认**只报告不删**（要 `--force` / `NOTES_CLEANUP_FORCE=1` 才真删）。读者会以为测试数据已经被自动清干净了，实际不会。建议改成：「自动调用清理，但默认只报告；要真删需 `npm run cleanup:test:apply`（或加 `--force`），因为误删用户笔记不可恢复」。
+
+10. **窗口失效后不会自动恢复**（10 次巡检里 2 次失败就是它）：`overlay/main.js` 抓帧连续失败到阈值后只把 `thumbnail.state` 切成 `error`，**不清空失效的 windowId、也不重新解析窗口**，于是会话一直停在 error 直到外部重新 `/window` 绑定。建议阈值时核对窗口：原 id 还在就保持；同进程有唯一新窗口就自动改绑；都没有就清空 windowId 回 `no-window`。同时 monitor 的「画面」检查要区分「未绑定（设计内）/ 自动恢复过 / 真失效」，否则指标虚高。
 
 9. **发布前隐私/历史检查（我扫了 170 个提交）**：
    - 没发现任何密钥、token、私钥（`sk-` / `ghp_` / `AKIA` / PRIVATE KEY 全部零命中）——这项可以放心
@@ -55,6 +57,10 @@
 4. **README 那句「全程不抢焦点」**：个别 Electron 应用启动瞬间会自己跳到前台（app-matrix 报告里有实据）。建议改成「不主动抢，抢了会立刻还回去」。
 
 ## 发布前已自查通过
+
+- **资源卫生（第 58 轮复查）**：`ocu app-agent` 残留 0 个（第 17 轮时是 4 个，其中一个是 26 小时前的）、离屏 Chrome 0 个、`/tmp/agentd-*.lock` 0 个、临时帧文件 0 个、验收锁 0 个 —— 进程收尾和清理这条线是真的修好了
+- **产物有界**：`reports/` 正好 200 个（prune 的 KEEP_REPORTS 生效）、`logs/daemon` 204 个、日志报告总计 3.4MB
+
 
 - **第三方许可合规**：`third_party/open-computer-use/` 里 LICENSE / NOTICE / THIRD_PARTY_NOTICES 都在仓库里，`scripts/bundle-ocu.mjs` 打包时会带上，`THIRD-PARTY.md` 也写明了再分发义务
 - **密钥泄漏**：170 个提交全扫过，无 token / 私钥 / AKIA / ghp_
