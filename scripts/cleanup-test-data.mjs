@@ -14,6 +14,7 @@ import { promisify } from 'node:util';
 import { ensureAppRunning, frontName, quitApp } from '../core/background.mjs';
 import { closeOcuMcp } from '../core/ocu-mcp.mjs';
 import { countNotes, deleteTopNotes, deleteMarkedTestNotes, LEGACY_TEST_WORDS } from '../core/note-cleanup.mjs';
+import { shouldQuitApp, shouldRunNoteCleanup } from '../core/cleanup-policy.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const dryRun = process.argv.includes('--dry-run');
@@ -29,6 +30,27 @@ function osa(script, timeoutMs = 20000) {
     return '__ERR__';
   }
 }
+
+/** 用户多久没动键鼠（毫秒）；读不到返回 -1 */
+function hidIdleMs() {
+  try {
+    const out = execFileSync('/usr/sbin/ioreg', ['-c', 'IOHIDSystem', '-d', '4'], { encoding: 'utf8', timeout: 3000 });
+    const m = /"HIDIdleTime" = (\d+)/.exec(out);
+    return m ? Math.round(Number(m[1]) / 1e6) : -1;
+  } catch {
+    return -1;
+  }
+}
+
+/** 2 分钟内动过键鼠就算「用户正在用电脑」 */
+const USER_ACTIVE_MS = 120000;
+function userRecentlyActive() {
+  const idle = hidIdleMs();
+  return idle >= 0 && idle < USER_ACTIVE_MS;
+}
+
+// 本次清理自己拉起来的应用：只有这些可以无条件关；别人的要等用户离开才清
+const launchedByUs = new Set();
 
 async function purgeNotes(report) {
   const count = await countNotes();
@@ -64,7 +86,11 @@ async function purgeNotes(report) {
 }
 
 async function cleanupNotes(report) {
+  // 用户正在用电脑时连启动备忘录都别做：清理不该让人看到窗口弹出来
+  const gate = shouldRunNoteCleanup({ userActive: userRecentlyActive(), force: forceNotes || forceAllNotes });
+  if (!gate.run) { report.push({ kind: 'note-skip-active', note: gate.reason }); return; }
   const launch = await ensureAppRunning({ bundleId: 'com.apple.Notes', appName: 'Notes', processName: 'Notes' }, { waitMs: 6000 });
+  if (launch.launched) launchedByUs.add('com.apple.Notes');
   await sleep(1000);
   if (dryRun) { report.push({ kind: 'note-dry-run' }); return; }
   await purgeNotes(report);
@@ -89,23 +115,33 @@ async function cleanupTextEdit(report) {
   }
   if (!dryRun) {
     const left = Number(osa('tell application "TextEdit" to count documents')) || 0;
-    if (left === 0) {
+    const decision = shouldQuitApp({ launchedByUs: launchedByUs.has('com.apple.TextEdit'), userActive: userRecentlyActive() });
+    if (left === 0 && decision.quit) {
       await quitApp({ bundleId: 'com.apple.TextEdit', appName: 'TextEdit', processName: 'TextEdit' });
       report.push({ kind: 'textedit-quit', left });
+    } else if (left === 0) {
+      report.push({ kind: 'textedit-keep', note: decision.reason });
     }
   }
 }
 
 async function quitTestApps(report) {
   if (dryRun) return;
-  // 清完就退出测试应用：Notes 自动保存，关掉不会丢用户内容；留着会一直躺在后台
+  // 只关「本次清理自己拉起来的」；不是我们开的、且用户还在用，就别动人家应用。
+  // 用户已经离开时，才把测试残留的应用收拾掉。
   const apps = [
     { bundleId: 'com.apple.calculator', appName: '计算器', processName: 'Calculator' },
     { bundleId: 'com.apple.Notes', appName: 'Notes', processName: 'Notes' },
   ];
+  const userActive = userRecentlyActive();
   for (const app of apps) {
+    const decision = shouldQuitApp({ launchedByUs: launchedByUs.has(app.bundleId), userActive });
+    if (!decision.quit) {
+      report.push({ kind: 'app-keep', app: app.appName, note: decision.reason });
+      continue;
+    }
     const q = await quitApp(app);
-    if (q.mode !== 'already-stopped') report.push({ kind: 'quit', app: app.appName, mode: q.mode });
+    if (q.mode !== 'already-stopped') report.push({ kind: 'quit', app: app.appName, mode: q.mode, note: decision.reason });
   }
 }
 
