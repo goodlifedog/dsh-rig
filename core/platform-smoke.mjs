@@ -75,7 +75,9 @@ try {
   const r = await fetch(daemonUrl(), { signal: AbortSignal.timeout(2000) });
   const d = await r.json();
   daemonOk = Boolean(d.ok);
-  daemonInfo = 'pid=' + d.pid + ' tasks=' + (d.tasks ? d.tasks.length : 0);
+  // GET / 现在只回最小存活信息（ok/pid/uptimeSec），任务列表在需要票据的 /status 里，
+  // 这里别再显示一个恒为 0 的 tasks=
+  daemonInfo = 'pid=' + d.pid + (d.uptimeSec ? ' 运行 ' + d.uptimeSec + 's' : '');
 } catch (e) { daemonInfo = '未启动'; }
 add('后台 daemon ' + daemonPort(), daemonOk, daemonInfo);
 
