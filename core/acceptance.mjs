@@ -32,16 +32,47 @@ async function checkOverlay() {
   return h;
 }
 
+/** 把宿主切换前台：让"活动触发显示"每次都真跑，不依赖用户当时开着什么应用 */
+function activateHost() {
+  if (process.platform !== 'darwin') return false;
+  try {
+    execFileSync('/usr/bin/osascript', ['-e', 'tell application "System Events" to set frontmost of first process whose bundle identifier is "com.deepseek.dsh" to true'], { timeout: 5000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 还原前台到指定 bundle（拿不到就交给验收收尾统一还原） */
+function restoreBundle(bundle) {
+  if (!bundle || process.platform !== 'darwin') return;
+  try {
+    execFileSync('/usr/bin/osascript', ['-e', 'tell application "System Events" to set frontmost of first process whose bundle identifier is ' + JSON.stringify(bundle) + ' to true'], { timeout: 5000 });
+  } catch {}
+}
+
 async function checkIdleHide() {
   const before = await overlay.health();
   if (!before.ok) return record('空闲自动隐藏', false, 'overlay 不在线');
+  const frontBefore = frontmostBundle();
   await overlay.visible(false);
   await new Promise((r) => setTimeout(r, 500));
   const hidden = await overlay.health();
   record('手动隐藏生效', hidden.visible === false, 'visible=' + hidden.visible);
-  await overlay.status('验收中');
-  await new Promise((r) => setTimeout(r, 800));
+  // 主动把宿主切前台，再触发活动：这样这一项是确定性检查，不会因为"前台恰好是计算器"而跳过
+  const activated = activateHost();
+  if (!activated) {
+    record('活动触发显示', true, '环境跳过：切不到宿主（锁屏或系统事件不可用）', true);
+    return;
+  }
+  await new Promise((r) => setTimeout(r, 400));
+  // 小窗按"会话标题 = 宿主窗口标题"门控：验收要像真实会话一样带上当前标题，否则会被按设计隐藏
+  const hintHealth = await overlay.health().catch(() => null);
+  const titleHint = (hintHealth && hintHealth.dshTitle) || '';
+  await overlay.status('验收中', 'running', titleHint);
+  await new Promise((r) => setTimeout(r, 900));
   const shown = await overlay.health();
+  restoreBundle(frontBefore);
   if (shown.visible === true) {
     record('活动触发显示', true, '');
   } else {

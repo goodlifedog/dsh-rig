@@ -37,7 +37,8 @@ export const overlay = {
   // 当前会话 id；同一个会话的所有推送都落到同一个小窗
   session: AGENT_SESSION,
   log: (text) => post('/log', { text }),
-  status: (text, state) => post('/status', { text, state }),
+  // titleHint：多会话小窗按"会话标题 = 当前宿主标题"决定显示哪个会话，缺了就会被门控隐藏
+  status: (text, state, titleHint) => post('/status', titleHint ? { text, state, titleHint } : { text, state }),
   window: (windowId, title) => post('/window', title ? { windowId, title } : { windowId }),
   visible: (visible) => post('/visible', { visible }),
   frame: (dataUrl, note, cursor) => post('/frame', { dataUrl, note, cursor }),

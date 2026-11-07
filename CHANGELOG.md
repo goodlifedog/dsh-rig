@@ -2,6 +2,9 @@
 
 ## 未发布
 
+- 验收「活动触发显示」改成确定性检查并定位到真正原因：小窗按「会话标题 = 宿主窗口标题」门控，验收用的 default 会话标签还是旧标题（规划布局探讨），与当前宿主标题（项目详情）不匹配 → 按设计隐藏，不是偶发 bug。现在验收先切宿主到前台、带上当前宿主标题触发活动、断言可见、再还原前台；实测从未知状态变为稳定 PASS
+- `overlay.status()` 支持 titleHint（多会话门控必需），agentd 客户端同步
+- 收录外部评审的发布补丁 flow/patch-publish.diff（改包名/仓库地址/npm files/bin/CI 平台），**未应用**：发布与远端操作需要用户明确授权
 - overlay 控制面加票据：`/frame`、`/window`、`/visible`、`/health`、`/windows` 等全部接口都要求 `X-Agent-Token`（与 daemon 共用 `~/.desktop-agent/api-token`，文件 600/目录 700）；有 token 才放行，实测无 token 401、有 token 200
 - 票据实现抽成 `core/local-token.cjs`（CJS，给 daemon/overlay）+ `core/local-token.mjs`（ESM 外观），避免两份实现漂移
 - 16 个 overlay 调用方（任务脚本/巡检脚本/agentd 客户端）统一从 `localHeaders()` 取头，机械替换后逐个语法检查

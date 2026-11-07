@@ -1,0 +1,52 @@
+--- a/package.json
++++ b/package.json
+@@ -1,10 +1,27 @@
+ {
+-  "name": "desktop-agent",
++  "name": "@goodlifedog/desktop-agent",
+   "version": "0.7.0",
+   "private": false,
+   "type": "module",
+   "description": "后台电脑控制 + 小窗回显：用 Accessibility 语义树驱动真实 macOS 应用，全程不抢焦点",
+   "license": "MIT",
++  "repository": {
++    "type": "git",
++    "url": "git+https://github.com/tester/desktop-agent.git"
++  },
++  "bin": {
++    "desktop-agent": "./core/cli.mjs"
++  },
++  "files": [
++    "core/",
++    "overlay/",
++    "flow/",
++    "docs/",
++    "README.md",
++    "LICENSE",
++    "THIRD-PARTY.md",
++    "CHANGELOG.md"
++  ],
+   "author": "goodlifedog",
+   "engines": {
+     "node": ">=20"
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -10,7 +10,7 @@
+     strategy:
+       fail-fast: false
+       matrix:
+-        os: [ubuntu-latest, macos-latest, windows-latest]
++        os: [macos-latest]
+         node: [20]
+     runs-on: ${{ matrix.os }}
+     steps:
+--- a/README.md
++++ b/README.md
+@@ -1,6 +1,6 @@
+ # Desktop Agent
+ 
+-[![CI](https://github.com/USER/desktop-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/USER/desktop-agent/actions/workflows/ci.yml)
++[![CI](https://github.com/tester/desktop-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/tester/desktop-agent/actions/workflows/ci.yml)
+ 
+ > 后台电脑控制 + 小窗回显。所有操作在你的真实应用里完成，但全程不抢焦点、不动你的鼠标、不切你的窗口。
+ 
