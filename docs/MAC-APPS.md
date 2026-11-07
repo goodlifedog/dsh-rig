@@ -172,6 +172,10 @@ offscreen = 窗口在别的桌面，系统返回纯色帧。
 - **菜单栏工具**（State）：AX 窗口数恒为 0，但界面树有 62 个节点、画面能抓到。
 - **个别会议/办公应用**（腾讯会议、Keynote/Numbers Creator Studio）：窗口在系统层可见
   （腾讯会议的窗口 owner 显示成「腾讯会议」，不是进程名），AX 树时有时无、常常为 0。
+- **Keynote / Numbers 的真实原因（实测）**：首次启动会弹「欢迎使用 / 新功能 / 隐私与许可」引导，
+  而且引导必须点到「继续」才能进主界面——点它等于替用户接受软件许可条款，所以工具**不代点**。
+  实测引导窗口里 AX 树是能读的（「欢迎使用 Keynote 讲演」「继续」按钮都在），用户手动过完引导、
+  打开一个文稿之后，界面树就有内容（实测 818 字符、含菜单栏/工具栏），此时元素级操作可用。
 - 对这类应用，后台能做的只有**抓画面 + 按坐标点**，或者走它自己的快捷键；
   不要去等 AX 元素，等到超时只会白等。
 
@@ -195,12 +199,13 @@ overlay 的系统窗口列表（CGWindowList）。只信 AX 会把菜单栏工�
 | Safari | 已适配 | 冷启动不留窗口，需要已有窗口 |
 | Chrome | 走独立实例 | 会自己抢前台，用专用 profile 的 headless 实例 |
 | WPS Office | 已适配 | 只开首页时没有文档 |
-| Pages / Keynote / Numbers Creator Studio | 限制 | 首启弹窗卡 Apple 事件；Keynote/Numbers 的 AX 树为空，只能画面+坐标 |
-| 腾讯会议 | 限制 | AX 时有时无，窗口层可见，画面抓不到 |
-| Telegram | 限制 | 自绘窗口，AX 拿不到按钮 |
-| 抖音 / Antigravity | 限制 | 启动后自行退出（应用侧行为） |
+| Pages Creator Studio | 已适配 | 有文稿窗口时 AX 可读 |
+| Keynote / Numbers Creator Studio | 可只用画面 | 首次启动是许可/新功能引导，**不代点「继续」**；用户过完引导并打开文稿后 AX 可读（实测 818 字符） |
+| 腾讯会议 | 已适配 | AX 节点不多（9 个）但可读可点 |
+| Telegram | 已适配（只读） | 25 个节点、0 个按钮，能读状态不能点 |
+| Antigravity / OpenCode / 抖音 | 限制 | 启动后自行退出，或带调试端口的 CDP 也起不来（详见 cdp-driver 报告） |
+| GarageBand / UURemote / iRightMouse | 已适配 | 元素级可读可点 |
 | Clash Verge / 奇游加速器 | **不动** | 用户在用的代理/加速器，只读状态，永不退出 |
-| OpenCode / GarageBand / UURemote / iRightMouse | 未测 | 已进预设清单，等解锁后跑 `MATRIX_PRESET=dev` 等 |
 
 ## 七、给一个新应用做适配的步骤
 
