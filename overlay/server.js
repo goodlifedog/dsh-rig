@@ -21,6 +21,7 @@
 
 const http = require('node:http');
 const { isAuthorized } = require('../core/local-token.cjs');
+const { isAllowedFrameDataUrl } = require('./image-meta.js');
 
 // 外部推帧是 base64 dataURL，单帧通常 50–200KB，给足空间
 // headless/CDP 截图可能是较大的 PNG/JPEG，给到 8MB
@@ -329,8 +330,10 @@ function createOverlayServer(options) {
       }
       const body = await readJsonBody(req);
       const session = sessionFrom(url, body);
-      if (typeof body.dataUrl !== 'string' || body.dataUrl.indexOf('data:image/') !== 0) {
-        return json(res, 400, { ok: false, error: 'dataUrl 必须是 data:image/... 开头的字符串' });
+      // 只接受内联 base64 位图：http(s) 地址会让渲染进程去远程拉图（泄漏使用情况、可做跟踪像素），
+      // svg 这类可伪装的格式也不放行
+      if (!isAllowedFrameDataUrl(body.dataUrl)) {
+        return json(res, 400, { ok: false, error: 'dataUrl 必须是 data:image/(png|jpeg|webp|gif);base64, 开头的内联图片' });
       }
       const width = readDimension(body.width, 'width');
       const height = readDimension(body.height, 'height');

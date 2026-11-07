@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { base64DataBytes, jpegSize, imageSizeFromDataUrl, sanitizeCursor } = require('../overlay/image-meta.js');
+const { base64DataBytes, jpegSize, imageSizeFromDataUrl, sanitizeCursor, isAllowedFrameDataUrl } = require('../overlay/image-meta.js');
 
 // 造一个最小 PNG 头：8 字节签名 + 长度 + 'IHDR' + 宽高
 function pngBuffer(width, height) {
@@ -73,4 +73,34 @@ test('光标坐标保留两位小数、非法值返回 null', () => {
   assert.equal(sanitizeCursor({ x: 'a', y: 2 }), null);
   assert.equal(sanitizeCursor(null), null);
   assert.equal(sanitizeCursor('x'), null);
+});
+
+test('外部推帧只接受内联 base64 位图', () => {
+  assert.equal(isAllowedFrameDataUrl('data:image/png;base64,AAAA'), true);
+  assert.equal(isAllowedFrameDataUrl('data:image/jpeg;base64,AAAA'), true);
+  assert.equal(isAllowedFrameDataUrl('data:image/webp;base64,AAAA'), true);
+  assert.equal(isAllowedFrameDataUrl('data:image/gif;base64,AAAA'), true);
+});
+
+test('远程地址 / svg / 非 base64 一律拒绝（渲染进程不许去远程拉图）', () => {
+  for (const bad of [
+    'https://example.com/a.jpg',
+    'http://127.0.0.1:1/x.png',
+    'file:///etc/passwd',
+    'javascript:alert(1)',
+    'data:image/svg+xml;base64,AAAA',
+    'data:image/png,AAAA',
+    'data:text/html;base64,AAAA',
+    '',
+    null,
+    undefined,
+    123,
+  ]) {
+    assert.equal(isAllowedFrameDataUrl(bad), false, String(bad));
+  }
+});
+
+test('超大 dataUrl 直接拒绝（防内存打爆）', () => {
+  const big = 'data:image/png;base64,' + 'A'.repeat(13 * 1024 * 1024);
+  assert.equal(isAllowedFrameDataUrl(big), false);
 });

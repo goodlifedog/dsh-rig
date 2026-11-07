@@ -353,6 +353,8 @@
   function renderThumb(frame) {
     if (!frame || typeof frame.dataUrl !== 'string') return;
     const url = frame.dataUrl;
+    // 渲染端再挡一层：只画内联图片，绝不把远程 URL 塞进 img.src
+    if (!/^data:image\//i.test(url)) return;
     const frameWidth = Number(frame.width) || 0;
     const frameHeight = Number(frame.height) || 0;
     const seq = ++view.frameSeq;

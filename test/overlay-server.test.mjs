@@ -112,6 +112,11 @@ test('推帧只接受 data:image/ 开头，挡住外部 URL', async () => {
     assert.equal(missing.status, 400);
 
     const remote = await post(base, '/frame', { dataUrl: 'https://example.com/a.jpg' });
+    assert.equal(remote.status, 400);
+    const svg = await post(base, '/frame', { dataUrl: 'data:image/svg+xml;base64,AAAA' });
+    assert.equal(svg.status, 400, 'svg 不放行（可伪装界面）');
+    const jsUrl = await post(base, '/frame', { dataUrl: 'javascript:alert(1)' });
+    assert.equal(jsUrl.status, 400);
     assert.equal(remote.status, 400, '不能让它去抓外网/本地文件');
 
     const ok = await post(base, '/frame', { dataUrl: 'data:image/png;base64,AAAA', width: 600, height: 380 });

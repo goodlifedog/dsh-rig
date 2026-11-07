@@ -81,7 +81,19 @@ function sanitizeCursor(cursor) {
   };
 }
 
-module.exports = { base64DataBytes, jpegSize, imageSizeFromDataUrl, sanitizeCursor };
+// 外部推帧只接受内联 base64 图片：如果放行 http(s):// 地址，小窗渲染进程会去远程拉图，
+// 等于把「谁在用、什么时候用」泄漏给第三方，也可能被当成跟踪像素。svg 也不放行（可做伪装界面）。
+const FRAME_DATA_URL_RE = /^data:image\/(?:png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=\s]+$/i;
+const MAX_FRAME_DATA_URL_CHARS = 12 * 1024 * 1024;   // 二进制 ~9MB，够 CDP 截图
+
+/** 校验外部推帧的 dataUrl 是不是允许的内联 base64 图片（纯函数） */
+function isAllowedFrameDataUrl(value) {
+  if (typeof value !== 'string') return false;
+  if (!value || value.length > MAX_FRAME_DATA_URL_CHARS) return false;
+  return FRAME_DATA_URL_RE.test(value);
+}
+
+module.exports = { base64DataBytes, jpegSize, imageSizeFromDataUrl, sanitizeCursor, isAllowedFrameDataUrl };
 /**
  * 判断一张 RGBA 位图是不是"整块纯色"。
  *
