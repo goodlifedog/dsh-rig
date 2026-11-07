@@ -21,6 +21,19 @@ function run(cmd, args, opts = {}) {
   });
 }
 
+/**
+ * 汇总验收项（纯函数）：分母写总项数，跳过与失败分开计数。
+ * 之前分母是「总项数 - 跳过数」，13 项里 2 项跳过会显示「11/11」，读报告的人以为只跑了 11 项。
+ * @param {Array<{ok:boolean, skipped?:boolean}>} results
+ */
+export function summarizeResults(results) {
+  const list = Array.isArray(results) ? results : [];
+  const passed = list.filter((r) => r && r.ok && !r.skipped).length;
+  const skipped = list.filter((r) => r && r.skipped).length;
+  const failed = list.filter((r) => r && !r.ok && !r.skipped).length;
+  return { total: list.length, passed, skipped, failed, ok: failed === 0 };
+}
+
 function record(name, ok, detail, skipped = false) {
   RESULTS.push({ name, ok, detail, skipped });
   const tag = skipped ? '  SKIP ' : (ok ? '  PASS ' : '  FAIL ');
@@ -223,11 +236,14 @@ async function main() {
 
   await cleanupAfterAcceptance();
 
-  const passed = RESULTS.filter((r) => r.ok && !r.skipped).length;
-  const skipped = RESULTS.filter((r) => r.skipped).length;
-  const total = RESULTS.length;
-  console.log('\n结果: ' + passed + '/' + (total - skipped) + ' 通过' + (skipped ? '，' + skipped + ' 项环境跳过' : ''));
-  for (const r of RESULTS) console.log((r.ok ? '  ✅ ' : '  ❌ ') + r.name);
+  const { total, passed, skipped, failed } = summarizeResults(RESULTS);
+  // 分母要写总项数：以前写 passed/(total-skipped)，13 项里 2 项跳过会显示「11/11」，
+  // 看报告的人会以为只跑了 11 项
+  console.log('\n结果: 共 ' + total + ' 项，通过 ' + passed + '，环境跳过 ' + skipped + (failed ? '，失败 ' + failed : ''));
+  for (const r of RESULTS) {
+    const mark = r.skipped ? '  ⏭ ' : (r.ok ? '  ✅ ' : '  ❌ ');
+    console.log(mark + r.name);
+  }
 
   const dir = path.join(ROOT, 'reports');
   fs.mkdirSync(dir, { recursive: true });
@@ -236,21 +252,26 @@ async function main() {
     '# 桌面代理验收报告',
     '',
     '时间：' + new Date().toISOString(),
-    '结果：' + passed + '/' + (total - skipped) + (skipped ? '（环境跳过 ' + skipped + ' 项）' : ''),
+    '结果：共 ' + total + ' 项，通过 ' + passed + '，环境跳过 ' + skipped + '，失败 ' + failed,
     '',
     '| 项目 | 结果 | 说明 |',
     '| --- | --- | --- |',
-    ...RESULTS.map((r) => '| ' + r.name + ' | ' + (r.ok ? 'PASS' : 'FAIL') + ' | ' + (r.detail || '') + ' |'),
+    ...RESULTS.map((r) => '| ' + r.name + ' | ' + (r.skipped ? 'SKIP' : (r.ok ? 'PASS' : 'FAIL')) + ' | ' + (r.detail || '') + ' |'),
   ];
   fs.writeFileSync(file, lines.join('\n') + '\n');
   console.log('报告：' + file);
   // 环境跳过不算失败：只有"没通过且不是跳过"才返回 1
   releaseAcceptanceLock();
-  process.exit(passed === total - skipped ? 0 : 1);
+  process.exit(failed ? 1 : 0);
 }
 
-main().catch((e) => {
-  console.error('FAIL:', e.message);
-  releaseAcceptanceLock();
-  process.exit(2);
-});
+const invokedDirectly = Boolean(process.argv[1])
+  && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (invokedDirectly) {
+  main().catch((e) => {
+    console.error('FAIL:', e.message);
+    releaseAcceptanceLock();
+    process.exit(2);
+  });
+}

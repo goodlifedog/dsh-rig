@@ -279,6 +279,8 @@ curl -s -H "X-Agent-Token: $TOKEN" http://127.0.0.1:7788/health | head -c 600
 | `thumbnail.state` | 缩略图：`live` / `error` / 其它 |
 | `fps` / `frameBytes` / `frames` / `captureMs` | 帧率、最近一帧真实字节数、累计帧数、抓图耗时 |
 | `frameWidth` / `frameHeight` | 最近一帧像素尺寸（放大比例按它算） |
+| `crash` | 最近一次崩溃：平时 `null`；渲染进程崩了会记 `{kind,detail,at}`，重载超限是 `render-crash-loop` |
+| `supervisor` | 小窗有没有在托管 daemon：`{managed,pid,spawnError,lastExit}`（launchd 托管时 managed=false 正常） |
 
 ---
 
