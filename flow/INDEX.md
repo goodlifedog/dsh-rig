@@ -21,6 +21,7 @@
 | --- | --- |
 | 现在到底能不能发（Go/No-Go + 实测证据） | [PUBLISH-VERDICT.md](PUBLISH-VERDICT.md) |
 | 把它公开出去（GitHub / npm）的步骤 | [PUBLISH-CHECKLIST.md](PUBLISH-CHECKLIST.md) |
+| 外部评审留的补丁怎么打 | [PATCHES.md](PATCHES.md) |
 | 把 BOSS 那部分从公开面摘掉 | [BOSS-EXTRACT.md](BOSS-EXTRACT.md) |
 | 多会话 / 多 agent 一起用这个仓库 | [AGENT-COORDINATION.md](AGENT-COORDINATION.md) |
 | 看外部评审提过什么、还剩什么 | [REVIEW-ACTIONS.md](REVIEW-ACTIONS.md) + [REVIEW-RETRO.md](REVIEW-RETRO.md) |
