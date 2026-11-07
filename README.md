@@ -248,6 +248,9 @@ npm run bg:verify   # 一条命令跑完全部验收，输出 reports/bg-verify-
 | 终端 | Ghostty | 是 | 键入命令 + 回车 | offscreen | 是 |
 | Electron 聊天 | ChatGPT | 是 | 点按钮 | 是 | 是 |
 
+除上表列的操作外，还支持：元素自带次要动作（如笔记行的删除/置顶）、滚动列表、选中文本；
+> 每个应用吃哪种输入方式会被记在 `~/.desktop-agent/capabilities.json`，第二次直接走对的路。
+
 已知边界（文档里都写了原因）：
 
 - **菜单栏命令不可用**：菜单不展开时系统不暴露菜单项，AXMenuItem 查询恒为 0

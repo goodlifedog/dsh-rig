@@ -2,6 +2,32 @@
 
 > 2026-11-06 实测。目标：控制任何应用，但用户屏幕、前台、鼠标都不受影响。
 
+## API 一览（core/background.mjs）
+
+| 函数 | 作用 |
+| --- | --- |
+| frontName() | 当前前台应用名（System Events，约 120ms） |
+| isAppRunning({bundleId, appName, processName}) | 应用是否在运行（优先英文可执行名 pgrep -x） |
+| ensureAppRunning({...}) | 后台启动：已在跑就直接返回，没跑才 open -g |
+| state(app) | 读界面树文本（裸读，某些应用会被顶前台，探索性场景用 readSafe） |
+| find(app, {role, text, limit}) | 按角色/文字查元素（同上，探索性场景用 findSafe） |
+| click(app, elementIndex) | AX 语义点击 |
+| setValue(app, elementIndex, value) | 给可设置控件设值 |
+| typeText(app, text) | 后台键入（sky_key） |
+| smartType(app, {elementIndex, text, order}) | 输入降级链：按顺序尝试 + 读回校验 |
+| smartTypeWithCache(app, {...}) | 同上，但按能力缓存决定顺序，并把结果写回 |
+| clickByText(app, text) | 按文字找再点，索引过期会重查 |
+| clickMenuItem(app, {menu, item}) | 两步点菜单（先展开菜单栏），当前工具链下不可用 |
+| windowControls(app) | 找关闭/最小化/缩放按钮 |
+| secondaryAction(app, index, action) | 触发元素自带次要动作（删除/置顶/显示简介） |
+| scrollElement(app, {...}) | 滚动列表或文档 |
+| selectTextIn(app, {...}) | 选中文本或放置光标 |
+| readSafe(app, {...}) | 带前台保护的读取（被抢就还原并标记） |
+| findSafe(app, query, {...}) | 带前台保护的元素查询 |
+| withRetry(fn, {...}) | 只对瞬时错误重试 |
+| isTransientAxError(message) | 判定是否瞬时错误（索引过期/超时等） |
+| capabilityFile() | 能力缓存文件路径（~/.desktop-agent/capabilities.json） |
+
 ## 一、能力边界在哪
 
 控制能力来自 ocu，和 Codex 同源，所以**广度是一样的**：只要应用遵循无障碍规范，macOS 用 Accessibility、Windows 用 UI Automation 都能读和点。

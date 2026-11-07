@@ -95,6 +95,17 @@ for (const f of docFiles) {
 }
 add('文档引用的图片都存在', brokenImages.length === 0, brokenImages.slice(0, 3).join('；'));
 
+// 8. 后台控制 API 必须都在文档里有说明（防止加了能力没写文档）
+try {
+  const bg = await fsp.readFile(path.join(ROOT, 'core', 'background.mjs'), 'utf8');
+  const doc = await fsp.readFile(path.join(ROOT, 'flow', 'BACKGROUND-CONTROL.md'), 'utf8');
+  const names = Array.from(bg.matchAll(/export (?:async )?function ([a-zA-Z0-9_]+)/g)).map((m) => m[1]);
+  const missing = names.filter((n) => !doc.includes(n));
+  add('后台能力都有文档', missing.length === 0, missing.length ? '缺：' + missing.join(', ') : names.length + ' 个 API 全部有说明');
+} catch (error) {
+  add('后台能力都有文档', false, '检查失败：' + String(error.message).slice(0, 60));
+}
+
 const width = Math.max(...rows.map((r) => r.name.length)) + 2;
 console.log('\n仓库体检\n');
 for (const r of rows) console.log((r.ok ? '  ✅ ' : '  ❌ ') + r.name.padEnd(width) + r.detail);
