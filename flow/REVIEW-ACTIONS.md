@@ -76,7 +76,20 @@ flow/patch-deploy-freshness.diff     代码新鲜度检查（service:status 能�
 - 影响：用户机器上 ocu 没装/路径不对时，看到的是崩溃栈而不是「请先装 ocu」
 - 建议：记日志后继续服务；overlay 崩了重载并把事件写进 `/health`
 
-## P1.5 · 安全边界的一处不一致
+## P1.5 · 安全边界的两处不一致
+
+### 2.4 数据目录实际是 755，文档和安全模型都假设它是 700
+
+- `docs/SECURITY.md` 两处写「token 文件 600、**目录 700**」，代码注释也这么假设
+- 实测：`~/.desktop-agent` 是 `drwxr-xr-x`（755），里面还有 `chrome-profile` / `headless-profile` 三个目录，全部 755，大量文件 644
+- 这些浏览器 profile 里可能存着登录态 cookie——本机其他用户理论上可读
+- 根因：`ensureTokenSync` 用 `mkdirSync(..., { mode: 0o700 })`，但**目录已存在时 mode 不生效**；而且早退路径（已有合法 token）直接 return，不修正文件/目录权限
+- 建议：启动时幂等地 `chmod(数据目录, 0o700)`、`chmod(token 文件, 0o600)`；顺手评估把两个 chrome profile 目录也收紧到 700（Chrome 一般不受影响）；文档口径与实现对齐
+
+### 2.45 token 文件已合法时不再检查权限
+
+- `ensureTokenSync` 读到内容合法就 return，不 chmod。若文件曾被备份/恢复成 644，服务不会纠正它，文档里「600」的保证就落空了
+
 
 ### 2.5 CDP 端口主人校验存在，但主路径没调用
 
