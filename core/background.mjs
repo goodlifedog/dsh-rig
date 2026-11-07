@@ -11,6 +11,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { getOcuMcp } from './ocu-mcp.mjs';
+import { restoreFront } from './front-watch.mjs';
 
 const exec = promisify(execFile);
 
@@ -339,4 +340,50 @@ export async function clickByText(app, text, options = {}) {
     if (attempt < attempts - 1) await new Promise((r2) => setTimeout(r2, 150));
   }
   return { ok: false, reason: lastReason };
+}
+
+/**
+ * 带前台保护的读取。
+ *
+ * 实测（2026-11-07）：读 Ghostty / ChatGPT 这类应用的界面树时，应用会被顶到前台。
+ * 这违反「不影响用户」的原则，所以所有"探索性读取"都应该走这里：
+ * 读之前记下前台，读之后如果变了立刻还原，并把「这次读取抢了前台」如实返回。
+ */
+export async function readSafe(app, options = {}) {
+  const opts = options || {};
+  const deps = Object.assign({ frontName, state, restoreFront }, opts.deps || {});
+  const before = await deps.frontName();
+  let text = '';
+  let error = '';
+  try {
+    text = await deps.state(app);
+  } catch (e) {
+    error = String(e && e.message || e).slice(0, 120);
+  }
+  const after = await deps.frontName();
+  const frontStolen = Boolean(before && after && before !== after);
+  if (frontStolen && opts.restore !== false) {
+    await deps.restoreFront(before);
+  }
+  return { text, error, frontStolen, frontBefore: before, frontAfter: after };
+}
+
+/** 带前台保护的元素查询（同 readSafe，防止 query 把应用顶起来） */
+export async function findSafe(app, query, options = {}) {
+  const opts = options || {};
+  const deps = Object.assign({ frontName, find, restoreFront }, opts.deps || {});
+  const before = await deps.frontName();
+  let matches = [];
+  let error = '';
+  try {
+    matches = await deps.find(app, query || {});
+  } catch (e) {
+    error = String(e && e.message || e).slice(0, 120);
+  }
+  const after = await deps.frontName();
+  const frontStolen = Boolean(before && after && before !== after);
+  if (frontStolen && opts.restore !== false) {
+    await deps.restoreFront(before);
+  }
+  return { matches, error, frontStolen, frontBefore: before, frontAfter: after };
 }

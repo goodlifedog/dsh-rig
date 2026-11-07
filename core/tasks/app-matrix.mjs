@@ -8,7 +8,7 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ensureAppRunning, frontName, state, find, windowControls } from '../background.mjs';
+import { ensureAppRunning, frontName, state, find, windowControls, readSafe, findSafe } from '../background.mjs';
 import { isScreenLocked } from '../platform.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
 
@@ -17,7 +17,8 @@ const ROOT = path.join(__dirname, '..', '..');
 const OVERLAY = process.env.OVERLAY_URL || 'http://127.0.0.1:7788';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const APPS = [
+// 可用 MATRIX_APPS_JSON 覆盖默认列表，方便按门类分批探测
+const DEFAULT_APPS = [
   { name: '备忘录', bundle: 'com.apple.Notes', process: 'Notes' },
   { name: '文本编辑', bundle: 'com.apple.TextEdit', process: 'TextEdit' },
   { name: '计算器', bundle: 'com.apple.calculator', process: 'Calculator' },
@@ -25,7 +26,20 @@ const APPS = [
   { name: '系统设置', bundle: 'com.apple.systempreferences', process: 'System Settings' },
   { name: 'Clash Verge', bundle: 'com.nicenormalboy.clash-verge', process: 'clash-verge' },
   { name: 'Telegram', bundle: 'com.tdesktop.Telegram', process: 'Telegram' },
+  // 补两个门类：终端（Ghostty）与 Electron 聊天（ChatGPT）
+  { name: 'Ghostty', bundle: 'com.mitchellh.ghostty', process: 'ghostty' },
+  { name: 'ChatGPT', bundle: 'com.openai.chat', process: 'ChatGPT' },
 ];
+
+let APPS = DEFAULT_APPS;
+if (process.env.MATRIX_APPS_JSON) {
+  try {
+    const parsed = JSON.parse(process.env.MATRIX_APPS_JSON);
+    if (Array.isArray(parsed) && parsed.length) APPS = parsed;
+  } catch (e) {
+    console.error('MATRIX_APPS_JSON 解析失败，用默认列表：' + String(e.message).slice(0, 80));
+  }
+}
 
 async function restoreFront(target) {
   try {
@@ -95,18 +109,26 @@ async function main() {
     row.launchFrontUnchanged = launch.frontUnchanged !== false;
     await sleep(1200);
 
+    // 用带前台保护的读取：某些应用（Ghostty/ChatGPT 实测）一读就被顶到前台
     let tree = '';
-    try { tree = await state(app.name); } catch (e) { tree = ''; }
+    const readRes = await readSafe(app.name);
+    tree = readRes.text || '';
+    row.readStoleFront = readRes.frontStolen;
     steps.read = await frontName();
     row.readable = Boolean(tree && tree.length > 40);
     row.nodes = (tree.match(/^\s*\d+ /gm) || []).length;
 
     try {
-      row.buttons = (await find(app.name, { role: 'AXButton', limit: 60 })).length;
-      row.textAreas = (await find(app.name, { role: 'AXTextArea', limit: 10 })).length;
-      row.textFields = (await find(app.name, { role: 'AXTextField', limit: 10 })).length;
+      const btn = await findSafe(app.name, { role: 'AXButton', limit: 60 });
+      row.buttons = btn.matches.length;
+      row.queryStoleFront = Boolean(row.queryStoleFront || btn.frontStolen);
+      const area = await findSafe(app.name, { role: 'AXTextArea', limit: 10 });
+      row.textAreas = area.matches.length;
+      const field = await findSafe(app.name, { role: 'AXTextField', limit: 10 });
+      row.textFields = field.matches.length;
       // 菜单命令：很多关键动作只在菜单里（保存/新建/切换标签）
-      row.menuItems = (await find(app.name, { role: 'AXMenuItem', limit: 40 })).length;
+      const menu = await findSafe(app.name, { role: 'AXMenuItem', limit: 40 });
+      row.menuItems = menu.matches.length;
       row.windowControls = (await windowControls(app.name)).length;
     } catch (e) {
       row.buttons = -1; row.textAreas = -1; row.textFields = -1; row.menuItems = -1; row.windowControls = -1;
@@ -163,9 +185,11 @@ async function main() {
     '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
   ];
   for (const r of rows) {
+    const stealNote = (r.readStoleFront || r.queryStoleFront) ? '读取会抢前台' : '';
     lines.push('| ' + r.app + ' | ' + r.launch + ' | ' + (r.readable ? 'yes' : 'no') + ' | ' + r.nodes +
       ' | ' + r.buttons + ' | ' + r.textAreas + ' | ' + (r.menuItems === undefined ? '-' : r.menuItems) +
-      ' | ' + (r.windowControls === undefined ? '-' : r.windowControls) + ' | ' + r.capture + ' | ' + (r.frontUnchanged ? 'yes' : 'NO') + ' |');
+      ' | ' + (r.windowControls === undefined ? '-' : r.windowControls) + ' | ' + r.capture + ' | ' +
+      (r.frontUnchanged ? 'yes' : 'NO') + (stealNote ? '（' + stealNote + '）' : '') + ' |');
   }
   lines.push('');
   lines.push('offscreen = 窗口在别的桌面、系统返回纯色帧（仍可后台操作，只是画面抓不到）。');
