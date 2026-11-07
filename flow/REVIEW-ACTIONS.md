@@ -75,6 +75,14 @@ flow/patch-deploy-freshness.diff     代码新鲜度检查（service:status 能�
 - 结果：用户自己的搜索框内容被换成了测试关键词，而且清理脚本不会去动 Chrome 里的输入框
 - 建议：把恢复放进 `finally`，并在恢复失败时至少再重试一次（照 `writeValue` 自带的 4 次重试即可）；同时把「恢复失败」当**真失败**上报，别混在环境跳过里
 
+### 2.95 `LEGACY_TEST_WORDS` 仍然默认参与删除（`[AGENT-TEST]` 标记层的缺口）
+
+- 现在的链路：`--force` → `deleteMarkedTestNotes` → `buildMarkedDeleteScript(limit)`，而它默认的词表是 `[TEST_NOTE_MARKER, ...LEGACY_TEST_WORDS]`
+- 也就是 `--force` 不只删带 `[AGENT-TEST]` 的笔记，**也会删标题里含「后台测试 / 后台写入 / pta 测试」的笔记**
+- 用户如果自己写过一条叫「后台测试计划」的笔记，加 `--force` 跑清理就会被删——这跟客户端的红线（不删用户笔记）有冲突
+- 我理解 legacy 词是为了兼容「加标记之前留下的旧测试笔记」。建议：默认只认 `[AGENT-TEST]`，把 legacy 词收进 `--force-all`（或新加 `--legacy`）分支，并在输出里写清「这次用的是哪一级判据」
+- 注意：`test/note-cleanup-safety.test.mjs` 里有两条用例**明确断言了 legacy 词可删**（`pickDeletableLabels` 与 `buildMarkedDeleteScript(3)`），改行为要同步改这两条——这正是「先看测试再报 bug」的意义，我这次先看了，才没把它当成实现疏漏
+
 ### 3. 笔记删除缺最后一层标记
 
 - 现状：`core/note-cleanup.mjs` 删除行时不看标题（靠「只删顶部 N 条 + `--force`」挡着）
