@@ -218,6 +218,23 @@ try {
   add('shebang 都在第一行', false, '检查失败：' + String(error.message).slice(0, 60));
 }
 
+// 12. 文档里不能留「待补」这类占位标记：公开仓库里看着像没写完
+// 评审/交接/补丁索引是历史记录，允许保留这类字样
+try {
+  const docCandidates = tracked.filter((f) => /\.md$/i.test(f) && !/(^|\/)(REVIEW|HANDOFF)/.test(f)
+    && !/PATCHES\.md$/.test(f) && !/^CHANGELOG\.md$/.test(f));
+  const placeholders = [];
+  for (const f of docCandidates) {
+    let text = '';
+    try { text = await fsp.readFile(path.join(ROOT, f), 'utf8'); } catch { continue; }
+    if (/待补/.test(text)) placeholders.push(f);
+  }
+  add('文档里没有待补占位', !hasGit || placeholders.length === 0,
+    hasGit ? placeholders.slice(0, 3).join(', ') : '跳过（非 git 目录，没有文件列表）', !hasGit);
+} catch (error) {
+  add('文档里没有待补占位', false, '检查失败：' + String(error.message).slice(0, 60));
+}
+
 const width = Math.max(...rows.map((r) => r.name.length)) + 2;
 console.log('\n仓库体检\n');
 for (const r of rows) console.log((r.skipped ? '  ⏭️  ' : (r.ok ? '  ✅ ' : '  ❌ ')) + r.name.padEnd(width) + r.detail);

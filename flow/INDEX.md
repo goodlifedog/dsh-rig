@@ -53,6 +53,7 @@ npm run service:status   # 服务是否由 launchd 管理、有没有游离进�
 - 底层 ocu 怎么同步进来：[OCU-SYNC.md](OCU-SYNC.md)
 - 外部评审留下的补丁：[PATCHES.md](PATCHES.md)；发版文案草稿：[RELEASE-NOTES-DRAFT.md](RELEASE-NOTES-DRAFT.md)
 - 方法论与历史记录：[RECIPE.md](RECIPE.md)（踩坑总结）、[SCAN.md](SCAN.md)（扫描类任务）
+- 外部评审收尾结论：[FINAL-REPORT.md](FINAL-REPORT.md)（工程可发、剩下的是主人的决定）
 - 招聘平台相关内容（`BOSS-*.md`）：**公开发布前需要从公开面移除**，见 [BOSS-EXTRACT.md](BOSS-EXTRACT.md)
 
 ## 维护约定

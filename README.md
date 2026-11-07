@@ -237,7 +237,8 @@ flow/               # 每个流程的方法论与踩坑记录
 支持能力按**运行时族 + 控制通道**设计，而不是给每个应用写一套：
 
 - 识别层不启动应用，只看包结构（Electron 框架、`app.asar`、mojo/Renderer Helper、Qt、JVM、`.sdef` 字典），
-  判断它属于哪一族；本机 27 个应用归出来是 electron 5、chromium 2、qt 1、native 19
+  判断它属于哪一族；本机 32 个应用归出来是 electron 5、chromium 3、qt 1、native 23
+  （数字会随安装变化，跑 `npm run apps:inventory` 看当前值）
 - 通道层按前提协商：AX 语义 → CDP 调试端口 → AppleScript 字典 → 画面坐标，逐条验前提、失败降级
 - 驱动层是同一套 `core/background.mjs` 函数，同类应用共用一条链
 

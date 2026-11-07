@@ -91,7 +91,7 @@ macOS：
 npm run accept
 ```
 
-Windows（待补）：
+Windows（未实现自动验收；下面命令可在 Windows 上手动跑）：
 
 ```powershell
 node core\platform-smoke.mjs   # 检查 PrintWindow / UIA 可用性
