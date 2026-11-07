@@ -1363,6 +1363,7 @@ function listWindowsMac() {
       '    if (!(w > 200) || !(h > 120)) continue;' +
       '    out.push({' +
       '      windowId:Number(ObjC.unwrap(d.objectForKey("kCGWindowNumber"))),' +
+      '      pid:Number(ObjC.unwrap(d.objectForKey("kCGWindowOwnerPID"))||0),' +
       '      owner:String(ObjC.unwrap(d.objectForKey("kCGWindowOwnerName"))||""),' +
       '      title:String(ObjC.unwrap(d.objectForKey("kCGWindowName"))||""),' +
       '      onscreen:Number(ObjC.unwrap(d.objectForKey("kCGWindowIsOnscreen"))||0)=== 1,' +
@@ -1398,6 +1399,8 @@ async function listWindows() {
           sourceId: 'window:' + item.windowId + ':0',
           title: title || owner,
           owner: owner,
+          // pid 是跨语言匹配的可靠依据：窗口 owner 名是本地化的（Finder → 访达），按名字匹配会漏
+          pid: Number(item.pid) || 0,
           onscreen: Boolean(item.onscreen),
           self: false,
         });

@@ -49,6 +49,31 @@
 另外读应用包里的 `.sdef` 文件统计脚本命令数（不依赖 Xcode 的 `sdef` 命令，本机只有 Command Line Tools），
 有字典的应用多一条 AppleScript 语义通道。
 
+## 三点五、通道协商：先问"现在哪条真的能用"
+
+识别层给的是"默认该走哪条"，但应用当下可能根本没运行、没授权、没开调试口。
+所以控制之前先协商一次（`core/driver-resolution.mjs`）：
+
+```bash
+npm run app:resolve -- Finder          # 看这个应用现在能用哪几条通道、按什么顺序
+npm run app:resolve -- --all-user      # 把 /Applications 里的应用逐个协商
+```
+
+协商只做只读探测：应用在不在跑、AX 树有没有内容、CDP 端口开没开、AppleScript 授没授权、窗口在不在。
+输出每条通道的"可用/不可用 + 原因"，以及实际执行顺序。实测 Finder：
+
+```
+[可用] ax：界面树可读（3605 字符）
+[不可用] cdp：调试端口没开（connect ECONNREFUSED 127.0.0.1:9340）
+[可用] applescript：已授权（25 条命令）
+[可用] visual：有窗口可抓（AX 0 / 系统窗口层 1）
+协商结果：Accessibility 语义驱动 → AppleScript 脚本字典 → 画面 + 坐标
+```
+
+这里又踩到一个具体的坑：Finder 明明有窗口，System Events 报的 AX 窗口数是 0。
+所以判断"有没有窗口"时补了一次系统窗口层（CGWindowList）的证据，并且给 overlay 的窗口列表加了 `pid`——
+窗口 owner 名是本地化的（Finder → 访达），按名字匹配必然漏，按 pid 匹配才可靠。
+
 ## 四、通道层：四条路，各有前提
 
 | 通道 | 前提（运行时协商） | 代价 / 风险 | 失败长什么样 |

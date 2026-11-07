@@ -7,14 +7,10 @@
  *   npm run app:runtime -- --all --user   # 只看 /Applications 里自己装的
  *   npm run app:runtime -- Safari --json
  */
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
-import fs from 'node:fs';
-import path from 'node:path';
 import { scanDirs, matchAppByNames } from '../core/app-scan.mjs';
-import { classifyRuntime, chooseDriverChain, countSdefCommands, describeProfile } from '../core/app-runtime.mjs';
+import { profileApp } from '../core/app-profile.mjs';
+import { chooseDriverChain, describeProfile } from '../core/app-runtime.mjs';
 
-const exec = promisify(execFile);
 const USER_DIRS = ['/Applications', '/Applications/Utilities'];
 const DIRS = [
   ...USER_DIRS,
@@ -23,87 +19,14 @@ const DIRS = [
   '/System/Library/CoreServices',
 ];
 
-async function listFrameworks(appPath) {
-  const out = [];
-  try {
-    const frames = await fs.promises.readdir(path.join(appPath, 'Contents', 'Frameworks'), { withFileTypes: true });
-    for (const f of frames) out.push(f.name);
-  } catch {}
-  try {
-    const libs = await fs.promises.readdir(path.join(appPath, 'Contents', 'Frameworks'), { withFileTypes: true });
-    for (const f of libs) if (f.name.endsWith('.dylib')) out.push(f.name);
-  } catch {}
-  return out;
-}
-
-async function hasAsar(appPath) {
-  try {
-    await fs.promises.access(path.join(appPath, 'Contents', 'Resources', 'app.asar'));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function hasJvm(appPath) {
-  const candidates = ['Contents/PlugIns', 'Contents/Java', 'Contents/Resources'];
-  for (const rel of candidates) {
-    const dir = path.join(appPath, rel);
-    let entries = [];
-    try {
-      entries = await fs.promises.readdir(dir, { recursive: true, maxDepth: 3 });
-    } catch {
-      continue;
-    }
-    if (entries.some((e) => /libjvm|jdk|jre/i.test(String(e)))) return true;
-  }
-  return false;
-}
-
-async function linkedFrameworks(appPath) {
-  const plist = path.join(appPath, 'Contents', 'Info.plist');
-  let exe = '';
-  try {
-    const { stdout } = await exec('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleExecutable', plist], { timeout: 4000 });
-    exe = String(stdout).trim();
-  } catch {}
-  if (!exe) return [];
-  const bin = path.join(appPath, 'Contents', 'MacOS', exe);
-  try {
-    const { stdout } = await exec('/usr/bin/otool', ['-L', bin], { timeout: 8000 });
-    return String(stdout).split('\n').map((l) => l.trim().split(' (')[0]).filter(Boolean).slice(1);
-  } catch {
-    return [];
-  }
-}
-
-async function applescriptInfo(appPath) {
-  // 本机只装了 Command Line Tools，`sdef` 命令用不了（要求完整 Xcode）；
-  // 直接读包内的 .sdef 文件，效果一样且不依赖开发工具。
-  try {
-    const resDir = path.join(appPath, 'Contents', 'Resources');
-    const entries = await fs.promises.readdir(resDir);
-    const sdefs = entries.filter((f) => /\.sdef$/i.test(f));
-    let commands = 0;
-    for (const f of sdefs) {
-      try {
-        const xml = await fs.promises.readFile(path.join(resDir, f), 'utf8');
-        commands += countSdefCommands(xml);
-      } catch {}
-    }
-    return { available: commands > 0, commands };
-  } catch {
-    return { available: false, commands: 0 };
-  }
-}
-
 async function profileOf(app) {
-  const frameworks = [...(await listFrameworks(app.appPath)), ...(await linkedFrameworks(app.appPath))];
-  const runtime = classifyRuntime(frameworks, {
-    hasJvmRuntime: await hasJvm(app.appPath),
-    hasAsar: await hasAsar(app.appPath),
-  });
-  const profile = { ...app, type: runtime.type, evidence: runtime.evidence, applescript: await applescriptInfo(app.appPath) };
+  const collected = await profileApp(app.appPath);
+  const profile = {
+    ...app,
+    type: collected.type,
+    evidence: collected.evidence,
+    applescript: { available: collected.applescript.available, commands: collected.applescript.commands },
+  };
   profile.chain = chooseDriverChain(profile);
   return profile;
 }
@@ -127,7 +50,7 @@ async function main() {
     return;
   }
   if (!names.length) {
-    console.error('用法：npm run app:runtime -- <应用名> [--json] | --all');
+    console.error('用法：npm run app:runtime -- <应用名> [--json] | --all [--user]');
     process.exit(1);
   }
   const { matched, missing } = matchAppByNames(installed, names);

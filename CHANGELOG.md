@@ -2,6 +2,9 @@
 
 ## 未发布
 
+- 通道协商落地：新增 `core/driver-resolution.mjs` 与 `npm run app:resolve`（--all-user 可批量）：只读探测应用是否在跑、AX 树有无内容、CDP 端口开没开、AppleScript 授没授权、窗口在不在，输出每条通道可用性与实际降级顺序；10 项单测
+- 修 Finder 这类"有窗口但 AX 窗口数为 0"的误判：窗口可用性补一次系统窗口层（CGWindowList）证据；overlay 的窗口列表新增 `pid` 字段，按 pid 匹配本地化 owner（Finder → 访达），按名字匹配会漏
+- 抽出 `core/app-profile.mjs`（框架/otool/asar/JVM/.sdef 采集），`app:runtime` 与 `app:resolve` 共用，去掉一份重复实现
 - AppleScript 通道落地：新增 `core/applescript-driver.mjs`（bundle 内 .sdef 命令统计、`AEDeterminePermissionToAutomateTarget` 静默查授权、按授权门禁执行脚本、报错分类、URL 脱敏）与 `npm run as:channel` 自检；Finder/Chrome 已授权实测通过，Safari 未运行如实跳过
 - 防授权弹窗：没授权（needs-consent / denied）时**不发 Apple 事件**，避免打断用户；权限查询程序首次使用时用系统 clang 编译并缓存到 `~/.desktop-agent/bin/ae-permission`
 - 修「应用是否在运行」误判：原 `pgrep -f bundleId` 会命中 SafariPlatformSupport 等辅助进程，把没运行的 Safari 当成在跑；改用 LaunchServices 判断，拿不到明确答案才退回进程名（且要求 /Contents/MacOS/ 路径）

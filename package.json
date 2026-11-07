@@ -54,6 +54,7 @@
     "apps:inventory": "node scripts/app-inventory.mjs",
     "apps:probe": "node scripts/apps-probe.mjs",
     "app:runtime": "node scripts/app-runtime.mjs",
+    "app:resolve": "node scripts/app-resolve.mjs",
     "cdp:apps": "node core/tasks/cdp-driver.mjs",
     "cdp:channel": "node core/tasks/cdp-channel.mjs",
     "as:channel": "node core/tasks/applescript-channel.mjs",
