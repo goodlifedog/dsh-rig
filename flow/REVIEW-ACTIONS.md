@@ -1,7 +1,7 @@
 # 评审待办（外部检查者维护）
 
 > 每次复查后更新，**只看这一页就够**。详细理由见 `REVIEW-2026-11-07.md`。
-> 更新：2026-11-08 08:20
+> 更新：2026-11-08 08:40
 >
 > 注：复查时机器处于锁屏状态（ioreg `CGSSessionScreenIsLocked = true`），GUI 类任务一律没跑。
 
@@ -30,6 +30,12 @@
 1. **发布配置不合格（补丁 `flow/patch-publish.diff` 我刚复验过，仍可干净应用）**：包名 `desktop-agent` 已被 npm 占用（发布必然 403）；缺 `bin`/`files`/`repository`；CI 矩阵跑三平台但项目只支持 macOS；README 徽章还是 `USER` 占位。补丁已备：`git apply flow/patch-publish.diff`。
 
 ## 下一批
+
+12. **窗口自动重绑：并列时会盲选（我实测了）**
+   - 标题能区分时是对的：候选「101 购物清单 / 102 工作记录」、hint「工作记录（旧）」→ 正确选中 102
+   - 完全并列时**按列表顺序盲选**：两个都叫「备忘录」的窗口（201/202）→ 选中 201，没有歧义保护
+   - `test/overlay-recover.test.mjs` 现有 4 项测试（同 owner、标题变了、排除自身、无匹配返回 null），**没覆盖并列场景**
+   - 改法：最高分不唯一时返回 null（解绑 + 提示重新绑定），并补一条「并列 → null」的单测
 
 11. **`flow/AGENT-COORDINATION.md` 第 23 行的说法要补一句**：现在写「`npm run accept` 结束会自动调用 `npm run cleanup:test`」，但清理脚本默认**只报告不删**（要 `--force` / `NOTES_CLEANUP_FORCE=1` 才真删）。读者会以为测试数据已经被自动清干净了，实际不会。建议改成：「自动调用清理，但默认只报告；要真删需 `npm run cleanup:test:apply`（或加 `--force`），因为误删用户笔记不可恢复」。
 

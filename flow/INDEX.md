@@ -19,9 +19,12 @@
 
 ```bash
 npm run verify        # 语法检查 + 单测 + 仓库体检（一条命令看能不能发版）
-npm run accept        # 端到端验收（含新通道，跑不过不算完成）
+npm run accept        # 端到端验收（含新通道；你在用电脑时会被拒绝，加 ACCEPT_FORCE=1 可强跑）
 npm run apps:inventory   # 本机装的应用里哪些已适配、哪些没测
 npm run app:resolve -- Finder   # 某个应用现在能用哪条通道
+npm run cleanup:test  # 清测试留下的笔记/文稿/测试应用（笔记默认只报告，--force 才删）
+npm run prune         # 日志/报告轮转（默认演练，--apply 真删）
+npm run service:status   # 服务是否由 launchd 管理、有没有游离进程占端口
 ```
 
 ## 维护约定
