@@ -134,6 +134,8 @@ async function main() {
   if (keepMs > 0) await sleep(keepMs);
   await post('/status', { session: SESSION, clear: true });
   await post('/visible', { session: SESSION, visible: false });
+  await post('/window', { session: SESSION, windowId: null }).catch(() => {});
+  await post('/close', { session: SESSION }).catch(() => {});   // 用完就关，别把会话攒到上限
   console.log('小窗已收起');
   if (!report.ok) process.exitCode = 1;
 }

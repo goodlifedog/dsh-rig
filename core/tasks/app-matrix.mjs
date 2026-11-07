@@ -125,6 +125,7 @@ async function probeCapture(session, pattern, titleHint) {
   await post('/window', { session, windowId: null });
   await post('/status', { session, clear: true });
   await post('/visible', { session, visible: false });
+  await post('/close', { session });   // 用完就关，别把会话攒到上限
   return result;
 }
 

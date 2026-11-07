@@ -6,7 +6,7 @@
  *
  * 输出：轮数、失败步数、前台被抢次数、单轮耗时分布。
  */
-import { frontName, state, find, click } from '../background.mjs';
+import { frontName, state, find, click, ensureAppRunning, waitForWindow, quitApp } from '../background.mjs';
 import { isScreenLocked } from '../platform.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
 
@@ -18,6 +18,30 @@ async function main() {
     console.log('环境跳过：屏幕已锁，后台操作链路不可用，等解锁后再跑 npm run stability');
     return;
   }
+  // 目标应用没开就自己拉起来（清理脚本会把测试应用关掉，任务不能假设它们已经开着）
+  const APPS = [
+    { bundleId: 'com.apple.calculator', appName: '计算器', processName: 'Calculator', name: '计算器' },
+    { bundleId: 'com.apple.Notes', appName: '备忘录', processName: 'Notes', name: '备忘录' },
+    { bundleId: 'com.apple.TextEdit', appName: '文本编辑', processName: 'TextEdit', name: '文本编辑' },
+  ];
+  const launchedByUs = [];
+  const prevHidden = process.env.AGENT_LAUNCH_HIDDEN;
+  process.env.AGENT_LAUNCH_HIDDEN = '0';   // 窗口要真的建出来，AX 才有东西可读
+  try {
+    for (const app of APPS) {
+      const r = await ensureAppRunning(app, { waitMs: 8000 });
+      if (r.launched) launchedByUs.push(app);
+      const ready = await waitForWindow(app.name, { timeoutMs: 10000, altNames: [app.processName] });
+      if (!ready.ok) {
+        console.error('环境跳过：目标应用没能启动（' + app.name + '），无法验证后台操作链路');
+        return;
+      }
+    }
+  } finally {
+    if (prevHidden === undefined) delete process.env.AGENT_LAUNCH_HIDDEN;
+    else process.env.AGENT_LAUNCH_HIDDEN = prevHidden;
+  }
+
   const frontStart = await frontName();
   const durations = [];
   let steals = 0;
@@ -77,6 +101,10 @@ async function main() {
     stealDetails: steps.slice(0, 5),
   };
   console.log(JSON.stringify(report, null, 2));
+  // 只关自己拉起来的应用，用户本来开着的不要动
+  for (const app of launchedByUs) {
+    await quitApp({ bundleId: app.bundleId, appName: app.name, processName: app.processName }).catch(() => {});
+  }
   await closeOcuMcp().catch(() => {});
   if (!report.ok) process.exitCode = 1;
 }

@@ -152,9 +152,24 @@ function ensureSession(id, source) {
     throw error;
   }
   if (sessions.size >= MAX_SESSIONS) {
-    const error = new Error('会话数已达上限 ' + MAX_SESSIONS);
-    error.statusCode = 409;
-    throw error;
+    // 先回收最久没活动、不可见、未固定的闲置会话（保护 default 与用户正在看的会话）。
+    // 否则调用方忘了 /close 时，后续任务会因为"会话数已达上限"整块失败（实测踩过：矩阵跑完不关会话）。
+    let victim = null;
+    for (const [sid, sess] of sessions) {
+      if (sid === DEFAULT_SESSION) continue;
+      if (sess.flags && sess.flags.pinned) continue;
+      if (sess.state && sess.state.visible) continue;
+      const at = (sess.state && sess.state.lastActivityAt) || sess.createdAt || 0;
+      if (!victim || at < victim.at) victim = { id: sid, at };
+    }
+    if (victim) {
+      closeSession(victim.id);
+      console.log('[overlay] 会话数到上限，回收闲置会话 ' + victim.id);
+    } else {
+      const error = new Error('会话数已达上限 ' + MAX_SESSIONS + '（都不可回收：存在可见/固定会话）');
+      error.statusCode = 409;
+      throw error;
+    }
   }
 
   const s = {
