@@ -7,10 +7,13 @@
    "version": "0.7.0",
    "private": false,
    "type": "module",
-@@ -73,5 +73,32 @@
+@@ -73,5 +73,38 @@
      "bg:verify": "node scripts/bg-verify.mjs",
      "ui:check": "node scripts/ui-check.mjs",
      "health": "node scripts/health.mjs"
+-  }
+-}
+\ No newline at end of file
 +  },
 +  "repository": {
 +    "type": "git",
@@ -18,6 +21,10 @@
 +  },
 +  "bin": {
 +    "desktop-agent": "./core/cli.mjs"
++  },
++  "publishConfig": {
++    "registry": "https://registry.npmjs.org",
++    "access": "public"
 +  },
 +  "files": [
 +    "core/",
@@ -30,17 +37,17 @@
 +    "overlay/docs/ui-live-expanded.jpg",
 +    "overlay/docs/ui-live-small.png",
 +    "overlay/docs/ui-live2-*.png",
++    "!flow/REVIEW-*.md",
++    "!flow/patch-*.diff",
++    "!flow/BOSS-EXTRACT.md",
++    "!flow/PUBLISH-VERDICT.md",
++    "!flow/PUBLISH-CHECKLIST.md",
++    "!flow/PATCHES.md",
 +    "README.md",
 +    "LICENSE",
 +    "THIRD-PARTY.md",
 +    "CHANGELOG.md"
-+  ],
-+  "publishConfig": {
-+    "registry": "https://registry.npmjs.org",
-+    "access": "public"
-   }
--}
-\ No newline at end of file
++  ]
 +}
 --- a/.github/workflows/ci.yml
 +++ b/.github/workflows/ci.yml
