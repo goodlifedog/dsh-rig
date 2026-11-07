@@ -72,6 +72,7 @@
     "agent:cli": "node core/tasks/drive-agent-cli.mjs",
     "bg:verify": "node scripts/bg-verify.mjs",
     "ui:check": "node scripts/ui-check.mjs",
-    "health": "node scripts/health.mjs"
+    "health": "node scripts/health.mjs",
+    "tasks:doc": "node scripts/tasks-doc.mjs"
   }
 }

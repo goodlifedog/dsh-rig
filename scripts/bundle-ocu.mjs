@@ -5,6 +5,7 @@
 //   node scripts/bundle-ocu.mjs --with-binary   # 连运行时一起拷（体积大）
 import { execFileSync } from 'node:child_process';
 import fsp from 'node:fs/promises';
+import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -25,6 +26,39 @@ function findOcuRoot() {
 }
 
 async function exists(p) { try { await fsp.access(p); return true; } catch { return false; } }
+
+
+/** 计算文件 sha256（十六进制）；读不到返回空串 */
+async function sha256OfFile(file) {
+  try {
+    const buf = await fsp.readFile(file);
+    return crypto.createHash('sha256').update(buf).digest('hex');
+  } catch { return ''; }
+}
+
+export function buildNotice(pkg, options = {}) {
+  const withBinary = Boolean(options.withBinary);
+  const sha256 = String(options.sha256 || '');
+  const lines = [
+    '# 随包第三方组件',
+    '',
+    '## open-computer-use ' + (pkg && pkg.version ? pkg.version : '未知版本'),
+    '',
+    '- 许可：' + ((pkg && pkg.license) || 'MIT'),
+    '- 仓库：' + ((pkg && pkg.repository && pkg.repository.url) || 'https://github.com/iFurySt/open-computer-use'),
+    '- 作用：macOS 控制层（Accessibility 读写、语义点击、后台键入）',
+    '- 本仓库未修改其源码，仅作为运行时依赖使用',
+  ];
+  if (withBinary) {
+    // 记下随包二进制的指纹：构建产物可复核，也方便日后确认「发出去的到底是哪一份」
+    lines.push('- 随包运行时：bin/ 与 dist/（`node scripts/bundle-ocu.mjs --with-binary` 生成）');
+    lines.push('- 主二进制 sha256：' + (sha256 || '（未取到）'));
+  } else {
+    lines.push('- 本包只附带许可与声明，未包含运行时（需用户自行安装）');
+  }
+  lines.push('', '原始许可全文见同目录 LICENSE，第三方声明见 THIRD_PARTY_NOTICES.md。', '');
+  return lines.join('\n');
+}
 
 async function main() {
   let src = null;
@@ -47,20 +81,8 @@ async function main() {
     }
   }
 
-  const notice = [
-    '# 随包第三方组件',
-    '',
-    '## open-computer-use ' + pkg.version,
-    '',
-    '- 许可：' + (pkg.license || 'MIT'),
-    '- 仓库：' + ((pkg.repository && pkg.repository.url) || 'https://github.com/iFurySt/open-computer-use'),
-    '- 作用：macOS 控制层（Accessibility 读写、语义点击、后台键入）',
-    '- 本仓库未修改其源码，仅作为运行时依赖使用',
-    '',
-    '原始许可全文见同目录 LICENSE，第三方声明见 THIRD_PARTY_NOTICES.md。',
-    withBinary ? '' : '本包只附带许可与声明，未包含运行时（需用户自行安装）。',
-    ''
-  ].join('\n');
+  const sha256 = withBinary ? await sha256OfFile(path.join(DEST, 'bin', 'ocu')) : '';
+  const notice = buildNotice(pkg, { withBinary, sha256 });
   await fsp.writeFile(path.join(DEST, 'NOTICE.md'), notice);
 
   console.log('已生成 ' + path.relative(ROOT, DEST) + (withBinary ? '（含运行时）' : '（仅许可与声明）'));

@@ -122,6 +122,14 @@ try {
 }
 
 
+// 9b. flow/TASKS.md 必须与 core/tasks 同步（改了任务忘了更新清单 → 文档失真）
+try {
+  execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'tasks-doc.mjs'), '--check'], { cwd: ROOT, stdio: 'pipe' });
+  add('任务清单与 core/tasks 同步', true);
+} catch (error) {
+  add('任务清单与 core/tasks 同步', false, '跑 npm run tasks:doc 重新生成');
+}
+
 // 9. flow/ 下每份文档都要能从 INDEX 找到（新写文档忘了加索引是反复出现的问题）
 try {
   const flowDir = path.join(ROOT, 'flow');

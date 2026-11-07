@@ -66,7 +66,7 @@ node --test test/overlay-packaging.test.mjs
 npm run repo:check   # 应显示「29 份文档都有入口」
 ```
 
-### patch-tasks-catalog.diff（207 行 / 6 个文件）
+### ✅ patch-tasks-catalog.diff（207 行 / 6 个文件）—— 已应用，补丁文件已删除
 
 **问题**：31 个任务脚本没有任何地方列全过。`desktop-agent tasks` 只输出名字，用户不知道每个任务是干什么的；
 其中 3 个（browser-background / cold-launch / user-active-demo）在所有文档里一个字都没提到。
@@ -82,7 +82,7 @@ npm run repo:check   # 应显示「29 份文档都有入口」
 npm run tasks:doc && npm run repo:check
 ```
 
-### patch-bundle-provenance.diff（106 行 / 2 个文件）
+### ✅ patch-bundle-provenance.diff（106 行 / 2 个文件）—— 已应用，补丁文件已删除
 
 **问题**：`scripts/bundle-ocu.mjs --with-binary` 会把第三方 ocu 运行时（37MB）拷进分发产物，
 NOTICE.md 里只记了版本/许可/仓库，**没有二进制指纹**——发出去的到底是哪一份运行时，事后无法核对。
