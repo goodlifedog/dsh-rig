@@ -96,7 +96,7 @@ node --test test/bundle-ocu.test.mjs
 node scripts/bundle-ocu.mjs --with-binary && cat third_party/open-computer-use/NOTICE.md | grep sha256
 ```
 
-### patch-doc-refs.diff（58 行 / 1 个文件）
+### ✅ patch-doc-refs.diff（58 行 / 1 个文件）—— 已应用，补丁文件已删除
 
 **问题**：文档里写死的文件名会腐烂——`THIRD-PARTY.md` 引用已删除的 `frames.mjs`、
 `flow/CDP-FALLBACK.md` 引用带 `desktop-agent/` 前缀的路径，都没人发现。
