@@ -1882,7 +1882,10 @@ function toggleExpand(s) {
 
 // 停止后台任务：小窗上的「■」按钮和 POST /stop-task 都走这里
 async function stopBackgroundTask(s) {
-  const url = (process.env.AGENTD_URL || 'http://127.0.0.1:7789') + '/stop';
+  // 小窗是 CJS，不能 import ESM 的 core/ports.mjs，这里保持同样的优先级：AGENTD_URL > AGENTD_PORT > 默认
+  const daemonBase = String(process.env.AGENTD_URL || '').trim().replace(/\/+$/, '')
+    || ('http://127.0.0.1:' + (Number(process.env.AGENTD_PORT) || 7789));
+  const url = daemonBase + '/stop';
   try {
     // daemon 的写接口要票据 + JSON Content-Type；之前这里两样都没带，点「■」其实一直 401
     const token = ensureTokenSync();

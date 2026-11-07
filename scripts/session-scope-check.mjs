@@ -1,8 +1,9 @@
+import { overlayBase } from '../core/ports.mjs';
 import { localHeaders } from '../core/local-token.mjs';
 'use strict';
 // 会话隔离检查：小窗只能出现在「召唤它的那个会话」里，切走要立刻藏、切回要很快出现。
 //   node scripts/session-scope-check.mjs
-const BASE = 'http://127.0.0.1:7788';
+const BASE = overlayBase();
 const A = 'scope-a';
 const B = 'scope-b';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

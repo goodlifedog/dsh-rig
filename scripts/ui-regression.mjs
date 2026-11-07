@@ -1,8 +1,9 @@
+import { overlayBase } from '../core/ports.mjs';
 import { localHeaders } from '../core/local-token.mjs';
 'use strict';
 // 小窗效果回归：把「能不能看见、会不会消失、出错说不说人话、放大后比例对不对」都断言一遍。
 //   node scripts/ui-regression.mjs
-const BASE = 'http://127.0.0.1:7788';
+const BASE = overlayBase();
 const results = [];
 function record(name, ok, detail) { results.push({ name, ok, detail: detail || '' }); }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

@@ -1,4 +1,3 @@
-import { overlayUrl, overlayPort } from '../core/ports.mjs';
 'use strict';
 // 一条命令看全局：服务、权限、小窗、队列、锁屏、最近失败。
 //   node scripts/health.mjs
@@ -9,7 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { classifyRun } from '../core/run-classify.mjs';
 import { localHeaders } from '../core/local-token.mjs';
-import { daemonUrl, daemonPort } from '../core/ports.mjs';
+import { daemonUrl, daemonPort, overlayUrl, overlayPort } from '../core/ports.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -86,7 +85,7 @@ async function main() {
     const noToken = await httpStatus(daemonUrl('/status'));
     const withToken = await httpStatus(daemonUrl('/status'), { headers: localHeaders() });
     add('接口票据（daemon）', noToken === 401 && withToken === 200, '无票=' + noToken + '｜带票=' + withToken);
-    const daemonHost = await httpStatus('http://127.0.0.1:7789/', { host: 'evil.example:7789' });
+    const daemonHost = await httpStatus(daemonUrl('/'), { host: 'evil.example:' + daemonPort() });
     add('Host 校验（daemon 防 DNS rebinding）', daemonHost === 403, 'Host=evil.example → ' + daemonHost);
   }
   if (ov && ov.ok) {
@@ -185,7 +184,7 @@ async function main() {
         : '最近 ' + hist.length + ' 次未发生前台抢占');
 
     // 耗时趋势：按任务聚合，能看出哪个任务在拖后腿
-    const stats = await getJson('http://127.0.0.1:7789/stats');
+    const stats = await getJson(daemonUrl('/stats'));
     if (stats && stats.runs) {
       const secs = (ms) => (ms >= 1000 ? (ms / 1000).toFixed(1) + 's' : Math.round(ms) + 'ms');
       const slowest = (stats.tasks || []).slice().sort((a, b) => b.avgMs - a.avgMs)[0];

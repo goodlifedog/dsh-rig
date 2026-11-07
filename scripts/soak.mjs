@@ -1,3 +1,4 @@
+import { daemonBase, overlayBase } from '../core/ports.mjs';
 'use strict';
 // 长时间跑怕掉帧、涨内存、任务越来越慢：连续跑几轮任务并采样小窗与进程指标。
 //   node scripts/soak.mjs            默认 6 轮
@@ -6,8 +7,8 @@ import { execFileSync } from 'node:child_process';
 import { readToken, withTokenHeaders } from '../core/local-token.mjs';
 import { localHeaders } from '../core/local-token.mjs';
 
-const DAEMON = process.env.AGENTD_URL || 'http://127.0.0.1:7789';
-const OVERLAY = process.env.OVERLAY_URL || 'http://127.0.0.1:7788';
+const DAEMON = daemonBase();
+const OVERLAY = overlayBase();
 const ROUNDS = Math.max(1, Number(process.env.SOAK_ROUNDS) || 6);
 // 默认交替跑两个 demo：一个偏控制（electron-demo）、一个会推帧（headless-demo），
 // 这样帧率/画面这一路也能被采样到，而不是只看耗时

@@ -1,3 +1,4 @@
+import { daemonUrl, overlayUrl } from '../core/ports.mjs';
 'use strict';
 // 一条命令跑起来：后台 daemon + 小窗。Ctrl+C 一起停。
 //   npm start
@@ -15,7 +16,7 @@ function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
 async function daemonAlive() {
   try {
-    const r = await fetch('http://127.0.0.1:7789/', { signal: AbortSignal.timeout(1200) });
+    const r = await fetch(daemonUrl('/'), { signal: AbortSignal.timeout(1200) });
     const d = await r.json();
     return Boolean(d && d.ok);
   } catch { return false; }
@@ -31,7 +32,7 @@ process.on('SIGTERM', () => shutdown(0));
 
 async function overlayAlive() {
   try {
-    await fetch('http://127.0.0.1:7788/health', { signal: AbortSignal.timeout(1200) });
+    await fetch(overlayUrl('/health'), { signal: AbortSignal.timeout(1200) });
     return true;   // 能拿到响应就说明在跑（401 也算：服务活着，只是要 token）
   } catch { return false; }
 }
