@@ -131,7 +131,7 @@ git status                  # 工作区应干净
   - 注意：**必须排除 flow/ 和 docs/**，否则评审文档里引用的这些模式词会自己命中（第 71 轮踩过）
 - [ ] **E1.5. 让 `repo:check` 在非 git 目录下降级**：下载 ZIP 的用户（没有 .git）跑 `npm run repo:check` 会看到 `❌ git 仓库可用 / git ls-files 失败`，其余 7 项全绿。这条红跟代码质量无关，但会很掉印象分。建议 git 相关检查在无 .git 时标「跳过」而不是失败。
 
-- [ ] **E2. 历史整理**：仓库里有 20 个 `goodlifedog@users.noreply.github.com` 的自动检查点提交，公开前建议 squash 成初始提交
+- [ ] **E2. 历史整理**：仓库里有若干自动检查点提交（作者已统一为 GitHub 虚拟身份），公开前可按需 squash 成初始提交
 - [ ] **E3. 许可证**：`LICENSE`（MIT，真名）与 `third_party/open-computer-use/` 的 LICENSE/NOTICE 都在，`scripts/bundle-ocu.mjs` 会带上
 
 ## E.5 顺手小修

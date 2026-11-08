@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /**
  * 本地对照：起一个最小 HTML 表单页（file:// + Electron accessory 窗口，不抢焦点），
@@ -26,8 +27,11 @@ const HOST_APP = process.env.FORM_HOST_APP || '/tmp/OCUFormHost.app';
 const HOST_APP_NAME = 'OCU Form Host';
 const HOST_BUNDLE_ID = 'com.local.ocuformhost';
 const HOST_APP_BINARY = path.join(HOST_APP, 'Contents/MacOS/Electron');
+// 默认用仓库自带的 Electron（overlay/node_modules）。不写死用户目录：换机器/换目录都能找到，
+// 也避免把本机路径写进仓库（repo:check 会拦）。
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const ELECTRON_SRC = process.env.FORM_HOST_ELECTRON
-  || path.join(os.homedir(), 'Desktop/desktop-agent/desktop-agent/overlay/node_modules/electron/dist/Electron.app');
+  || path.join(ROOT, 'overlay/node_modules/electron/dist/Electron.app');
 const JS_TIMEOUT_MS = Number(process.env.FILL_JS_TIMEOUT_MS || 90000);
 
 const TEXT_VALUE = 'OCU-TEXT-9527';

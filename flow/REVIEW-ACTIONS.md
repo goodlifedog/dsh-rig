@@ -302,7 +302,7 @@ parallel-demo / parallel-real-demo / scripts/app-resolve.mjs。
 ### 15. 发布前隐私与历史
 
 - 作者身份已统一：仓库本地 `git config user.name/email` 设为 `goodlifedog` / `goodlifedog@users.noreply.github.com`；历史提交作者也已改写（原来会暴露真实姓名和机器名）
-- 历史里有 20 个 `goodlifedog@users.noreply.github.com` 自动检查点提交，公开前建议 squash
+- 历史里有若干自动检查点提交（作者已统一为 GitHub 虚拟身份），公开前可按需 squash
 
 ### 2.1 ✅ 已解决：全等或「去掉 hint 后只剩标点」，`f7eaa78` + 2 条测试
 
