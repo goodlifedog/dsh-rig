@@ -136,6 +136,13 @@ async function main() {
   const maxRounds = TARGET * 5 + 5;
 
   while (delivered < TARGET && rounds < maxRounds) {
+    // 每投一条之前都复查：投递可能持续几分钟，你中途回来就停，不再发下一条
+    const activity = shouldDeferForActiveUser(await hidIdleMs());
+    if (activity.defer) {
+      console.log('[!] ' + activity.reason + '，停止后续投递');
+      await overlay.status('BOSS 投递暂停：你回到电脑前').catch(() => {});
+      break;
+    }
     rounds += 1;
     const skip = skipIds(st);
     const r = await runOne(skip);
