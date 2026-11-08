@@ -1,42 +1,34 @@
 # 外部监控日志（评审侧维护，执行侧按需读取）
 
-> 更新：2026-11-08 23:22
+> 更新：2026-11-08 23:35
 
-## 一、Safari 端到端适配已通过（评审侧实跑，可复现）
+## 一、适配矩阵（全部为评审侧实跑证据）
 
-**命令与结果**：
+| 应用 | 读 | 点击 | 回显 | 前台未变 | 备注 |
+| --- | --- | --- | --- | --- | --- |
+| Safari | ✅ 105 节点 / 40 按钮 | ✅ 105→112→105（边栏开/关） | ✅ 21KB | ✅ | 端到端闭环 |
+| Finder / 访达 | ✅ 204 / 87 节点 | 未试 | 如实跳过 | ✅ | 中英文名都可用 |
+| Notes / 备忘录 | ✅ 57 节点 / 14 按钮 | 未试 | ✅ 如实跳过 | ✅ | 写入被守卫拒绝 |
+| 计算器 | ✅ 37 节点 / 24 按钮 | 未试 | ✅ 57KB | ✅ | 中文名映射已修 |
+| Chrome | ❌ AX 读不到（nodes=0） | — | — | ✅ | 应走 CDP 通道 |
+| 微信 | 未测（未运行） | — | — | — | 下一批 |
+
+## 二、写入守卫已实机验证
 
 ```
-node core/tasks/adapter-demo.mjs --app Safari --click-text "边栏"
-  gate            ✅ Safari 已在运行，直接读
-  read-tree       ✅ 窗口="起始页"，nodes=105，按钮 40，输入区 1
-  click-by-text   ✅ 点中「显示边栏 ID: SidebarButton」index=81（contains）
-                     节点数 105 → 112，新增「边栏」相关元素 111 条
-  echo            ✅ windowId=8767，截图 21045 字节
-  front-unchanged ✅ DeepSeek Harness → DeepSeek Harness
-
-再跑一次同命令（点「隐藏边栏」）：nodes 112 → 105，恢复原状，前台仍未变。
+node core/tasks/adapter-demo.mjs --app Notes --type-text "AGENT-TEST-SHOULD-NOT-APPEAR"
+→ envSkip：只找到 AXTextArea（正文区），默认拒绝写入以免覆盖用户正文
 ```
 
-**请把这条写进 docs/ADAPTERS.md**：Safari = 已适配（读 + 按文字点击 + 回显 + 前台不变 + 状态可还原），
-附上可复制命令与输出摘要。这是目前唯一一个完整闭环的真实应用证据。
+备忘录内容未被改动。空白目标允许写；有内容默认拒绝；`--allow-write` 才覆盖且写后恢复（恢复路径目前只有单测，建议找一次真实空白目标补 E2E）。
 
-## 二、仍未修：front-unchanged 的系统浮层误判
+## 三、本轮修掉的两个适配阻塞
 
-同一命令曾两次结果相反（通知横幅中途出现→假失败；横幅作基线→假通过）。
-修法见上一版：系统浮层名单 + 基线校验 + 两条单测。这次 Safari 跑通时没触发，但噪声场景仍会误判。
+1. `--allow-write` 参数此前未接线（`pickTypeTarget` 有守卫但 CLI 没暴露）→ 已接上
+2. 中文显示名映射缺失：`--app 计算器` 误报「没在运行」→ 补 APP_HINTS / APP_ALIASES 五个常用中文名
 
-## 三、其余候选现状（adapter-demo 会如实环境跳过）
+## 四、下一批建议
 
-| 应用 | 状态 | 原因 |
-| --- | --- | --- |
-| Safari | ✅ 已适配（见上） | — |
-| Antigravity | 应用侧限制 | `open -g` 拉不起来，冷启动即退 |
-| TextEdit / Preview / QQ / WPS Office / Ghostty / ChatGPT / Gemini / Telegram 等 | 读取抢前台 | 在 front-risk 名单（11 个），工具拒绝、`--allow-launch` 也不绕过 |
-| OpenCode | 应用侧限制 | 二进制拒绝 `--remote-debugging-port` |
-
-## 四、下一批适配的建议顺序
-
-1. Chrome：CDP 通道已通，用 `--app Chrome --file examples/adapters/sample.html --click-text "[AGENT-TEST] 提交" --allow-launch` 验一次完整闭环
-2. 名单外的新应用：先用只读模式跑 `adapter-demo`（不加 --click-text），确认读树不抢前台后再点
-3. 任何写操作（--type-text）先等「不覆盖用户内容」的守卫落地
+1. 计算器/访达/备忘录补一次「点击 + 状态变化」验证（读已经通了）
+2. 微信：需要用户登录态，建议在用户在场时测，先只读
+3. 写入恢复路径找一次真实空白目标（例如新建的空备忘录）补 E2E
