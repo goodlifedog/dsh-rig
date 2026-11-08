@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 
 import {
   decidePermissionGate, permissionParamsFromCheckPermissions, probePermissions,
-  inferTaskPermissionNeed, evaluateTaskPermissionGate, permissionSkipLines,
+  inferTaskPermissionNeed, evaluateTaskPermissionGate, permissionSkipLines, stripSourceComments,
   overrideFromEnv, PERMISSION_SETTINGS, OVERRIDE_ENV, PERMISSION_KEYS,
 } from '../core/permission-gate.mjs';
 
@@ -256,4 +256,43 @@ test('dry-run 覆盖清单：真实任务里 mcp-demo / boss-greet 判需要 AX�
   const names = fs.readdirSync(TASKS).filter((f) => f.endsWith('.mjs')).map((f) => f.replace(/\.mjs$/, ''));
   const needAX = names.filter((name) => inferTaskPermissionNeed(readTask(name)).accessibility);
   assert.ok(needAX.length >= 17, '需要 AX 的任务数 = ' + needAX.length);
+});
+
+// ---------- M3：录屏判定先剥注释（注释里的 screencapture 不算） ----------
+
+test('M3 录屏判定：注释里的 screencapture / include_screenshot 不算需要录屏', () => {
+  const cases = [
+    '/**\n * 小窗画面来自 screencapture -l\n */\nconsole.log(1);',
+    '// 之前用 include_screenshot: true 拿过画面\nconsole.log(1);',
+    '/* includeScreenshot: true */\nconsole.log(1);',
+    'const a = 1; /* 说明：会调 screencapture */ const b = 2;',
+  ];
+  for (const src of cases) {
+    assert.equal(inferTaskPermissionNeed(src).screenCapture, false, JSON.stringify(src));
+  }
+});
+
+test('M3 录屏判定：真实调用/真实参数仍然要录屏', () => {
+  assert.equal(inferTaskPermissionNeed("execFileSync('/usr/sbin/screencapture', ['-x']);").screenCapture, true);
+  assert.equal(inferTaskPermissionNeed("await ocu.call('get_app_state', { include_screenshot: true });").screenCapture, true);
+  assert.equal(inferTaskPermissionNeed('const o = { includeScreenshot: true };').screenCapture, true);
+});
+
+test('M3 剥注释保留字符串/模板字符串与 URL 里的双斜杠', () => {
+  assert.equal(stripSourceComments("const u = 'https://x/y'; // tail"), "const u = 'https://x/y'; ");
+  assert.equal(inferTaskPermissionNeed('const s = "include_screenshot: true";').screenCapture, true, '字符串里的参数保留');
+  const bt = String.fromCharCode(96);
+  assert.equal(inferTaskPermissionNeed('const t = ' + bt + 'include_screenshot: true' + bt + ';').screenCapture, true, '模板字符串内容保留');
+  assert.equal(inferTaskPermissionNeed('// a\nconst t = ' + bt + '\n screencapture -l\n' + bt + ';').screenCapture, true);
+});
+
+test('M3 回归：parallel-real-demo 只提注释里的 screencapture -l → 不再判需要录屏，且 AX 判定不变', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const HERE = path.dirname(fileURLToPath(import.meta.url));
+  const src = fs.readFileSync(path.join(HERE, '..', 'core', 'tasks', 'parallel-real-demo.mjs'), 'utf8');
+  const need = inferTaskPermissionNeed(src);
+  assert.equal(need.screenCapture, false, '注释里的 screencapture -l 不能算需要录屏');
+  assert.equal(need.accessibility, true, '该任务确实用 ocu/AX，AX 判定不受影响');
 });

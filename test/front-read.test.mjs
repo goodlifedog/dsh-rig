@@ -22,6 +22,10 @@ import {
   readFrontName,
   compareReaders,
   isLockedFrontName,
+  createObjcCircuitBreaker,
+  resetObjcCircuitBreaker,
+  OBJC_BREAKER_FAILURE_THRESHOLD,
+  OBJC_BREAKER_OPEN_MS,
 } from '../core/front-read.mjs';
 
 const OBJC_OK = JSON.stringify({ name: 'Finder', localizedName: '访达', bundleId: 'com.apple.finder' });
@@ -41,6 +45,11 @@ function fakeExec(handlers) {
 }
 
 const timeoutError = () => Object.assign(new Error('killed'), { killed: true, signal: 'SIGTERM' });
+
+/** 每个 auto 用例用独立熔断器：避免「失败→熔断」状态跨用例污染 objc 调用次数断言 */
+function freshBreaker() {
+  return createObjcCircuitBreaker();
+}
 
 // ---------- 脚本构造（纯函数） ----------
 
@@ -173,7 +182,7 @@ test('auto：新实现成功 → 直接用，不再跑旧实现（性能关键�
     objc: () => ({ stdout: JSON.stringify({ name: 'Calculator', localizedName: '计算器', bundleId: 'com.apple.calculator' }) }),
     applescript: () => ({ stdout: 'Calculator\n' }),
   });
-  const detail = await readFrontNameDetailed({ exec, mode: 'auto' });
+  const detail = await readFrontNameDetailed({ exec, mode: 'auto', breaker: freshBreaker() });
   assert.equal(detail.name, 'Calculator');
   assert.equal(detail.source, 'objc');
   assert.equal(detail.fallbackReason, '');
@@ -186,7 +195,7 @@ test('auto：新实现超时 → 回退旧实现，并说明原因', async () =>
     objc: () => { throw timeoutError(); },
     applescript: () => ({ stdout: 'Finder\n' }),
   });
-  const detail = await readFrontNameDetailed({ exec, mode: 'auto' });
+  const detail = await readFrontNameDetailed({ exec, mode: 'auto', breaker: freshBreaker() });
   assert.equal(detail.name, 'Finder');
   assert.equal(detail.source, 'applescript');
   assert.equal(detail.fallbackReason, 'timeout');
@@ -200,7 +209,7 @@ test('auto：新实现输出不可解析 → 同样回退（绝不用可疑结�
     objc: () => ({ stdout: '{"name":""}' }),
     applescript: () => ({ stdout: 'Notes\n' }),
   });
-  const detail = await readFrontNameDetailed({ exec, mode: 'auto' });
+  const detail = await readFrontNameDetailed({ exec, mode: 'auto', breaker: freshBreaker() });
   assert.equal(detail.name, 'Notes');
   assert.equal(detail.source, 'applescript');
   assert.equal(detail.fallbackReason, 'unparsable-output');
@@ -211,7 +220,7 @@ test('auto：两种都失败 → 空名字（调用方给 (unknown)），不抛'
     objc: () => { throw timeoutError(); },
     applescript: () => { throw Object.assign(new Error('nope'), { code: 'EACCES' }); },
   });
-  const detail = await readFrontNameDetailed({ exec, mode: 'auto' });
+  const detail = await readFrontNameDetailed({ exec, mode: 'auto', breaker: freshBreaker() });
   assert.equal(detail.name, '');
   assert.equal(detail.source, '');
   assert.equal(detail.fallbackReason, 'timeout');
@@ -255,7 +264,7 @@ test('环境变量 AGENT_FRONT_READ 能切换实现', async () => {
 
 test('exec 同步抛错也不崩（包装成失败，不向外抛）', async () => {
   const exec = () => { throw new Error('boom'); };
-  const detail = await readFrontNameDetailed({ exec, mode: 'auto' });
+  const detail = await readFrontNameDetailed({ exec, mode: 'auto', breaker: freshBreaker() });
   assert.equal(detail.name, '');
   assert.equal(detail.fallbackReason, 'Error', '同步抛错也要被包成失败原因');
 });
@@ -307,7 +316,7 @@ test('auto：ObjC 报 loginwindow（锁屏）→ 回退老实现，返回真实�
     objc: () => ({ stdout: JSON.stringify({ name: 'loginwindow', localizedName: '登录窗口', bundleId: '' }) }),
     applescript: () => ({ stdout: 'DeepSeek Harness\n' }),
   });
-  const detail = await readFrontNameDetailed({ mode: 'auto', exec });
+  const detail = await readFrontNameDetailed({ mode: 'auto', exec, breaker: freshBreaker() });
   assert.equal(detail.name, 'DeepSeek Harness', '锁屏时必须返回真实前台应用');
   assert.equal(detail.source, 'applescript');
   assert.equal(detail.fallbackReason, 'locked-front');
@@ -342,4 +351,125 @@ test('实机自检：auto 入口的结果必须与老实现一致（FRONT_READ_L
   for (const r of results) {
     assert.equal(r.auto.name, r.apple.name, 'auto 结果必须与老实现一致（auto=' + r.auto.name + ' apple=' + r.apple.name + ' fallback=' + r.auto.fallbackReason + '）');
   }
+});
+
+// ---------- M4：objc 连续失败熔断（fake now，不缓存前台结果） ----------
+
+test('熔断器：连续失败 3 次进入 60s 打开态，窗口后半开放行', () => {
+  let t = 1000000;
+  const b = createObjcCircuitBreaker({ now: () => t });
+  assert.equal(OBJC_BREAKER_FAILURE_THRESHOLD, 3);
+  assert.equal(OBJC_BREAKER_OPEN_MS, 60000);
+  b.recordFailure();
+  b.recordFailure();
+  assert.equal(b.shouldAttempt(), true, '2 次失败不熔断');
+  assert.equal(b.status().failures, 2);
+  b.recordFailure();
+  assert.equal(b.shouldAttempt(), false, '第 3 次失败后进入熔断');
+  assert.equal(b.status().open, true);
+  t += 59999;
+  assert.equal(b.shouldAttempt(), false, '60s 内不再试 objc');
+  t += 1;
+  assert.equal(b.shouldAttempt(), true, '60s 后放一次（半开）');
+  assert.equal(b.status().failures, 0);
+});
+
+test('熔断器：成功一次即复位；阈值/时长可配置', () => {
+  let t = 0;
+  const b = createObjcCircuitBreaker({ now: () => t, failureThreshold: 2, openMs: 1000 });
+  b.recordFailure();
+  b.recordFailure();
+  assert.equal(b.shouldAttempt(), false);
+  t += 1000;
+  b.shouldAttempt();
+  assert.equal(b.status().failures, 0);
+  b.recordFailure();
+  b.recordSuccess();
+  b.recordFailure();
+  assert.equal(b.shouldAttempt(), true, '成功复位后 1 次失败不熔断');
+});
+
+test('auto：连续 3 次 objc 失败后第 4 次不再调 objc，直接 applescript（熔断生效）', async () => {
+  let t = 0;
+  const breaker = createObjcCircuitBreaker({ now: () => t });
+  let objcCalls = 0;
+  let appleCalls = 0;
+  const exec = async (cmd, args) => {
+    if (args[0] === '-l') {
+      objcCalls += 1;
+      throw timeoutError();
+    }
+    appleCalls += 1;
+    return { stdout: 'Finder\n' };
+  };
+  for (let i = 0; i < 3; i += 1) {
+    const d = await readFrontNameDetailed({ mode: 'auto', exec, breaker });
+    assert.equal(d.fallbackReason, 'timeout');
+    assert.equal(d.objcSkipped, false);
+  }
+  assert.equal(objcCalls, 3);
+  assert.equal(appleCalls, 3);
+  const skipped = await readFrontNameDetailed({ mode: 'auto', exec, breaker });
+  assert.equal(objcCalls, 3, '第 4 次不能再调 objc');
+  assert.equal(appleCalls, 4);
+  assert.equal(skipped.name, 'Finder');
+  assert.equal(skipped.source, 'applescript');
+  assert.equal(skipped.fallbackReason, 'objc-circuit-open');
+  assert.equal(skipped.objcSkipped, true);
+});
+
+test('auto：熔断 60s 后恢复尝试 objc，成功一次复位', async () => {
+  let t = 5000;
+  const breaker = createObjcCircuitBreaker({ now: () => t });
+  let objcCalls = 0;
+  let objcHealthy = false;
+  const exec = async (cmd, args) => {
+    if (args[0] === '-l') {
+      objcCalls += 1;
+      if (!objcHealthy) throw new Error('jxa broken');
+      return { stdout: OBJC_OK };
+    }
+    return { stdout: 'Finder\n' };
+  };
+  for (let i = 0; i < 3; i += 1) await readFrontNameDetailed({ mode: 'auto', exec, breaker });
+  assert.equal(breaker.status().open, true);
+  assert.equal(objcCalls, 3);
+  t += 60000;
+  objcHealthy = true;
+  const recovered = await readFrontNameDetailed({ mode: 'auto', exec, breaker });
+  assert.equal(objcCalls, 4, '窗口结束后应重新尝试 objc');
+  assert.equal(recovered.source, 'objc');
+  assert.equal(recovered.name, 'Finder');
+  assert.equal(breaker.status().failures, 0, '成功一次复位');
+});
+
+test('mode=objc 不受熔断影响（三档语义不变）', async () => {
+  const breaker = createObjcCircuitBreaker();
+  breaker.recordFailure();
+  breaker.recordFailure();
+  breaker.recordFailure();
+  assert.equal(breaker.shouldAttempt(), false);
+  let objcCalls = 0;
+  const exec = async (cmd, args) => {
+    if (args[0] === '-l') {
+      objcCalls += 1;
+      return { stdout: OBJC_OK };
+    }
+    throw new Error('不该跑 applescript');
+  };
+  const detail = await readFrontNameDetailed({ mode: 'objc', exec, breaker });
+  assert.equal(objcCalls, 1, '排障模式必须仍然试 objc');
+  assert.equal(detail.source, 'objc');
+});
+
+test('熔断打开时 applescript 也失败：返回空名字不抛异常', async () => {
+  const breaker = createObjcCircuitBreaker();
+  breaker.recordFailure();
+  breaker.recordFailure();
+  breaker.recordFailure();
+  const exec = async () => { throw new Error('all broken'); };
+  const detail = await readFrontNameDetailed({ mode: 'auto', exec, breaker });
+  assert.equal(detail.name, '');
+  assert.equal(detail.fallbackReason, 'objc-circuit-open');
+  resetObjcCircuitBreaker();
 });

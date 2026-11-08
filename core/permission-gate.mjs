@@ -39,6 +39,63 @@ export const OVERRIDE_ENV = 'AGENT_ALLOW_MISSING_PERMISSION';
 const SCREEN_CAPTURE_NEED_RE = /include_screenshot\s*:\s*true|includeScreenshot\s*:\s*true|(?:^|[^A-Za-z])screencapture\b/;
 
 /**
+ * 剥掉 JS 注释（// 行注释与 /* 块注释），但**保留字符串/模板字符串里的内容**。
+ *
+ * 为什么需要：SCREEN_CAPTURE_NEED_RE 直接跑原始源码时，注释里一句「小窗画面来自 screencapture -l」
+ * 就会让任务被误判「需要屏幕录制」（task-68 M3 实测 core/tasks/parallel-real-demo.mjs:9），
+ * 仅缺录屏时该任务被 false skip。剥离时必须躲开引号，否则 URL 里的 //（https://…）会被当成注释截断。
+ * 单引号/双引号/模板字符串按相同规则跳过（含反斜杠转义）；模板字符串里的注释不剥（内嵌 JXA 内容要保留）。
+ *
+ * @param {string} source
+ * @returns {string} 去掉注释后的源码（块注释换成空，保留换行以便按行匹配）
+ */
+export function stripSourceComments(source) {
+  const text = String(source || '');
+  let out = '';
+  let i = 0;
+  let state = 'code'; // code | line | block | single | double | template
+  while (i < text.length) {
+    const ch = text[i];
+    const next = text[i + 1];
+    if (state === 'code') {
+      if (ch === '/' && next === '/') { state = 'line'; i += 2; continue; }
+      if (ch === '/' && next === '*') { state = 'block'; i += 2; continue; }
+      out += ch;
+      if (ch === "'") state = 'single';
+      else if (ch === '"') state = 'double';
+      else if (ch === String.fromCharCode(96)) state = 'template';
+      i += 1;
+      continue;
+    }
+    if (state === 'line') {
+      if (ch === '\n') { out += ch; state = 'code'; }
+      i += 1;
+      continue;
+    }
+    if (state === 'block') {
+      if (ch === '*' && next === '/') { state = 'code'; i += 2; continue; }
+      if (ch === '\n') out += ch;
+      i += 1;
+      continue;
+    }
+    // 字符串内部：原样保留（含转义），直到闭合引号
+    out += ch;
+    if (ch === '\\') {
+      if (next !== undefined) out += next;
+      i += 2;
+      continue;
+    }
+    if ((state === 'single' && ch === "'") ||
+        (state === 'double' && ch === '"') ||
+        (state === 'template' && ch === String.fromCharCode(96))) {
+      state = 'code';
+    }
+    i += 1;
+  }
+  return out;
+}
+
+/**
  * 「把 ocu 的 js 子命令当子进程跑」的写法：execFile(OCU, ['js', ...]) / execFileSync / spawn / spawnSync。
  *
  * 为什么复用 OCU_APP_CALL_RE 还不够：那条正则匹配的是**内层脚本里的** cua.getApp/callTool，
@@ -66,9 +123,12 @@ const OCU_JS_CLI_RE = /(?:execFile|execFileSync|spawn|spawnSync)\s*\((?:[^\n]*\n
  */
 export function inferTaskPermissionNeed(source) {
   const text = String(source || '');
+  // AX 判定保持看原始源码（内嵌 JXA 脚本里的 cua.getApp/callTool 也算）；
+  // 录屏判定先剥注释：注释里提一句 screencapture 不代表真的截图（M3）。
+  const uncommented = stripSourceComments(text);
   return {
     accessibility: UI_ACTION_RE.test(text) || OCU_APP_CALL_RE.test(text) || OCU_JS_CLI_RE.test(text),
-    screenCapture: SCREEN_CAPTURE_NEED_RE.test(text),
+    screenCapture: SCREEN_CAPTURE_NEED_RE.test(uncommented),
   };
 }
 

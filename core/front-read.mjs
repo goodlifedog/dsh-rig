@@ -37,6 +37,60 @@ export const APPLESCRIPT_TIMEOUT_MS = 4000;
 
 export const FRONT_READ_MODES = ['objc', 'applescript', 'auto'];
 
+/** objc 连续失败几次后熔断（期间直接走 applescript，不再每次白等 400ms） */
+export const OBJC_BREAKER_FAILURE_THRESHOLD = 3;
+/** 熔断持续时长（毫秒）：窗口过后放一次尝试，失败重新累计、成功复位 */
+export const OBJC_BREAKER_OPEN_MS = 60000;
+
+/**
+ * objc 读取失败熔断器（纯状态机，可注入时间，便于单测）。
+ *
+ * 只统计「objc 读失败」的连续次数，**不缓存前台应用名本身**：前台会变，缓存会掩护抢占。
+ * 语义：连续失败达到阈值 → 之后 openMs 内 shouldAttempt()=false（调用方直接走 applescript）；
+ * 窗口结束后放一次（半开）：成功 recordSuccess 复位，失败重新累计。
+ */
+export function createObjcCircuitBreaker(options = {}) {
+  const opts = options || {};
+  const threshold = Number.isFinite(opts.failureThreshold) && opts.failureThreshold > 0
+    ? Math.floor(opts.failureThreshold)
+    : OBJC_BREAKER_FAILURE_THRESHOLD;
+  const openMs = Number.isFinite(opts.openMs) && opts.openMs >= 0 ? opts.openMs : OBJC_BREAKER_OPEN_MS;
+  const now = typeof opts.now === 'function' ? opts.now : Date.now;
+  let failures = 0;
+  let openUntil = 0;
+  const current = () => {
+    const t = Number(now());
+    return Number.isFinite(t) ? t : 0;
+  };
+  return {
+    /** 现在要不要试 objc：熔断窗口内 false；窗口结束放一次（半开） */
+    shouldAttempt() {
+      if (!openUntil) return true;
+      if (current() < openUntil) return false;
+      openUntil = 0;
+      failures = 0;
+      return true;
+    },
+    recordSuccess() { failures = 0; openUntil = 0; },
+    recordFailure() {
+      failures += 1;
+      if (failures >= threshold) openUntil = current() + openMs;
+    },
+    // 注意：方法名不能叫 state()——safety-audit 的 OCU_APP_CALL_RE 会把裸 state( 误当成 ocu 调用
+    status() {
+      return { failures, openUntil, open: Boolean(openUntil && current() < openUntil), threshold, openMs };
+    },
+  };
+}
+
+/** 进程内默认熔断器；测试请注入自己的实例，避免用例之间互相影响 */
+export const defaultObjcCircuitBreaker = createObjcCircuitBreaker();
+
+/** 测试/自检用：丢掉默认熔断状态 */
+export function resetObjcCircuitBreaker() {
+  defaultObjcCircuitBreaker.recordSuccess();
+}
+
 /** 老实现的 AppleScript：向 System Events 发 AppleEvent */
 export const APPLESCRIPT_SOURCE = 'tell application "System Events" to get name of first process whose frontmost is true';
 
@@ -189,10 +243,14 @@ export async function readViaAppleScript(options = {}) {
  * 带来源信息的读取（新实现的正式入口）。
  *
  * auto（默认）：先 objc（400ms 上限）→ 成功就用；失败/超时/输出不可解析 → 回退 applescript。
- * objc：只用新实现（排障用），失败返回空名字，让调用方走 '(unknown)'。
+ *   连续失败 3 次后熔断 60s：期间直接走 applescript，不再每次白等 400ms（M4）；成功一次即复位。
+ *   熔断只记「读失败」，不缓存前台结果本身（前台会变，缓存会掩护抢占）。
+ * objc：只用新实现（排障用），失败返回空名字；**不受熔断影响**（三档语义不变）。
  * applescript：只用旧实现（回滚开关）。
  *
- * @returns {Promise<{name:string, source:'objc'|'applescript'|'', mode:string, fallbackReason:string}>}
+ * @param {{mode?:string, env?:object, breaker?:object}} [options] breaker 注入熔断器便于单测
+ * @returns {Promise<{name:string, source:'objc'|'applescript'|'', mode:string, fallbackReason:string,
+ *   objcSkipped?:boolean, objcBreaker?:object}>}
  */
 export async function readFrontNameDetailed(options = {}) {
   const opts = options || {};
@@ -203,14 +261,39 @@ export async function readFrontNameDetailed(options = {}) {
     return { name: apple.name, source: apple.ok ? 'applescript' : '', mode, fallbackReason: apple.ok ? '' : apple.error };
   }
 
-  const objc = await readViaObjc(opts);
-  const lockedFront = objc.ok && isLockedFrontName(objc.name);
-  if (objc.ok && !lockedFront) return { name: objc.name, source: 'objc', mode, fallbackReason: '' };
+  // 排障模式：只试 objc，不受熔断影响（保持三档语义）
   if (mode === 'objc') {
+    const objc = await readViaObjc(opts);
+    const lockedFront = objc.ok && isLockedFrontName(objc.name);
     return objc.ok
       ? { name: objc.name, source: 'objc', mode, fallbackReason: lockedFront ? 'locked-front-diagnostic' : '' }
       : { name: '', source: '', mode, fallbackReason: objc.error };
   }
+
+  // auto：objc 快路径 + 失败熔断
+  const breaker = opts.breaker || defaultObjcCircuitBreaker;
+  if (!breaker.shouldAttempt()) {
+    // 熔断窗口内：直接走老实现，省掉每次 400ms 的 objc 等待
+    const apple = await readViaAppleScript(opts);
+    return {
+      name: apple.name,
+      source: apple.ok ? 'applescript' : '',
+      mode,
+      fallbackReason: 'objc-circuit-open',
+      objcSkipped: true,
+      objcBreaker: breaker.status(),
+    };
+  }
+
+  const objc = await readViaObjc(opts);
+  const lockedFront = objc.ok && isLockedFrontName(objc.name);
+  if (objc.ok && !lockedFront) {
+    breaker.recordSuccess();
+    return { name: objc.name, source: 'objc', mode, fallbackReason: '' };
+  }
+  // 锁屏占位名不算 objc 故障（否则锁屏期间每次调用都把熔断打开；它本来就走回退）；
+  // 真正的失败（超时/不可解析/exec 报错）才累计连续失败次数。
+  if (!lockedFront) breaker.recordFailure();
 
   // 不确定就回退：慢一点没关系，返回错名字才是事故。
   // 锁屏时的 "loginwindow" 也算「不可用」——它不代表用户真实前台，必须回退老实现取真实值。
@@ -220,6 +303,8 @@ export async function readFrontNameDetailed(options = {}) {
     source: apple.ok ? 'applescript' : '',
     mode,
     fallbackReason: lockedFront ? 'locked-front' : (objc.error || 'objc-unavailable'),
+    objcSkipped: false,
+    objcBreaker: breaker.status(),
   };
 }
 
