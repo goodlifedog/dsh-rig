@@ -66,3 +66,28 @@ export async function checkTextEditWritable(options = {}) {
     return { ok: false, reason: '读不到文稿状态（' + String((error && error.message) || error).slice(0, 60) + '）' };
   }
 }
+/** 我们测试写入的正文格式：带显式标记，或"后台写入：<时间>" / "后台控制验证…" 这类开头 */
+export const OUR_TEST_TEXT_RE = /^\s*(?:\[\s*AGENT-TEST\s*\]|后台写入[:：]\s*\d|后台控制验证[:：])/;
+
+/**
+ * 清理时「这个文稿能不能直接关掉（saving no）」的判定。
+ *
+ * 原来的判定只要求正文里出现"后台测试/后台写入"这类词就关——用户自己的未命名草稿里
+ * 只要引用了这些词（比如从对话里粘贴一段），就会被 saving no 直接丢掉，属于数据丢失。
+ * 现在要求两个条件同时成立：
+ *   1) 文稿必须未命名（有名字的是用户存的稿子，一律不碰）
+ *   2) 正文必须是我们测试写的格式（开头是标记或带时间的固定句式），不是随便包含关键词
+ *
+ * @param {{name?:string, text?:string}} doc
+ * @returns {{ok:boolean, reason:string}}
+ */
+export function isDisposableTestDocument(doc) {
+  const name = String((doc && doc.name) || '').trim();
+  const text = String((doc && doc.text) || '');
+  if (!name || !UNTITLED_RE.test(name)) {
+    return { ok: false, reason: name ? '有命名文稿（' + name + '），不动' : '读不到文稿名，不动' };
+  }
+  if (!text.trim()) return { ok: false, reason: '未命名空文稿，可能是用户刚打开的，不关' };
+  if (!OUR_TEST_TEXT_RE.test(text)) return { ok: false, reason: '正文不是测试格式（只是包含关键词），不动' };
+  return { ok: true, reason: '' };
+}

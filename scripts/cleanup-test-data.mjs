@@ -15,13 +15,13 @@ import { ensureAppRunning, frontName, quitApp } from '../core/background.mjs';
 import { closeOcuMcp } from '../core/ocu-mcp.mjs';
 import { countNotes, deleteTopNotes, deleteMarkedTestNotes, LEGACY_TEST_WORDS } from '../core/note-cleanup.mjs';
 import { shouldQuitApp, shouldRunNoteCleanup } from '../core/cleanup-policy.mjs';
+import { isDisposableTestDocument } from '../core/text-edit-guard.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const dryRun = process.argv.includes('--dry-run');
 const forceNotes = process.argv.includes('--force') || process.argv.includes('--force-all') || process.env.NOTES_CLEANUP_FORCE === '1';
 // 只有明确加 --force-all 才允许退回「按条数删最上面几条」；普通 --force 只删带测试标记的笔记
 const forceAllNotes = process.argv.includes('--force-all');
-const TEST_NOTE_RE = /\[\s*AGENT-TEST\s*\]|后台控制验证|后台写入|后台测试|pta 测试/i;
 
 function osa(script, timeoutMs = 20000) {
   try {
@@ -105,11 +105,16 @@ async function cleanupTextEdit(report) {
   if (!running) { report.push({ kind: 'textedit', running: false }); return; }
   const count = Number(osa('tell application "TextEdit" to count documents')) || 0;
   for (let i = count; i >= 1; i -= 1) {
-    const text = osa('tell application "TextEdit" to get text of document ' + i);
-    const marker = TEST_NOTE_RE.test(text);
-    // 只关"正文里带测试标记"的文稿；空文稿可能是用户自己刚打开的，不动
-    if (!marker) continue;
-    report.push({ kind: 'textedit-doc', index: i, marker, dryRun });
+    // 判定必须同时满足「未命名」和「正文是测试格式」：只看正文里有没有关键词是不够的，
+    // 用户自己的草稿粘一段带"后台测试"的文字就会被 saving no 丢掉（数据丢失）。
+    const name = osa('tell application "TextEdit" to get name of document ' + i).replace(/^__ERR__$/, '');
+    const text = osa('tell application "TextEdit" to get text of document ' + i).replace(/^__ERR__$/, '');
+    const decision = isDisposableTestDocument({ name, text });
+    if (!decision.ok) {
+      report.push({ kind: 'textedit-keep', index: i, note: decision.reason });
+      continue;
+    }
+    report.push({ kind: 'textedit-doc', index: i, marker: true, dryRun });
     if (!dryRun) osa('tell application "TextEdit" to close document ' + i + ' saving no');
     await sleep(250);
   }
