@@ -103,6 +103,34 @@ function cdpHistory() {
   return map;
 }
 
+/**
+ * 合并全部 AppleScript 通道验证报告（reports/applescript-channel-*.json）。
+ * 只把 status='ok'（真的执行成功过只读命令）当作通道级证据；denied/not-running 等不算。
+ */
+function applescriptHistory() {
+  const dir = path.join(ROOT, 'reports');
+  let files = [];
+  try {
+    files = fs.readdirSync(dir).filter((f) => /^applescript-channel-.*\.json$/.test(f)).sort();
+  } catch {
+    return {};
+  }
+  const map = {};
+  for (const name of files) {
+    let data = null;
+    try {
+      data = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8'));
+    } catch {
+      continue;
+    }
+    for (const row of data.rows || []) {
+      if (!row || !row.bundle) continue;
+      map[row.bundle] = { status: String(row.status || ''), detail: String(row.detail || ''), report: 'reports/' + name };
+    }
+  }
+  return map;
+}
+
 async function main() {
   const presetApps = flattenPresets(PRESETS);
   const presetBundles = new Set(presetApps.map((a) => a.bundle));
@@ -123,6 +151,7 @@ async function main() {
     tested: matrix ? matrix.rows : [],
     special: SPECIAL_APP_HANDLING,
     cdpByBundle: cdpHistory(),
+    applescriptByBundle: applescriptHistory(),
   });
   // 标出「历史测过能控、但现在被前台风险名单挡掉」的应用，避免报告显得它还在正常被控
   const risk = loadRisk();
@@ -146,6 +175,10 @@ async function main() {
   const counts = rows.reduce((acc, r) => { acc[r.status] = (acc[r.status] || 0) + 1; return acc; }, {});
   console.log('扫描到 ' + installed.length + ' 个应用' + (stubs.length ? '（另有 ' + stubs.length + ' 个快捷方式壳未计入：' + stubs.map((s) => s.name).join('、') + '）' : '') + '，预设门类：' + presetNames().join('/'));
   console.log('状态汇总: ' + JSON.stringify(counts) + (riskCount ? '；其中 ' + riskCount + ' 个在读取风险名单（默认跳过读取）' : ''));
+  const partial = rows.filter((r) => r.status === '部分验证');
+  if (partial.length) {
+    console.log('部分验证（通道测过、矩阵未读界面）' + partial.length + ' 个：' + partial.map((r) => r.name).join('、'));
+  }
   console.log('报告: reports/app-inventory-' + stamp + '.md');
   const next = nextProbeCommands(rows);
   if (next.length) console.log('下一步补测: ' + next[0]);

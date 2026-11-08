@@ -61,6 +61,66 @@ test('状态判定：启动就退/根本起不来，运行时再对也还是限�
   assert.equal(classifyApp({ tested: { readable: false, capture: 'none', launch: 'error' }, runtime: 'electron', cdpStatus: 'ok' }), '限制');
 });
 
+test('状态判定：五种输入组合——矩阵读过 / 只有 CDP / 只有 AppleScript / 啥都没有 / 特殊处理', () => {
+  // 1) 有矩阵读数（界面可读）→ 已适配
+  assert.equal(classifyApp({ tested: { readable: true, nodes: 5 } }), '已适配');
+  // 2) 矩阵没读、只有 CDP cdp-ok → 部分验证（不能并入未测）
+  assert.equal(classifyApp({ tested: null, runtime: 'electron', cdpStatus: 'ok' }), '部分验证');
+  // 3) 矩阵没读、只有 AppleScript 只读通过 → 部分验证
+  assert.equal(classifyApp({ tested: null, applescriptStatus: 'ok' }), '部分验证');
+  assert.equal(classifyApp({ tested: { skipped: true }, applescriptStatus: 'ok' }), '部分验证', '矩阵跳过也算没读');
+  // 4) 什么通道证据都没有 → 未测
+  assert.equal(classifyApp({ tested: null }), '未测');
+  assert.equal(classifyApp({ tested: { skipped: true } }), '未测');
+  assert.equal(classifyApp({ tested: null, runtime: 'electron', cdpStatus: 'cdp-unavailable' }), '未测');
+  // 5) 特殊处理应用：特殊状态优先，通道证据不改变
+  assert.equal(classifyApp({ tested: null, special: { status: '不动' }, cdpStatus: 'ok', applescriptStatus: 'ok' }), '不动');
+  // 有矩阵读数时仍按原规则判（通道证据不覆盖矩阵结论）
+  assert.equal(classifyApp({ tested: { readable: false, capture: 'live' }, cdpStatus: 'ok' }), '可只用画面');
+  assert.equal(classifyApp({ tested: { readable: false, capture: 'none', launch: 'error' }, cdpStatus: 'ok' }), '限制');
+});
+
+test('合并：通道证据（CDP/AppleScript）在矩阵未测时标成部分验证，字段向后兼容', () => {
+  const presetApps = [
+    { name: 'MatrixApp', bundle: 'app.matrix', process: 'MatrixApp', preset: 'tools' },
+    { name: 'CdpApp', bundle: 'app.cdp', process: 'CdpApp', preset: 'im' },
+    { name: 'AscApp', bundle: 'app.asc', process: 'AscApp', preset: 'im' },
+    { name: 'NoneApp', bundle: 'app.none', process: 'NoneApp', preset: 'dev' },
+    { name: 'SpecialApp', bundle: 'app.special', process: 'SpecialApp', preset: 'system' },
+  ];
+  const installed = presetApps.map((a) => ({ name: a.name, bundle: a.bundle, process: a.process, runtime: 'electron' }));
+  const rows = mergeInventory({
+    installed,
+    presetApps,
+    tested: [{ app: 'MatrixApp', bundle: 'app.matrix', readable: true, nodes: 9, buttons: 2, capture: 'live' }],
+    special: { 'app.special': { status: '不动', detail: '宿主应用' } },
+    cdpByBundle: { 'app.cdp': { status: 'ok', detail: 'cdp-ok 实测' } },
+    applescriptByBundle: { 'app.asc': { status: 'ok', detail: '只读通过' } },
+  });
+  const byBundle = Object.fromEntries(rows.map((r) => [r.bundle, r]));
+  assert.equal(byBundle['app.matrix'].status, '已适配');
+  assert.equal(byBundle['app.cdp'].status, '部分验证');
+  assert.equal(byBundle['app.cdp'].channelVerified, true);
+  assert.equal(byBundle['app.cdp'].matrixTested, false);
+  assert.equal(byBundle['app.cdp'].cdpStatus, 'ok', '原有字段保留');
+  assert.ok(byBundle['app.cdp'].detail.includes('CDP cdp-ok'), '说明里要写清通道证据');
+  assert.ok(byBundle['app.cdp'].detail.includes('矩阵未读'));
+  assert.equal(byBundle['app.asc'].status, '部分验证');
+  assert.equal(byBundle['app.asc'].applescriptStatus, 'ok');
+  assert.ok(byBundle['app.asc'].detail.includes('AppleScript 实测'));
+  assert.equal(byBundle['app.none'].status, '未测');
+  assert.equal(byBundle['app.none'].channelVerified, false);
+  assert.equal(byBundle['app.special'].status, '不动', '特殊处理仍优先');
+  // 汇总自洽：五种状态之和 = 行数
+  const counts = rows.reduce((acc, r) => { acc[r.status] = (acc[r.status] || 0) + 1; return acc; }, {});
+  assert.equal(Object.values(counts).reduce((a, b) => a + b, 0), rows.length);
+  assert.equal(counts['部分验证'], 2);
+  assert.equal(counts['已适配'], 1);
+  assert.equal(counts['未测'], 1);
+  assert.equal(counts['不动'], 1);
+  assert.deepEqual(checkStrategyConsistency(rows), []);
+});
+
 test('合并：运行时族与 CDP 实测结果都要带到行里，状态与策略不矛盾', () => {
   const tested = [{ app: 'Antigravity', bundle: 'com.google.antigravity', readable: false, capture: 'none', launch: 'launched', nodes: 0 }];
   const presetApps = [{ name: 'Antigravity', bundle: 'com.google.antigravity', process: 'Antigravity', preset: 'dev' }];
@@ -260,6 +320,57 @@ test('风险名单标注：生效的标出「默认跳过读取」，过期的/�
   assert.match(rows[0].detail, /节点 13/, '原有说明不能丢');
   assert.equal(rows[1].riskSkip, undefined);
   assert.equal(rows[2].riskSkip, undefined);
+});
+
+
+test('汇总数字自洽：每族各状态之和 = 该族总数，所有族总数 = 全部行数（含部分验证）', () => {
+  const rows = [
+    { name: 'Notes', runtime: 'native', status: '已适配' },
+    { name: 'Calculator', runtime: 'native', status: '限制' },
+    { name: 'ChatGPT', runtime: 'electron', status: '部分验证' },
+    { name: 'OpenCode', runtime: 'electron', status: '未测' },
+    { name: 'Chrome', runtime: 'chromium', status: '专用方案' },
+    { name: 'WeChat', runtime: 'chromium', status: '可只用画面' },
+    { name: 'Clash', runtime: '', status: '不动' },
+    { name: 'Ghost', runtime: 'native', status: '未安装' },
+  ];
+  const families = summarizeByFamily(rows);
+  let grandTotal = 0;
+  let partialTotal = 0;
+  for (const fam of families) {
+    const sum = fam.adapted + fam.partial + fam.visual + fam.dedicated + fam.limited + fam.untouched + fam.untested;
+    assert.equal(sum, fam.total, fam.family + ' 各状态之和应等于族总数');
+    grandTotal += fam.total;
+    partialTotal += fam.partial;
+  }
+  assert.equal(grandTotal, rows.length, '所有族总数应等于全部行数');
+  assert.equal(partialTotal, 1, 'partial 计数不能丢');
+  // 每个应用只落在一个分类里：apps 列表拼起来不重不漏
+  const names = families.flatMap((fam) => fam.apps).sort();
+  assert.deepEqual(names, rows.map((r) => r.name).sort());
+});
+
+test('报告：部分验证单独成行说明，不并入未测；汇总与补测命令都包含它', () => {
+  const rows = [
+    { name: 'ChatGPT', preset: 'im', runtime: 'electron', status: '部分验证', strategy: 'unknown', installed: true, bundle: 'com.openai.codex', process: 'ChatGPT', detail: '通道测过（CDP cdp-ok），矩阵未读界面' },
+    { name: 'OpenCode', preset: 'dev', runtime: 'electron', status: '未测', strategy: 'unknown', detail: '装了但还没测', installed: true, bundle: 'ai.opencode.desktop', process: 'OpenCode' },
+  ];
+  const md = renderInventoryMarkdown(rows, { matrixReport: 'reports/app-matrix-x.json' });
+  assert.match(md, /部分验证（通道测过、矩阵未读界面）/);
+  assert.match(md, /ChatGPT/);
+  assert.match(md, /汇总：.*部分验证 1/);
+  assert.match(md, /\| 运行时族 \| 装了几个 \| 已适配 \| 部分验证 \|/, '按族汇总要有部分验证列');
+  assert.match(md, /这些应用还没跑矩阵/);
+  const cmds = nextProbeCommands(rows);
+  assert.equal(cmds.length, 1);
+  assert.ok(cmds[0].includes('ChatGPT'), '部分验证也要补跑矩阵');
+  assert.ok(cmds[0].includes('OpenCode'));
+});
+
+test('策略一致性：部分验证配 unknown 不算矛盾（策略字段保持原语义）', () => {
+  assert.deepEqual(checkStrategyConsistency([{ name: 'ChatGPT', status: '部分验证', strategy: 'unknown' }]), []);
+  const bad = checkStrategyConsistency([{ name: 'X', status: '部分验证', strategy: 'ax' }]);
+  assert.equal(bad.length, 1);
 });
 
 test('风险名单标注：按 bundle 也能命中（名字本地化变了也不漏）', () => {

@@ -5,10 +5,12 @@
  *
  * 状态口径：
  *   未安装     —— 预设里有，但本机找不到
- *   未测       —— 装了，但最近的矩阵报告里没有它
+ *   未测       —— 装了，但没有任何证据（矩阵没读过、也没有通道级实测）
+ *   部分验证   —— 通道级证据（CDP cdp-ok / AppleScript 只读通过）有，但矩阵没读过界面；
+ *                 只证明「通道能用」，不能算已适配，也不能并进「未测」
  *   限制       —— 测过，但读不到界面树、也抓不到画面，或者启动即退（应用侧问题）
  *   可只用画面 —— 测过、画面能回显，但 AX 元素为空（只能坐标操作）
- *   专用方案   —— 界面树读不到，但运行时是 electron/chromium：可带调试端口走 CDP 专用实例
+ *   专用方案   —— 测过且界面树读不到，但运行时是 electron/chromium 且 CDP 实测可用
  *   已适配     —— 测过，界面树可读
  */
 
@@ -45,15 +47,45 @@ export function flattenPresets(presets) {
 }
 
 /**
- * 单条状态判定。
- * @param {{tested?: object|null, installed?: boolean, special?: object|null, runtime?: string, cdpStatus?: string}} input
- * @returns {'未安装'|'未测'|'限制'|'可只用画面'|'专用方案'|'已适配'}
+ * CDP 状态是否算「实测可用」。
+ * cdp-driver 报告里写的是 'cdp-ok'，历史上单测里用的是 'ok'——两个都认，避免口径分裂。
  */
-export function classifyApp({ tested, installed = true, special = null, runtime = '', cdpStatus = '' }) {
+export function isCdpOk(cdpStatus) {
+  const value = String(cdpStatus || '');
+  return value === 'ok' || value === 'cdp-ok';
+}
+
+/** 是否有「通道级证据」（CDP 实测 cdp-ok / AppleScript 只读通过）。纯函数。 */
+export function hasChannelEvidence(cdpStatus, applescriptStatus) {
+  return isCdpOk(cdpStatus) || String(applescriptStatus || '') === 'ok';
+}
+
+/** 通道级证据的可读描述（报告/说明用）。纯函数。 */
+export function channelEvidenceLabel(cdpStatus, applescriptStatus) {
+  const parts = [];
+  if (isCdpOk(cdpStatus)) parts.push('CDP cdp-ok');
+  if (String(applescriptStatus || '') === 'ok') parts.push('AppleScript 只读通过');
+  return parts.join(' + ');
+}
+
+/**
+ * 单条状态判定。
+ *
+ * 注意「部分验证」的优先级：它只从原来的「未测」里细分出来——
+ * 矩阵没读过（或跳过）但有通道级证据时才算；有矩阵读数时仍按原来的规则判（已适配/限制/…）。
+ *
+ * @param {{tested?: object|null, installed?: boolean, special?: object|null, runtime?: string, cdpStatus?: string, applescriptStatus?: string}} input
+ * @returns {'未安装'|'未测'|'部分验证'|'限制'|'可只用画面'|'专用方案'|'已适配'}
+ */
+export function classifyApp({ tested, installed = true, special = null, runtime = '', cdpStatus = '', applescriptStatus = '' }) {
   if (special && special.status) return special.status;
   if (!installed) return '未安装';
-  if (!tested) return '未测';
-  if (tested.skipped) return '未测';
+  if (!tested || tested.skipped) {
+    // 矩阵没读（或跳过）：通道级证据只能证明「通道可用」，不能冒充已适配；
+    // 但也不该并进「未测」——否则「CDP 测过、矩阵没跑」会被误读成「完全没碰过」。
+    if (hasChannelEvidence(cdpStatus, applescriptStatus)) return '部分验证';
+    return '未测';
+  }
   if (!tested.readable) {
     // 有画面但读不到界面树：只能画面+坐标
     if (tested.capture === 'live' || tested.capture === 'offscreen') return '可只用画面';
@@ -61,7 +93,7 @@ export function classifyApp({ tested, installed = true, special = null, runtime 
     if (tested.selfExited || tested.launch === 'error') return '限制';
     // 界面树读不到、但运行时是 electron/chromium 且 CDP 实测通过：才算「专用方案」。
     // 只是「这一族有 CDP 通道」不算——实测 OpenCode/抖音的调试端口根本没起来。
-    if ((runtime === 'electron' || runtime === 'chromium') && cdpStatus === 'ok') return '专用方案';
+    if ((runtime === 'electron' || runtime === 'chromium') && isCdpOk(cdpStatus)) return '专用方案';
     return '限制';
   }
   return '已适配';
@@ -79,10 +111,11 @@ export function classifyApp({ tested, installed = true, special = null, runtime 
  *   tested: Array<{app:string, bundle:string, readable?:boolean, capture?:string, skipped?:boolean}>,
  *   special?: Record<string, {status:string, detail?:string}>,
  *   cdpByBundle?: Record<string, {status:string, detail?:string}>,
+ *   applescriptByBundle?: Record<string, {status:string, detail?:string}>,
  * }} input
  * @returns {Array<{name:string, bundle:string, process:string, preset:string, installed:boolean, status:string, detail:string}>}
  */
-export function mergeInventory({ installed = [], presetApps = [], tested = [], special = {}, cdpByBundle = {} } = {}) {
+export function mergeInventory({ installed = [], presetApps = [], tested = [], special = {}, cdpByBundle = {}, applescriptByBundle = {} } = {}) {
   const installedByBundle = new Map();
   const installedByName = new Map();
   for (const app of installed) {
@@ -117,7 +150,16 @@ export function mergeInventory({ installed = [], presetApps = [], tested = [], s
     const runtime = String((installedApp && installedApp.runtime) || '');
     const cdpInfo = cdpByBundle[installedApp?.bundle || bundle] || cdpByBundle[bundle] || null;
     const cdpStatus = cdpInfo ? String(cdpInfo.status || '') : '';
-    const status = classifyApp({ tested: testedRow, installed: Boolean(installedApp), special: specialInfo, runtime, cdpStatus });
+    const ascInfo = applescriptByBundle[installedApp?.bundle || bundle] || applescriptByBundle[bundle] || null;
+    const applescriptStatus = ascInfo ? String(ascInfo.status || '') : '';
+    const status = classifyApp({
+      tested: testedRow,
+      installed: Boolean(installedApp),
+      special: specialInfo,
+      runtime,
+      cdpStatus,
+      applescriptStatus,
+    });
     const notes = [];
     if (specialInfo && specialInfo.detail) notes.push(specialInfo.detail);
     if (installedApp && installedApp.bundle !== bundle) {
@@ -125,14 +167,17 @@ export function mergeInventory({ installed = [], presetApps = [], tested = [], s
     }
     if (testedRow) {
       notes.push('节点 ' + (testedRow.nodes ?? '-') + ' / 按钮 ' + (testedRow.buttons ?? '-') + ' / 画面 ' + (testedRow.capture || '-'));
+    } else if (status === '部分验证') {
+      notes.push('通道测过（' + channelEvidenceLabel(cdpStatus, applescriptStatus) + '），矩阵未读界面');
     } else {
       notes.push(installedApp ? '装了但还没测' : '预设里有、本机没装');
     }
     if (specialInfo && !specialInfo.detail) notes.push('按特殊规则处理');
     const strategy = recommendStrategy(testedRow, { special: specialInfo, installed: Boolean(installedApp), runtime, cdpStatus });
-    if (runtime && !testedRow) notes.push('运行时 ' + runtime + '（未测）');
+    if (runtime && !testedRow) notes.push('运行时 ' + runtime + (status === '部分验证' ? '（矩阵未测）' : '（未测）'));
     if (cdpInfo) notes.push('CDP 实测 ' + cdpStatus + (cdpInfo.detail ? '：' + cdpInfo.detail : ''));
     else if (runtime === 'electron' || runtime === 'chromium') notes.push('可试 CDP 专用通道（未验证）');
+    if (ascInfo) notes.push('AppleScript 实测 ' + applescriptStatus + (ascInfo.detail ? '：' + ascInfo.detail : ''));
     rows.push({
       name: installedApp?.name || presetApp.name,
       bundle: installedApp?.bundle || bundle,
@@ -141,6 +186,9 @@ export function mergeInventory({ installed = [], presetApps = [], tested = [], s
       installed: Boolean(installedApp),
       runtime,
       cdpStatus,
+      applescriptStatus,
+      channelVerified: hasChannelEvidence(cdpStatus, applescriptStatus),
+      matrixTested: Boolean(testedRow && !testedRow.skipped),
       status,
       strategy: strategy.mode,
       strategyLabel: strategy.label,
@@ -156,6 +204,16 @@ export function mergeInventory({ installed = [], presetApps = [], tested = [], s
     const runtime = String(app.runtime || '');
     const cdpInfo = cdpByBundle[bundle] || null;
     const cdpStatus = cdpInfo ? String(cdpInfo.status || '') : '';
+    const ascInfo = applescriptByBundle[bundle] || null;
+    const applescriptStatus = ascInfo ? String(ascInfo.status || '') : '';
+    const status = classifyApp({
+      tested: testedRow,
+      installed: true,
+      special: specialInfo,
+      runtime,
+      cdpStatus,
+      applescriptStatus,
+    });
     const strategy = recommendStrategy(testedRow, { special: specialInfo, installed: true, runtime, cdpStatus });
     rows.push({
       name: app.name,
@@ -165,7 +223,10 @@ export function mergeInventory({ installed = [], presetApps = [], tested = [], s
       installed: true,
       runtime,
       cdpStatus,
-      status: classifyApp({ tested: testedRow, installed: true, special: specialInfo, runtime, cdpStatus }),
+      applescriptStatus,
+      channelVerified: hasChannelEvidence(cdpStatus, applescriptStatus),
+      matrixTested: Boolean(testedRow && !testedRow.skipped),
+      status,
       strategy: strategy.mode,
       strategyLabel: strategy.label,
       canType: strategy.canType,
@@ -174,10 +235,13 @@ export function mergeInventory({ installed = [], presetApps = [], tested = [], s
           ? specialInfo.detail
           : (testedRow
             ? '不在预设里，但测过（节点 ' + (testedRow.nodes ?? '-') + ' / 画面 ' + (testedRow.capture || '-') + '）'
-            : '不在预设里，未测'),
+            : (status === '部分验证'
+              ? '不在预设里；通道测过（' + channelEvidenceLabel(cdpStatus, applescriptStatus) + '），矩阵未读界面'
+              : '不在预设里，未测')),
         cdpInfo
           ? 'CDP 实测 ' + cdpStatus + (cdpInfo.detail ? '：' + cdpInfo.detail : '')
           : ((runtime === 'electron' || runtime === 'chromium') ? '可试 CDP 专用通道（未验证）' : ''),
+        ascInfo ? 'AppleScript 实测 ' + applescriptStatus + (ascInfo.detail ? '：' + ascInfo.detail : '') : '',
       ].filter(Boolean).join('；'),
     });
   }
@@ -229,6 +293,8 @@ export function annotateRisk(rows, riskState, now = Date.now()) {
 export function checkStrategyConsistency(rows) {
   const allowed = {
     '已适配': ['ax', 'ax-read'],
+    // 矩阵没读过：策略仍是未判定（策略字段保持原语义，不因为细分状态而改）
+    '部分验证': ['unknown'],
     '可只用画面': ['visual'],
     '专用方案': ['dedicated'],
     '不动': ['no-touch'],
@@ -255,20 +321,21 @@ export function checkStrategyConsistency(rows) {
  * 其余应用大概率直接可用。这里把「每族装了多少、适配到什么程度、默认通道链」列清楚。
  *
  * @param {Array<{name:string, runtime?:string, status:string}>} rows
- * @returns {Array<{family:string, total:number, adapted:number, visual:number, dedicated:number, limited:number, untouched:number, untested:number, apps:string[], chain:string}>}
+ * @returns {Array<{family:string, total:number, adapted:number, partial:number, visual:number, dedicated:number, limited:number, untouched:number, untested:number, apps:string[], chain:string}>}
  */
 export function summarizeByFamily(rows) {
   const buckets = new Map();
   for (const row of rows || []) {
     const family = String((row && row.runtime) || '') || '未识别';
     if (!buckets.has(family)) {
-      buckets.set(family, { family, total: 0, adapted: 0, visual: 0, dedicated: 0, limited: 0, untouched: 0, untested: 0, apps: [] });
+      buckets.set(family, { family, total: 0, adapted: 0, partial: 0, visual: 0, dedicated: 0, limited: 0, untouched: 0, untested: 0, apps: [] });
     }
     const b = buckets.get(family);
     b.total += 1;
     if (row.name) b.apps.push(String(row.name));
     switch (row.status) {
       case '已适配': b.adapted += 1; break;
+      case '部分验证': b.partial += 1; break;
       case '可只用画面': b.visual += 1; break;
       case '专用方案': b.dedicated += 1; break;
       case '限制': b.limited += 1; break;
@@ -298,7 +365,8 @@ export function summarizeByFamily(rows) {
  * @returns {string[]}
  */
 export function nextProbeCommands(rows) {
-  const pending = (rows || []).filter((r) => r.status === '未测' && r.installed !== false && r.bundle && r.process);
+  // 「部分验证」也需要补跑矩阵：通道测过不代表读过界面
+  const pending = (rows || []).filter((r) => (r.status === '未测' || r.status === '部分验证') && r.installed !== false && r.bundle && r.process);
   if (!pending.length) return [];
   const apps = pending.map((r) => ({ name: r.name, bundle: r.bundle, process: r.process }));
   const json = JSON.stringify(apps);
@@ -323,7 +391,7 @@ export function renderInventoryMarkdown(rows, meta = {}) {
     '| 应用 | 门类 | 运行时 | 状态 | 建议控法 | 说明 |',
     '| --- | --- | --- | --- | --- | --- |',
   ];
-  const order = ['已适配', '可只用画面', '专用方案', '不动', '限制', '未测', '未安装'];
+  const order = ['已适配', '部分验证', '可只用画面', '专用方案', '不动', '限制', '未测', '未安装'];
   const sorted = [...rows].sort((a, b) => {
     const d = order.indexOf(a.status) - order.indexOf(b.status);
     return d !== 0 ? d : String(a.name).localeCompare(String(b.name));
@@ -334,6 +402,11 @@ export function renderInventoryMarkdown(rows, meta = {}) {
   }
   lines.push('');
   lines.push('汇总：' + order.filter((s) => counts.has(s)).map((s) => s + ' ' + counts.get(s)).join('，'));
+  if (counts.get('部分验证')) {
+    const names = rows.filter((r) => r.status === '部分验证').map((r) => r.name);
+    lines.push('其中 **部分验证（通道测过、矩阵未读界面）** ' + names.length + ' 个：' + names.join('、')
+      + ' —— 通道可用（CDP cdp-ok / AppleScript 只读通过），但还没跑 app-matrix 界面读数，不能算「已适配」，也不是「完全没测」');
+  }
   if (meta.riskCount) {
     lines.push('其中 ' + meta.riskCount + ' 个在**前台风险名单**里：历史测过能控，但现在默认跳过界面读取（`npm run front:risk` 可看/清）');
   }
@@ -349,12 +422,12 @@ export function renderInventoryMarkdown(rows, meta = {}) {
   lines.push('');
   lines.push('同一族共用一套通道：族里有应用跑通，新装同类软件通常直接可用。');
   lines.push('');
-  lines.push('| 运行时族 | 装了几个 | 已适配 | 可只用画面 | 专用方案 | 限制 | 不动 | 未测 | 默认通道链 |');
-  lines.push('| --- | --- | --- | --- | --- | --- | --- | --- | --- |');
+  lines.push('| 运行时族 | 装了几个 | 已适配 | 部分验证 | 可只用画面 | 专用方案 | 限制 | 不动 | 未测 | 默认通道链 |');
+  lines.push('| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |');
   for (const family of summarizeByFamily(rows)) {
-    lines.push('| ' + family.family + ' | ' + family.total + ' | ' + family.adapted + ' | ' + family.visual
-      + ' | ' + family.dedicated + ' | ' + family.limited + ' | ' + family.untouched + ' | '
-      + family.untested + ' | ' + family.chain + ' |');
+    lines.push('| ' + family.family + ' | ' + family.total + ' | ' + family.adapted + ' | ' + family.partial
+      + ' | ' + family.visual + ' | ' + family.dedicated + ' | ' + family.limited + ' | ' + family.untouched
+      + ' | ' + family.untested + ' | ' + family.chain + ' |');
   }
   const problems = checkStrategyConsistency(rows);
   lines.push('');
@@ -366,7 +439,7 @@ export function renderInventoryMarkdown(rows, meta = {}) {
     lines.push('');
     lines.push('## 下一步补测');
     lines.push('');
-    lines.push('下面这些应用装了但还没测，直接跑这条命令（探测完会自动关掉自己拉起的实例）：');
+    lines.push('下面这些应用还没跑矩阵（含「通道测过、矩阵未读」的），直接跑这条命令（探测完会自动关掉自己拉起的实例）：');
     lines.push('');
     lines.push('```bash');
     lines.push(next[0]);
