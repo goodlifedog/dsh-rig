@@ -11,6 +11,7 @@ import {
   summarizeByFamily,
   mergeInventory,
   renderInventoryMarkdown,
+  annotateRisk,
 } from '../core/app-inventory.mjs';
 
 test('名字归一化：去 .app、去多余空白、转小写', () => {
@@ -240,4 +241,30 @@ test('报告里会写出策略一致性结论', () => {
   assert.ok(good.includes('状态与建议控法一致'));
   const bad = renderInventoryMarkdown([{ name: 'B', status: '已适配', strategy: 'visual', detail: 'x' }]);
   assert.ok(bad.includes('不一致'));
+});
+test('风险名单标注：生效的标出「默认跳过读取」，过期的/不在名单的不标', () => {
+  const now = 1_800_000_000_000;
+  const state = {
+    apps: {
+      ChatGPT: { count: 3, expiresAt: now + 5 * 86400000 },
+      Expired: { count: 1, expiresAt: now - 1000 },
+    },
+  };
+  const rows = annotateRisk([
+    { name: 'ChatGPT', bundle: 'com.openai.codex', detail: '节点 13' },
+    { name: 'Expired', bundle: 'x.y', detail: '' },
+    { name: 'Calculator', bundle: 'com.apple.calculator', detail: '节点 37' },
+  ], state, now);
+  assert.equal(rows[0].riskSkip, true);
+  assert.match(rows[0].detail, /读取会抢前台/);
+  assert.match(rows[0].detail, /节点 13/, '原有说明不能丢');
+  assert.equal(rows[1].riskSkip, undefined);
+  assert.equal(rows[2].riskSkip, undefined);
+});
+
+test('风险名单标注：按 bundle 也能命中（名字本地化变了也不漏）', () => {
+  const now = 1_800_000_000_000;
+  const state = { apps: { 'WPS Office': { count: 1, expiresAt: now + 86400000 } } };
+  const rows = annotateRisk([{ name: 'wpsoffice', bundle: 'com.kingsoft.wpsoffice.mac', detail: '' }], state, now);
+  assert.equal(rows[0].riskSkip, true);
 });

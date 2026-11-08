@@ -10,7 +10,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PRESETS, presetNames, SPECIAL_APP_HANDLING } from '../core/app-presets.mjs';
-import { flattenPresets, mergeInventory, renderInventoryMarkdown, normalizeName, nextProbeCommands } from '../core/app-inventory.mjs';
+import { flattenPresets, mergeInventory, renderInventoryMarkdown, normalizeName, nextProbeCommands, annotateRisk } from '../core/app-inventory.mjs';
+import { loadRisk } from '../core/front-risk.mjs';
 import { scanDirs, scanShortcutStubs, readBundleInfo, userAppDirs, SYSTEM_APP_DIRS, FINDER_APP_PATH } from '../core/app-scan.mjs';
 import { profileApp } from '../core/app-profile.mjs';
 
@@ -123,13 +124,18 @@ async function main() {
     special: SPECIAL_APP_HANDLING,
     cdpByBundle: cdpHistory(),
   });
+  // 标出「历史测过能控、但现在被前台风险名单挡掉」的应用，避免报告显得它还在正常被控
+  const risk = loadRisk();
+  const annotated = annotateRisk(rows, risk);
+  const riskCount = annotated.filter((r) => r.riskSkip).length;
   // 快捷方式壳（Steam 游戏启动器这类）：不进接管统计，但要在报告里点名，避免"合计"对不上
   const stubs = await scanShortcutStubs([path.join(os.homedir(), 'Applications')]);
   const now = new Date();
-  const markdown = renderInventoryMarkdown(rows, {
+  const markdown = renderInventoryMarkdown(annotated, {
     now,
     matrixReport: matrix ? 'reports/app-matrix-*.json（合并全部历史）' : '还没有矩阵报告',
     shortcutStubs: stubs.map((s) => s.name + '（' + s.exe + '）'),
+    riskCount,
   });
   const dir = path.join(ROOT, 'reports');
   fs.mkdirSync(dir, { recursive: true });
@@ -139,7 +145,7 @@ async function main() {
 
   const counts = rows.reduce((acc, r) => { acc[r.status] = (acc[r.status] || 0) + 1; return acc; }, {});
   console.log('扫描到 ' + installed.length + ' 个应用' + (stubs.length ? '（另有 ' + stubs.length + ' 个快捷方式壳未计入：' + stubs.map((s) => s.name).join('、') + '）' : '') + '，预设门类：' + presetNames().join('/'));
-  console.log('状态汇总: ' + JSON.stringify(counts));
+  console.log('状态汇总: ' + JSON.stringify(counts) + (riskCount ? '；其中 ' + riskCount + ' 个在读取风险名单（默认跳过读取）' : ''));
   console.log('报告: reports/app-inventory-' + stamp + '.md');
   const next = nextProbeCommands(rows);
   if (next.length) console.log('下一步补测: ' + next[0]);

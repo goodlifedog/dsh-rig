@@ -185,6 +185,41 @@ export function mergeInventory({ installed = [], presetApps = [], tested = [], s
 }
 
 /**
+ * 给清点行补「读取会抢前台（前台风险名单）」标注。
+ *
+ * 报告要回答「这个应用现在到底能不能用」：历史测过「已适配」但在风险名单里的应用，
+ * 当前默认会被所有后台读取跳过——不标出来，看报告的人会以为它还在正常被控制。
+ *
+ * @param {Array<{name?:string, bundle?:string, detail?:string}>} rows
+ * @param {{apps?:Record<string,{expiresAt?:number,count?:number}>}} riskState
+ * @param {number} [now]
+ */
+export function annotateRisk(rows, riskState, now = Date.now()) {
+  const list = Array.isArray(rows) ? rows : [];
+  const apps = (riskState && riskState.apps) || {};
+  const clean = (value) => normalizeName(value).replace(/[^a-z0-9\u4e00-\u9fa5]/g, '');
+  const active = new Map();
+  for (const [name, entry] of Object.entries(apps)) {
+    if (!entry || !Number.isFinite(entry.expiresAt) || entry.expiresAt <= now) continue;
+    active.set(normalizeName(name), entry);
+    // 紧凑形式：'WPS Office' 与进程名 'wpsoffice' 也能对上（本地化名/进程名经常不一致）
+    if (clean(name)) active.set('#' + clean(name), entry);
+  }
+  return list.map((row) => {
+    if (!row) return row;
+    const keys = [normalizeName(row.name), normalizeName(row.bundle), normalizeName(row.process), '#' + clean(row.name), '#' + clean(row.process)];
+    const hit = keys.map((k) => active.get(k)).find(Boolean);
+    if (!hit) return row;
+    const daysLeft = Math.max(1, Math.ceil((hit.expiresAt - now) / (24 * 60 * 60 * 1000)));
+    const note = '读取会抢前台（前台风险名单，' + daysLeft + ' 天后过期），默认跳过界面读取';
+    return Object.assign({}, row, {
+      riskSkip: true,
+      detail: row.detail ? row.detail + '；' + note : note,
+    });
+  });
+}
+
+/**
  * 交叉校验「状态」和「建议控法」是否自相矛盾。
  * 两套判定是分开写的，规则一改就可能对不上（比如状态说已适配、策略却说只能画面操作）。
  *
@@ -299,6 +334,9 @@ export function renderInventoryMarkdown(rows, meta = {}) {
   }
   lines.push('');
   lines.push('汇总：' + order.filter((s) => counts.has(s)).map((s) => s + ' ' + counts.get(s)).join('，'));
+  if (meta.riskCount) {
+    lines.push('其中 ' + meta.riskCount + ' 个在**前台风险名单**里：历史测过能控，但现在默认跳过界面读取（`npm run front:risk` 可看/清）');
+  }
   const stubs = (meta.shortcutStubs || []).filter(Boolean);
   if (stubs.length) {
     lines.push('');
