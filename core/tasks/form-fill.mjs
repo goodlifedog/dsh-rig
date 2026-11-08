@@ -10,15 +10,23 @@ import { fileURLToPath } from 'node:url';
 import { ocu, guard } from '../agentd.mjs';
 
 const APP = process.env.TARGET_APP || 'Google Chrome';
+// H2：Chrome 标签的 AppleEvent 一律先过静默预检（未授权时不会发事件、不弹授权框）
+const CHROME_BUNDLE_ID = 'com.google.Chrome';
+const chromeAppleEventPreflight = createAppleEventPreflight({ bundleId: CHROME_BUNDLE_ID });
+const APPLEEVENT_BLOCKED = Object.freeze({ code: -1, stdout: '', stderr: 'automation-not-authorized' });
 const FRAG = 'zhipin.com/web/geek/jobs';
 import { resolveOcu, isScreenLocked, lockedSkipNotice } from '../platform.mjs';
+import { createAppleEventPreflight, runAppleEventGuarded } from '../appleevent-preflight.mjs';
 import { hidIdleMs } from '../front-watch.mjs';
 import { shouldDeferForActiveUser } from '../user-activity.mjs';
 import { isAppRunning } from '../background.mjs';
 import { requireAppRunning, reportAppPresence } from '../app-presence.mjs';
 
 import { isMac } from '../platform.mjs';
-if (!isMac) {
+// 只有直接运行时才按平台退出：单测会 import 本模块，不能在 import 时 process.exit
+const invokedDirectly = Boolean(process.argv[1])
+  && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (!isMac && invokedDirectly) {
   console.error('此任务依赖 osascript 或 sky_key（macOS 专属），Windows 版待移植；跨平台通路验证请跑 platform-demo');
   process.exit(2);
 }
@@ -112,16 +120,39 @@ nodeRepl.write("SWITCH_TAB_JSON=" + JSON.stringify(out));
     .replaceAll('__FRAG__', JSON.stringify(FRAG));
 }
 
-async function switchTabByAppleScript() {
-  const tabs = await run('osascript', ['-e', 'tell application "Google Chrome" to get URL of every tab of window 1']);
-  if (tabs.code !== 0) return { ok: false, error: tabs.stderr.trim() };
-  const list = tabs.stdout.split(', ').map((s) => s.trim());
-  const index = list.findIndex((u) => u.includes(FRAG));
+// H2：每个 AppleEvent 都先过 core/appleevent-preflight.mjs 的静默预检——
+//   granted/unknown → 照旧执行（参数逐字不变）；denied/needs-consent → 不发事件，返回 skipped。
+// options 仅供单测注入（run/preflight/onWarning），生产调用不传。
+export async function switchTabByAppleScript(options = {}) {
+  const opts = options || {};
+  const call = typeof opts.run === 'function' ? opts.run : run;
+  const preflight = typeof opts.preflight === 'function' ? opts.preflight : chromeAppleEventPreflight;
+  const onWarning = typeof opts.onWarning === 'function'
+    ? opts.onWarning
+    : ((message) => console.warn('⚠️ ' + message));
+  const fragment = String(opts.fragment || FRAG);
+  const guarded = (action, args) => runAppleEventGuarded({
+    action,
+    bundleId: CHROME_BUNDLE_ID,
+    preflight,
+    fallback: APPLEEVENT_BLOCKED,
+    onWarning,
+    run: () => call('osascript', args),
+  });
+
+  const tabs = await guarded('读取 Chrome 标签页（AppleEvent）', ['-e', 'tell application "Google Chrome" to get URL of every tab of window 1']);
+  if (tabs.allowed === false) return { ok: false, skipped: 'not-authorized', warning: tabs.warning, error: tabs.warning };
+  if (tabs.value.code !== 0) return { ok: false, error: tabs.value.stderr.trim() };
+  const list = tabs.value.stdout.split(', ').map((s) => s.trim());
+  const index = list.findIndex((u) => u.includes(fragment));
   if (index < 0) return { ok: false, error: '没有 BOSS 职位页标签' };
-  await run('osascript', ['-e', 'tell application "Google Chrome" to set active tab index of window 1 to ' + (index + 1)]);
+  const set = await guarded('切换 Chrome 标签页（AppleEvent）', ['-e', 'tell application "Google Chrome" to set active tab index of window 1 to ' + (index + 1)]);
+  if (set.allowed === false) return { ok: false, skipped: 'not-authorized', warning: set.warning, error: set.warning };
   await new Promise((r) => setTimeout(r, 900));
-  const check = await run('osascript', ['-e', 'tell application "Google Chrome" to get URL of active tab of window 1']);
-  return { ok: check.stdout.trim().includes(FRAG), url: check.stdout.trim(), tabIndex: index + 1 };
+  const check = await guarded('读取 Chrome 当前标签页（AppleEvent）', ['-e', 'tell application "Google Chrome" to get URL of active tab of window 1']);
+  if (check.allowed === false) return { ok: false, skipped: 'not-authorized', warning: check.warning, error: check.warning };
+  const url = check.value.stdout.trim();
+  return { ok: url.includes(fragment), url, tabIndex: index + 1 };
 }
 
 // 内层：找到搜索框，记录原值 -> 改成新关键词 -> 读回校验 -> 恢复原值 -> 再校验。
@@ -273,6 +304,11 @@ async function main() {
   if (!tab || !tab.ok) {
     const as = await switchTabByAppleScript();
     tab = Object.assign({}, tab || {}, { appleScript: as, ok: as.ok, after: as.url });
+    if (as.skipped === 'not-authorized') {
+      // 未授权不是失败：按环境跳过退出 0（等用户到 系统设置 → 隐私与安全性 → 自动化 授权）
+      console.log('环境跳过：Chrome 自动化未授权，不发送 AppleEvent 切标签（' + (as.warning || '') + '）');
+      return;
+    }
   }
   evidence.tabSwitch = { ok: !!(tab && tab.ok), before: tab && tab.before, after: tab && tab.after, attempts: tab && tab.attempts };
   console.log('    ok=', evidence.tabSwitch.ok, 'url=', evidence.tabSwitch.after);
@@ -328,9 +364,6 @@ async function main() {
 // 已知环境条件用显式「环境跳过」声明，由分类器按跳过处理；
 // 断言失败（页面结构变了/改不成关键词）仍然按 FAIL 报真失败，不许再借环境规则洗掉。
 const ENV_CONDITIONS = /当前就是前台|无法切回 BOSS 职位页|没有 BOSS 职位页标签/;
-
-const invokedDirectly = Boolean(process.argv[1])
-  && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (invokedDirectly) {
   main()

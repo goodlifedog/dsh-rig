@@ -14,6 +14,8 @@
  * Chrome 标签页 / 聊天记录只报告不删除。
  */
 import { execFile, execFileSync } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { ensureAppRunning, frontName, quitApp } from '../core/background.mjs';
 import { closeOcuMcp } from '../core/ocu-mcp.mjs';
@@ -21,6 +23,7 @@ import { countNotes, deleteTopNotes, deleteMarkedTestNotes, LEGACY_TEST_WORDS } 
 import { shouldQuitApp, shouldRunNoteCleanup } from '../core/cleanup-policy.mjs';
 import { resolveMaxTop, resolveTopDelete } from '../core/cleanup-limits.mjs';
 import { isDisposableTestDocument } from '../core/text-edit-guard.mjs';
+import { createAppleEventPreflight } from '../core/appleevent-preflight.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const dryRun = process.argv.includes('--dry-run');
@@ -40,6 +43,38 @@ function osa(script, timeoutMs = 20000) {
     return String(execFileSync('/usr/bin/osascript', ['-e', script], { timeout: timeoutMs })).trim();
   } catch {
     return '__ERR__';
+  }
+}
+
+// ---------- H2 缺口 C：TextEdit / Chrome 的 AppleEvent 先静默预检 ----------
+// 这个脚本会 tell TextEdit 读/关测试文稿、tell Chrome 读标签；首次未授权的机器上
+// 直接发会弹「自动化」授权框。复用 core/appleevent-preflight.mjs（task-57）的静默预检：
+//   granted / unknown / 超时 / 探测抛错 → 行为与改造前完全一致（osa 参数逐字不变）；
+//   denied / needs-consent → 不发任何 AppleEvent、什么都不删不关，报告里明确写环境跳过。
+export const TEXTEDIT_BUNDLE_ID = 'com.apple.TextEdit';
+export const CHROME_BUNDLE_ID = 'com.google.Chrome';
+
+/** 预检结论 → 是否允许发 AppleEvent（只有明确 allowed===false 才拦；unknown 仍尝试）。 */
+export function gateAllows(gate) {
+  return !(gate && gate.allowed === false);
+}
+
+/** 跳过时打印/写报告的一行原因。 */
+export function gateSkipReason(gate, action) {
+  const warning = gate && gate.warning;
+  return warning || (action + '：自动化未授权，已跳过该 AppleEvent（不弹授权框）');
+}
+
+/**
+ * 预检一次（注入 fake 便于单测）；预检自身抛错按 unknown 放行，不能因此拦住清理原逻辑。
+ * @returns {Promise<{allowed:boolean, status:string, warning?:string}>}
+ */
+async function preflightOrAllow(preflight, bundleId, action) {
+  try {
+    const result = await preflight({ action, bundleId });
+    return result && typeof result === 'object' ? result : { allowed: true, status: 'unknown' };
+  } catch (error) {
+    return { allowed: true, status: 'unknown', error: String((error && error.message) || error).slice(0, 120) };
   }
 }
 
@@ -128,47 +163,87 @@ async function purgeNotes(report) {
 async function cleanupNotes(report) {
   // 用户正在用电脑时连启动备忘录都别做：清理不该让人看到窗口弹出来
   const gate = shouldRunNoteCleanup({ userActive: userRecentlyActive(), force: forceNotes || forceAllNotes });
-  if (!gate.run) { report.push({ kind: 'note-skip-active', note: gate.reason }); return; }
+  if (!gate.run) { report.push({ kind: 'note-skip-active', note: gate.reason }); return 0; }
   const launch = await ensureAppRunning({ bundleId: 'com.apple.Notes', appName: 'Notes', processName: 'Notes' }, { waitMs: 6000 });
   if (launch.launched) launchedByUs.add('com.apple.Notes');
   await sleep(1000);
   // dry-run 永远不删：连 purgeNotes 都不调用，只报告会做什么。
-  if (dryRun) { report.push({ kind: 'note-dry-run', note: 'dry-run：只报告，不删除任何笔记' }); return; }
-  await purgeNotes(report);
+  if (dryRun) { report.push({ kind: 'note-dry-run', note: 'dry-run：只报告，不删除任何笔记' }); return 0; }
+  const removed = await purgeNotes(report);
   // 「最近删除」没法安全自动化：Notes 辅助功能读不到标题、侧边栏行也无法脚本选中，
   // 只能提示用户手动清（或等 30 天系统自动清）
   report.push({ kind: 'note-trash', note: '最近删除需手动清空：打开备忘录 → 最近删除 → 删除全部' });
   if (!launch.launched) report.push({ kind: 'note-app', note: 'Notes 本来就在运行，未关闭' });
+  return removed;
 }
 
-async function cleanupTextEdit(report) {
-  const running = osa('application "TextEdit" is running') === 'true';
-  if (!running) { report.push({ kind: 'textedit', running: false }); return; }
-  const count = Number(osa('tell application "TextEdit" to count documents')) || 0;
+/**
+ * 关闭 TextEdit 里的测试文稿。发 AppleEvent 前先静默预检自动化授权（H2 缺口 C）。
+ * denied/needs-consent → 什么都不读不关（deleted=0），报告 textedit-skipped + 打印一行原因。
+ * granted/unknown/超时 → 行为与改造前完全一致（osa 参数逐字不变）。
+ *
+ * @param {Array<object>} report
+ * @param {{deps?:{osa?:Function, sleep?:Function, quitApp?:Function, userActive?:Function, shouldQuitApp?:Function}, preflight?:Function}} [options]
+ * @returns {Promise<{deleted:number, skipped:boolean}>}
+ */
+export async function cleanupTextEdit(report, options = {}) {
+  const opts = options || {};
+  const deps = opts.deps || {};
+  const runOsa = deps.osa || osa;
+  const pause = deps.sleep || sleep;
+  const preflight = typeof opts.preflight === 'function'
+    ? opts.preflight
+    : createAppleEventPreflight({ bundleId: TEXTEDIT_BUNDLE_ID });
+  const action = '读取/关闭 TextEdit 测试文稿';
+  const gate = await preflightOrAllow(preflight, TEXTEDIT_BUNDLE_ID, action);
+  if (!gateAllows(gate)) {
+    const reason = gateSkipReason(gate, action);
+    report.push({
+      kind: 'textedit-skipped',
+      envSkip: true,
+      bundleId: TEXTEDIT_BUNDLE_ID,
+      status: gate.status || 'denied',
+      deleted: 0,
+      reason,
+    });
+    console.warn('[!] ' + reason);
+    return { deleted: 0, skipped: true };
+  }
+
+  const running = runOsa('application "TextEdit" is running') === 'true';
+  if (!running) { report.push({ kind: 'textedit', running: false }); return { deleted: 0, skipped: false }; }
+  const count = Number(runOsa('tell application "TextEdit" to count documents')) || 0;
+  let deleted = 0;
   for (let i = count; i >= 1; i -= 1) {
     // 判定必须同时满足「未命名」和「正文是测试格式」：只看正文里有没有关键词是不够的，
     // 用户自己的草稿粘一段带"后台测试"的文字就会被 saving no 丢掉（数据丢失）。
-    const name = osa('tell application "TextEdit" to get name of document ' + i).replace(/^__ERR__$/, '');
-    const text = osa('tell application "TextEdit" to get text of document ' + i).replace(/^__ERR__$/, '');
+    const name = runOsa('tell application "TextEdit" to get name of document ' + i).replace(/^__ERR__$/, '');
+    const text = runOsa('tell application "TextEdit" to get text of document ' + i).replace(/^__ERR__$/, '');
     const decision = isDisposableTestDocument({ name, text });
     if (!decision.ok) {
       report.push({ kind: 'textedit-keep', index: i, note: decision.reason });
       continue;
     }
     report.push({ kind: 'textedit-doc', index: i, marker: true, dryRun });
-    if (!dryRun) osa('tell application "TextEdit" to close document ' + i + ' saving no');
-    await sleep(250);
+    if (!dryRun) {
+      runOsa('tell application "TextEdit" to close document ' + i + ' saving no');
+      deleted += 1;
+    }
+    await pause(250);
   }
   if (!dryRun) {
-    const left = Number(osa('tell application "TextEdit" to count documents')) || 0;
-    const decision = shouldQuitApp({ launchedByUs: launchedByUs.has('com.apple.TextEdit'), userActive: userRecentlyActive(), quitResidual: CLEANUP_QUIT_RESIDUAL });
+    const left = Number(runOsa('tell application "TextEdit" to count documents')) || 0;
+    const userActive = (deps.userActive || userRecentlyActive)();
+    const decideQuit = deps.shouldQuitApp || shouldQuitApp;
+    const decision = decideQuit({ launchedByUs: launchedByUs.has('com.apple.TextEdit'), userActive, quitResidual: CLEANUP_QUIT_RESIDUAL });
     if (left === 0 && decision.quit) {
-      await quitApp({ bundleId: 'com.apple.TextEdit', appName: 'TextEdit', processName: 'TextEdit' });
+      await (deps.quitApp || quitApp)({ bundleId: 'com.apple.TextEdit', appName: 'TextEdit', processName: 'TextEdit' });
       report.push({ kind: 'textedit-quit', left });
     } else if (left === 0) {
       report.push({ kind: 'textedit-keep', note: decision.reason });
     }
   }
+  return { deleted, skipped: false };
 }
 
 async function quitTestApps(report) {
@@ -213,26 +288,64 @@ async function quitTestApps(report) {
   }
 }
 
-async function reportOnly(report) {
-  const urls = osa('tell application "Google Chrome" to get URL of every tab of every window', 8000);
-  if (urls && urls !== '__ERR__') {
-    const list = urls.split(', ').filter(Boolean);
-    const suspicious = list.filter((u) => /zhipin|boss|127\.0\.0\.1|localhost|data:text/i.test(u));
-    report.push({ kind: 'chrome-tabs', total: list.length, suspicious: suspicious.slice(0, 5) });
+/**
+ * 只读报告：Chrome 标签页（不删除任何东西）。发 AppleEvent 前同样先静默预检（H2 缺口 C）。
+ * denied/needs-consent → 不读标签，报告 chrome-skipped + 打印一行原因。
+ *
+ * @param {Array<object>} report
+ * @param {{deps?:{osa?:Function}, preflight?:Function}} [options]
+ * @returns {Promise<{read:boolean, skipped:boolean}>}
+ */
+export async function reportOnly(report, options = {}) {
+  const opts = options || {};
+  const deps = opts.deps || {};
+  const runOsa = deps.osa || osa;
+  const preflight = typeof opts.preflight === 'function'
+    ? opts.preflight
+    : createAppleEventPreflight({ bundleId: CHROME_BUNDLE_ID });
+  const action = '读取 Chrome 标签页';
+  const gate = await preflightOrAllow(preflight, CHROME_BUNDLE_ID, action);
+  if (!gateAllows(gate)) {
+    const reason = gateSkipReason(gate, action);
+    report.push({
+      kind: 'chrome-skipped',
+      envSkip: true,
+      bundleId: CHROME_BUNDLE_ID,
+      status: gate.status || 'denied',
+      reason,
+    });
+    console.warn('[!] ' + reason);
+  } else {
+    const urls = runOsa('tell application "Google Chrome" to get URL of every tab of every window', 8000);
+    if (urls && urls !== '__ERR__') {
+      const list = urls.split(', ').filter(Boolean);
+      const suspicious = list.filter((u) => /zhipin|boss|127\.0\.0\.1|localhost|data:text/i.test(u));
+      report.push({ kind: 'chrome-tabs', total: list.length, suspicious: suspicious.slice(0, 5) });
+    }
   }
   report.push({ kind: 'chatgpt', note: '聊天记录不在本次清理范围（用户数据，需要确认后再动）' });
+  return { read: gateAllows(gate), skipped: !gateAllows(gate) };
 }
 
 async function main() {
   const before = await frontName();
   const report = [];
-  await cleanupNotes(report);
-  await cleanupTextEdit(report);
+  // deleted 计数：未授权时 TextEdit/Chrome 一律跳过，这里必须是 0；dry-run 也必须是 0
+  const deleted = { notes: 0, textEdit: 0, chrome: 0 };
+  deleted.notes = await cleanupNotes(report);
+  const text = await cleanupTextEdit(report);
+  deleted.textEdit = text.deleted;
   await quitTestApps(report);
-  await reportOnly(report);
+  await reportOnly(report); // Chrome 只报告不删除，所以 chrome 恒为 0
   const after = await frontName();
-  console.log(JSON.stringify({ dryRun, front: { before, after }, report }, null, 1));
+  console.log(JSON.stringify({ dryRun, front: { before, after }, deleted, report }, null, 1));
   await closeOcuMcp().catch(() => {});
 }
 
-main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
+// 导入本模块（单测拿纯函数/带预检的清理函数）时不要真的跑清理；
+// npm run cleanup:test 直接执行本脚本时 process.argv[1] 就是它，照常执行。
+const invokedDirectly = Boolean(process.argv[1])
+  && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (invokedDirectly) {
+  main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
+}

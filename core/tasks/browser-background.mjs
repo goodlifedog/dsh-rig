@@ -11,7 +11,7 @@ import { overlayBase } from '../ports.mjs';
  */
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { frontName as sharedFrontName } from '../background.mjs';
 import { launch } from '../browser.mjs';
 import { isScreenLocked } from '../platform.mjs';
 import { tokenHeadersFor } from '../local-token.mjs';
@@ -30,10 +30,19 @@ const post = (pathname, body) => fetch(OVERLAY + pathname, {
   signal: AbortSignal.timeout(5000),
 }).then((r) => r.json()).catch(() => null);
 
-function frontName() {
+/**
+ * 读当前前台应用名（H2 缺口 A：不再对 System Events 发 AppleEvent）。
+ * 复用 core/background.mjs 的 frontName()（ObjC/NSWorkspace 读前台），
+ * 薄包装保持旧语义：拿不到返回 ''（共享实现失败时返回 '(unknown)'）。
+ * @param {() => Promise<string>} [reader] 单测注入用
+ */
+export async function frontName(reader = sharedFrontName) {
   try {
-    return execFileSync('/usr/bin/osascript', ['-e', 'tell application "System Events" to get name of first process whose frontmost is true'], { encoding: 'utf8' }).trim();
-  } catch { return '(unknown)'; }
+    const name = String((await reader()) || '').trim();
+    return name === '(unknown)' ? '' : name;
+  } catch {
+    return '';
+  }
 }
 
 async function main() {
@@ -47,7 +56,7 @@ async function main() {
     console.log((ok ? '  ✅ ' : '  ❌ ') + name + (extra && extra.detail ? '  ' + extra.detail : ''));
   };
 
-  const frontStart = frontName();
+  const frontStart = await frontName();
   const titleHint = (await getJson(OVERLAY + '/health?session=__none__'))?.dshTitle || '';
   console.log('起点前台:', frontStart, locked ? '（锁屏，前台断言跳过）' : '');
 
@@ -58,7 +67,7 @@ async function main() {
     headless: true,
     timeoutMs: 60000,
   });
-  const frontAfterLaunch = frontName();
+  const frontAfterLaunch = await frontName();
   record('后台启动浏览器（headless）' + (locked ? '（前台断言跳过）' : ''), locked ? true : frontStart === frontAfterLaunch, {
     detail: '耗时 ' + (Date.now() - t0) + 'ms，前台 ' + frontStart + ' → ' + frontAfterLaunch,
   });
@@ -114,7 +123,7 @@ async function main() {
     await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: link.x, y: link.y, button: 'left', clickCount: 1 });
     await sleep(1200);
     const url2 = await page.evaluate('location.href').catch(() => '');
-    const frontClick = frontName();
+    const frontClick = await frontName();
     record('后台点击链接并跳转', url1 !== url2, {
       detail: '「' + (link.text || '链接') + '」点击 ' + (Date.now() - clickAt) + 'ms，url=' + String(url1).slice(0, 30) + ' → ' + String(url2).slice(0, 40),
     });
@@ -124,7 +133,7 @@ async function main() {
   }
 
   // 5. 收尾
-  const frontEnd = frontName();
+  const frontEnd = await frontName();
   record('全程前台未变' + (locked ? '（前台断言跳过）' : ''), locked ? true : frontStart === frontEnd, { detail: frontStart + ' → ' + frontEnd });
 
   await browser.close();
@@ -141,4 +150,10 @@ async function main() {
   if (!report.ok) process.exitCode = 1;
 }
 
-main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
+// 导入本模块（单测拿薄包装）时不要执行任务本体；runner/daemon 仍然是 spawn node <file>。
+const invokedDirectly = Boolean(process.argv[1])
+  && (await import('node:path')).resolve(process.argv[1]) === (await import('node:url')).fileURLToPath(import.meta.url);
+
+if (invokedDirectly) {
+  main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
+}

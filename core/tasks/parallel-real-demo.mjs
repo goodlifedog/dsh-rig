@@ -8,10 +8,9 @@ import { overlayBase } from '../ports.mjs';
  *
  * 全程只用后台通路（AX 语义 / sky_key），不切前台；小窗画面来自 screencapture -l。
  */
-import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { ocu, withAppLock } from '../agentd.mjs';
-import { isAppRunning } from '../background.mjs';
+import { frontName as sharedFrontName, isAppRunning } from '../background.mjs';
 import { tokenHeadersFor } from '../local-token.mjs';
 
 const OVERLAY = overlayBase();
@@ -54,10 +53,19 @@ const post = (pathname, body) => fetch(OVERLAY + pathname, {
   signal: AbortSignal.timeout(5000),
 }).then((r) => r.json()).catch(() => null);
 
-function frontName() {
+/**
+ * 读当前前台应用名（H2 缺口 A：不再对 System Events 发 AppleEvent）。
+ * 复用 core/background.mjs 的 frontName()（ObjC/NSWorkspace），薄包装保持旧语义：
+ * 拿不到返回 ''（共享实现失败时返回 '(unknown)'）。
+ * @param {() => Promise<string>} [reader] 单测注入用
+ */
+export async function frontName(reader = sharedFrontName) {
   try {
-    return execFileSync('/usr/bin/osascript', ['-e', 'tell application "System Events" to get name of first process whose frontmost is true'], { encoding: 'utf8' }).trim();
-  } catch { return '(unknown)'; }
+    const value = String((await reader()) || '').trim();
+    return value === '(unknown)' ? '' : value;
+  } catch {
+    return '';
+  }
 }
 
 async function stateOf(app) {
@@ -141,7 +149,7 @@ async function main() {
     return;
   }
 
-  const before = frontName();
+  const before = await frontName();
   console.log('开始前前台:', before);
   console.log('回显目标:', plan.map((p) => p.target.app + '#' + p.win.windowId).join(' | '));
   if (picked.skipped.length) console.log('本次跳过:', picked.skipped.map((s) => s.app).join('、'));
@@ -159,7 +167,7 @@ async function main() {
   const elapsed = Date.now() - t0;
 
   const detail = results.map((r) => (r.status === 'fulfilled' ? r.value : { ok: false, error: String(r.reason).slice(0, 120) }));
-  const after = frontName();
+  const after = await frontName();
 
   for (let i = 0; i < plan.length; i += 1) {
     const d = detail[i] || {};

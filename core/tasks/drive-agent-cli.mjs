@@ -13,11 +13,10 @@ import { overlayBase } from '../ports.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
 import { getOcuMcp, closeOcuMcp } from '../ocu-mcp.mjs';
 import { restoreFront } from '../front-watch.mjs';
 import { isScreenLocked } from '../platform.mjs';
-import { isAppRunning } from '../background.mjs';
+import { frontName as sharedFrontName, isAppRunning } from '../background.mjs';
 import { requireAppRunning, reportAppPresence } from '../app-presence.mjs';
 import { tokenHeadersFor } from '../local-token.mjs';
 
@@ -30,10 +29,19 @@ const SESSION = 'agent-cli';
 const OVERLAY = overlayBase();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function front() {
+/**
+ * 读当前前台应用名（H2 缺口 A：不再对 System Events 发 AppleEvent）。
+ * 复用 core/background.mjs 的 frontName()（ObjC/NSWorkspace），薄包装保持旧语义：
+ * 拿不到返回 ''（共享实现失败时返回 '(unknown)'）。
+ * @param {() => Promise<string>} [reader] 单测注入用
+ */
+export async function front(reader = sharedFrontName) {
   try {
-    return execFileSync('/usr/bin/osascript', ['-e', 'tell application "System Events" to get name of first process whose frontmost is true'], { encoding: 'utf8' }).trim();
-  } catch { return '(unknown)'; }
+    const value = String((await reader()) || '').trim();
+    return value === '(unknown)' ? '' : value;
+  } catch {
+    return '';
+  }
 }
 const getJson = async (url) => {
   try { return await (await fetch(url, { headers: tokenHeadersFor(url), signal: AbortSignal.timeout(3000) })).json(); } catch { return null; }
@@ -70,7 +78,7 @@ async function main() {
     return;
   }
 
-  const before = front();
+  const before = await front();
 
   // 往用户终端里敲命令并回车，必须先确认没有把用户没写完的命令拼上去（同 terminal-control）
   const { frontRiskGate, readSafe } = await import('../background.mjs');
@@ -114,12 +122,12 @@ async function main() {
 
   const m = await getOcuMcp();
   const typed = await m.callTool('type_text', { app: APP, text: cmd, key_method: 'sky_key' });
-  const afterType = front();
+  const afterType = await front();
   if (afterType !== before) await restoreFront(before);
   record('后台键入命令', !typed.isError && afterType === before, afterType === before ? '' : '前台被抢（已还原）');
 
   const enter = await m.callTool('press_key', { app: APP, key: 'ENTER', key_method: 'sky_key' });
-  const afterEnter = front();
+  const afterEnter = await front();
   if (afterEnter !== before) await restoreFront(before);
   record('后台提交执行', !enter.isError && afterEnter === before, afterEnter === before ? '' : '前台被抢（已还原）');
 
@@ -141,7 +149,7 @@ async function main() {
   record('agent 执行完成', finished, finished ? Math.round((Date.now() - started) / 1000) + 's' : '超时未结束（已放弃等待）');
   record('拿到输出', output.length > 0, output ? output.slice(-80).replace(/\n/g, ' / ') : '空输出');
 
-  const end = front();
+  const end = await front();
   record('全程前台未变', before === end, before + ' -> ' + end);
 
   const report = {
@@ -170,4 +178,10 @@ async function main() {
   if (!report.ok) process.exitCode = 1;
 }
 
-main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
+// 导入本模块（单测拿薄包装）时不要执行任务本体；runner/daemon 仍然是 spawn node <file>。
+const invokedDirectly = Boolean(process.argv[1])
+  && (await import('node:path')).resolve(process.argv[1]) === (await import('node:url')).fileURLToPath(import.meta.url);
+
+if (invokedDirectly) {
+  main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
+}

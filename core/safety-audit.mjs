@@ -200,16 +200,10 @@ export const AUTOMATION_PREFLIGHT_FILE_ALLOWLIST = Object.freeze({
  * 每条都必须在理由里写「已知缺口」，补完预检后从这里删掉。
  */
 export const AUTOMATION_PREFLIGHT_KNOWN_GAPS = Object.freeze({
-  'core/tasks/app-matrix.mjs': '已知缺口：矩阵任务收尾还原前台的 AppleEvent 未接预检（有锁屏/前台风险门禁）',
-  'core/tasks/boss-scan.mjs': '已知缺口：读 Chrome 标签 URL 的 AppleScript 常量未接预检（有运行门禁，只读浏览器壳）',
-  'core/tasks/browser-background.mjs': '已知缺口：frontName 读前台名的 AppleEvent 未接预检',
-  'core/tasks/drive-agent.mjs': '已知缺口：front() 读前台名的 AppleEvent 未接预检（有 isAppRunning 门禁）',
-  'core/tasks/drive-agent-cli.mjs': '已知缺口：front() 读前台名的 AppleEvent 未接预检（有 isAppRunning 门禁）',
-  'core/tasks/form-fill.mjs': '已知缺口：读/切 Chrome 标签 URL 的 AppleScript 未接预检（只改浏览器壳标签）',
-  'core/tasks/form-fill-local.mjs': '已知缺口：frontName 的 AppleEvent 未接预检（本地 Electron 对照任务）',
-  'core/tasks/parallel-demo.mjs': '已知缺口：front() 读前台名的 AppleEvent 未接预检',
-  'core/tasks/parallel-real-demo.mjs': '已知缺口：front() 读前台名的 AppleEvent 未接预检',
-  'scripts/cleanup-test-data.mjs': '已知缺口：清理脚本的 AppleEvent（读/关测试文稿、读 Chrome 标签）未接预检；目前靠用户空闲门禁 + 测试格式判定兜底',
+  // 2026-11-08：H2 的 10 个已知缺口已全部补上静默预检（6 个任务删掉本地 front() 改共享 frontName、
+  // boss-scan / form-fill / app-matrix 走 runAppleEventGuarded、cleanup-test-data 走 createAppleEventPreflight），
+  // 清单已清零。以后若确实有「暂时补不了」的入口：在这里登记，理由必须写「已知缺口」，并同时改
+  // test/safety-audit-appleevent.test.mjs 里的数量上限（新增缺口要 Lead 明确同意），补完立即删掉。
 });
 
 /**

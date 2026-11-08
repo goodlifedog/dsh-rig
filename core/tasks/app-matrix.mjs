@@ -24,6 +24,7 @@ import { recommendStrategy } from '../app-strategy.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
 import { tokenHeadersFor } from '../local-token.mjs';
 import { decideRestore } from '../front-restore.mjs';
+import { createAppleEventPreflight, runAppleEventGuarded, SYSTEM_EVENTS_BUNDLE_ID } from '../appleevent-preflight.mjs';
 import { createRiskGate } from '../front-risk.mjs';
 import { installEmergencyAppCleanup } from '../task-emergency-cleanup.mjs';
 import { quitAppSync } from '../sync-quit.mjs';
@@ -69,12 +70,40 @@ if (process.env.MATRIX_APPS_JSON) {
   }
 }
 
-async function restoreFront(target) {
-  try {
-    await new Promise((resolve) => {
-      execFile('/usr/bin/osascript', ['-e', 'tell application "System Events" to set frontmost of process ' + JSON.stringify(target) + ' to true'], () => resolve());
-    });
-  } catch {}
+// H2：前台还原走 System Events 的 AppleEvent，先静默预检；未授权时变成 no-op（不弹授权框）。
+const systemEventsPreflight = createAppleEventPreflight({ bundleId: SYSTEM_EVENTS_BUNDLE_ID });
+let restoreBlockedWarned = false;
+function warnRestoreBlocked(message) {
+  if (restoreBlockedWarned) return;
+  restoreBlockedWarned = true;
+  console.warn('⚠️ ' + message);
+}
+
+/**
+ * 还原前台（可注入 preflight/execFile 供单测；生产不传）。
+ * @returns {Promise<{ok:boolean, allowed:boolean, skipped:string, warning:string, error:string}>}
+ *   skipped==='not-authorized' 表示未授权、没发 AppleEvent（调用方按 no-op 处理，不判失败）。
+ */
+export async function restoreFront(target, options = {}) {
+  const opts = options || {};
+  const execFileImpl = typeof opts.execFile === 'function' ? opts.execFile : execFile;
+  const result = await runAppleEventGuarded({
+    action: 'app-matrix 前台还原（System Events）',
+    bundleId: SYSTEM_EVENTS_BUNDLE_ID,
+    preflight: typeof opts.preflight === 'function' ? opts.preflight : systemEventsPreflight,
+    fallback: { skipped: true },
+    onWarning: typeof opts.onWarning === 'function' ? opts.onWarning : warnRestoreBlocked,
+    run: () => new Promise((resolve) => {
+      execFileImpl('/usr/bin/osascript', ['-e', 'tell application "System Events" to set frontmost of process ' + JSON.stringify(target) + ' to true'], () => resolve({ ok: true }));
+    }),
+  });
+  return {
+    ok: result.ran === true,
+    allowed: result.allowed !== false,
+    skipped: result.allowed === false ? 'not-authorized' : '',
+    warning: result.warning || '',
+    error: result.error || '',
+  };
 }
 
 /** 还原前台并复查：有些应用会在还原之后又异步把自己顶上来，所以多试几次、以最终状态为准 */
@@ -85,7 +114,11 @@ async function restoreFrontChecked(target, touched = [], attempts = 3) {
     if (decision === 'noop') return { ok: true, attempts: i };
     // 用户自己切到了别的应用：别再抢，如实记下来
     if (decision === 'leave-user') return { ok: false, leftUser: true, attempts: i, final: now };
-    await restoreFront(target);
+    const restored = await restoreFront(target);
+    if (restored.skipped === 'not-authorized') {
+      // 未授权：还原是 no-op，不发事件；调用方按环境跳过处理，不判任务失败
+      return { ok: false, skipped: 'not-authorized', warning: restored.warning, attempts: i + 1, final: now };
+    }
     await sleep(350);
   }
   const final = await frontName();
@@ -368,6 +401,10 @@ async function main() {
       row.frontRestored = restored.ok;
       row.frontLeftToUser = Boolean(restored.leftUser);
       row.frontRestoreAttempts = restored.attempts;
+      if (restored.skipped === 'not-authorized') {
+        row.frontRestoreSkipped = 'not-authorized';
+        row.frontRestoreWarning = restored.warning || '';
+      }
     }
     // 启动"成功"但现在已经没进程了：应用自己退出的，要如实标出来（抖音/Antigravity 实测这样）
     if (launch.launched) {
@@ -395,6 +432,10 @@ async function main() {
         row.frontRestoredAfterQuit = restored.ok;
         if (restored.ok) row.frontRestored = true;
         else if (restored.leftUser) row.frontLeftToUser = true;
+        if (restored.skipped === 'not-authorized') {
+          row.frontRestoreSkipped = 'not-authorized';
+          row.frontRestoreWarning = restored.warning || '';
+        }
       }
     }
     rows.push(row);
@@ -407,8 +448,16 @@ async function main() {
   const frontEnd = await frontName();
   // 判定口径：以"最终前台是否回到起点"为准；单步被抢但已还原的，如实留在行里当证据
   const allFrontOk = frontEnd === frontStart;
+  // 未授权导致还原 no-op：不能判成任务失败，按环境跳过（exit 0）处理
+  const restoreSkipped = finalRestore.skipped === 'not-authorized'
+    || rows.some((r) => r.frontRestoreSkipped === 'not-authorized');
   const skippedRows = rows.filter((r) => r.skipped);
   const verdict = summarizeMatrixVerdict(rows, allFrontOk);
+  if (restoreSkipped && !allFrontOk) {
+    verdict.ok = false;
+    verdict.envSkip = true;
+    verdict.problem = '前台未能还原：System Events 自动化未授权（' + SYSTEM_EVENTS_BUNDLE_ID + '），已跳过 AppleEvent（不弹授权框）';
+  }
   const summary = {
     ok: verdict.ok,
     problem: verdict.problem,
@@ -418,6 +467,8 @@ async function main() {
     frontStart,
     frontEnd,
     frontUnchangedAll: allFrontOk,
+    restoreSkipped,
+    restoreWarning: finalRestore.warning || '',
     readable: rows.filter((r) => r.readable).length,
     launchable: rows.filter((r) => r.launch !== 'error' && r.launchFrontUnchanged).length,
     clickable: rows.filter((r) => r.buttons > 0).length,
@@ -438,7 +489,7 @@ async function main() {
     '# 应用后台能力矩阵',
     '',
     '- 时间：' + new Date().toISOString(),
-    '- 前台：' + frontStart + ' -> ' + frontEnd + (allFrontOk ? '（未变）' : '（被抢占）'),
+    '- 前台：' + frontStart + ' -> ' + frontEnd + (allFrontOk ? '（未变）' : (restoreSkipped ? '（未能还原：自动化未授权，已跳过 AppleEvent）' : '（被抢占）')),
     '- 汇总：' + summary.readable + '/' + summary.total + ' 可读界面，' + summary.clickable + '/' + summary.total +
       ' 有可点击元素，' + summary.liveCapture + '/' + summary.total + ' 画面可直接回显',
     '',

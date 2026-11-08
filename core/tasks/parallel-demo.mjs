@@ -10,7 +10,7 @@ import { overlayBase } from '../ports.mjs';
  */
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { frontName as sharedFrontName } from '../background.mjs';
 import { launch } from '../browser.mjs';
 import { tokenHeadersFor } from '../local-token.mjs';
 
@@ -30,10 +30,19 @@ const post = (pathname, body) => fetch(OVERLAY + pathname, {
   signal: AbortSignal.timeout(5000),
 }).then((r) => r.json()).catch(() => null);
 
-function frontmostName() {
+/**
+ * 读当前前台应用名（H2 缺口 A：不再对 System Events 发 AppleEvent）。
+ * 复用 core/background.mjs 的 frontName()（ObjC/NSWorkspace），薄包装保持旧语义：
+ * 拿不到返回 ''（共享实现失败时返回 '(unknown)'）。
+ * @param {() => Promise<string>} [reader] 单测注入用
+ */
+export async function frontmostName(reader = sharedFrontName) {
   try {
-    return execFileSync('/usr/bin/osascript', ['-e', 'tell application "System Events" to get name of first process whose frontmost is true'], { encoding: 'utf8' }).trim();
-  } catch { return '(unknown)'; }
+    const value = String((await reader()) || '').trim();
+    return value === '(unknown)' ? '' : value;
+  } catch {
+    return '';
+  }
 }
 
 /** 让虚拟光标在两行之间来回移动，看起来像有人在操作 */
@@ -118,7 +127,7 @@ async function driveBrowser({ tag, session, url, userDataDir }) {
 }
 
 async function main() {
-  const before = frontmostName();
+  const before = await frontmostName();
   console.log('开始前前台:', before);
 
   const baseDir = path.join(os.homedir(), '.desktop-agent');
@@ -128,7 +137,7 @@ async function main() {
   ]);
 
   const results = [a, b].map((r) => (r.status === 'fulfilled' ? r.value : { error: String(r.reason).slice(0, 120) }));
-  const after = frontmostName();
+  const after = await frontmostName();
 
   const overlap = (() => {
     if (results.length < 2 || !results[0].startedAt || !results[1].startedAt) return 0;
@@ -146,4 +155,10 @@ async function main() {
   }, null, 2));
 }
 
-main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
+// 导入本模块（单测拿薄包装）时不要执行任务本体；runner/daemon 仍然是 spawn node <file>。
+const invokedDirectly = Boolean(process.argv[1])
+  && (await import('node:path')).resolve(process.argv[1]) === (await import('node:url')).fileURLToPath(import.meta.url);
+
+if (invokedDirectly) {
+  main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
+}

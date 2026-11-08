@@ -11,6 +11,7 @@ import path from 'node:path';
  */
 
 import { resolveOcu, isScreenLocked, lockedSkipNotice } from '../platform.mjs';
+import { frontName as sharedFrontName } from '../background.mjs';
 
 import { isMac } from '../platform.mjs';
 if (!isMac) {
@@ -270,12 +271,19 @@ nodeRepl.write("LOCAL_FILL_JSON=" + JSON.stringify(out));
   .replaceAll('__EDIT__', JSON.stringify(EDIT_VALUE))
   .replaceAll('__SEL__', JSON.stringify(SELECT_TARGET));
 
-function frontmost() {
-  return new Promise((resolve) => {
-    execFile('osascript', ['-e', 'tell application "System Events" to get name of first application process whose frontmost is true'], { encoding: 'utf8' }, (err, stdout) => {
-      resolve((stdout || '').trim());
-    });
-  });
+/**
+ * 读当前前台应用名（H2 缺口 A：不再对 System Events 发 AppleEvent）。
+ * 复用 core/background.mjs 的 frontName()（ObjC/NSWorkspace），薄包装保持旧语义：
+ * 拿不到返回 ''（共享实现失败时返回 '(unknown)'）。
+ * @param {() => Promise<string>} [reader] 单测注入用
+ */
+export async function frontmost(reader = sharedFrontName) {
+  try {
+    const value = String((await reader()) || '').trim();
+    return value === '(unknown)' ? '' : value;
+  } catch {
+    return '';
+  }
 }
 
 async function waitForHostWindow(timeoutMs = 20000) {
@@ -381,6 +389,12 @@ async function main() {
   return allPass ? 0 : 1;
 }
 
-main()
-  .then((code) => process.exit(code))
-  .catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
+// 导入本模块（单测拿薄包装）时不要执行任务本体；runner/daemon 仍然是 spawn node <file>。
+const invokedDirectly = Boolean(process.argv[1])
+  && (await import('node:path')).resolve(process.argv[1]) === (await import('node:url')).fileURLToPath(import.meta.url);
+
+if (invokedDirectly) {
+  main()
+    .then((code) => process.exit(code))
+    .catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
+}
