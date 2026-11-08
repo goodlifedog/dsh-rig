@@ -48,3 +48,25 @@ node core/tasks/adapter-demo.mjs --app Electron --type-text "AGENT-TEST" --allow
 ```
 
 旁证：`--help` 已列出 `--allow-write` / `--min-idle`，参数不是暗桩。
+
+## 五、新发现（待修，非安全问题）：`--allow-write` 在「已有内容」的输入框上不生效
+
+实测（夹具：先 AX 设值 USERDATA，再跑覆写）：
+
+```
+gate        ✅ Electron 已在运行，直接读
+read-tree   ✅ nodes=23，按钮 4，输入区 1
+type-text   ⚠️ 环境跳过：界面树里找不到可写输入区（文本栏/搜索框/空正文区）
+```
+
+现象：字段有内容时，即使加了 `--allow-write`，`pickTypeTarget` 仍返回「找不到可写输入区」，
+覆盖路径走不到。**安全上没问题（拒绝写入是对的）**，但「强制覆盖后恢复」这个能力实际不可用。
+
+建议：
+1. `pickTypeTarget` 在 allowWrite=true 时应接受「有内容但可写」的文本栏/搜索框（返回 found + 当前值）
+2. 补单测：有内容的树 + allowWrite → 应选中该字段；无 allowWrite → 拒绝
+3. 修完再用夹具验一次「覆盖 → 恢复回 USERDATA」
+
+## 六、当前环境：屏幕已锁
+
+23:57 检查：锁屏=true、前台读不到（-1719）。GUI 类验证全部暂停，等解锁后继续。
