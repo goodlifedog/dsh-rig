@@ -15,7 +15,10 @@ export const OPEN_BACKGROUND_ALLOWLIST = Object.freeze({
 export const UI_GUARD_ALLOWLIST = ['greet-inner.mjs'];
 
 /** 只看任务目录（这些是真正会动用户应用和屏幕的代码） */
-export const UI_ACTION_RE = /ocu\.|getAXState|readSafe|findSafe|snapshot\(|state\(|click\(|find\(|typeText|pressKey|setValue/;
+// 同名方法排除：`list.find(` / `map.click(` 这类不是界面操作，别误判成任务在动界面。
+// 注意 getAXState/readSafe/findSafe 常写成 `app.getAXState()`，必须保留（不加后行断言）。
+export const UI_ACTION_RE =
+  /ocu\.|getAXState|readSafe|findSafe|snapshot\(|typeText|pressKey|(?<![\w.])(?:state\(|click\(|find\(|setValue\()/;
 export const UI_GUARD_RE = /isScreenLocked|lockedSkipNotice|foreignAcceptanceOwner|acceptanceLock|ACCEPT_|withAppLock|frontRiskGate|risk\.shouldSkip/;
 
 

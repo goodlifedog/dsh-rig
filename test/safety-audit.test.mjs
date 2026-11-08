@@ -50,6 +50,10 @@ test('打开系统设置隐私面板是显式例外（要用户手动授权，�
 
 test('界面操作没有锁屏/前台/互斥护栏 → 抓出来', () => {
   assert.deepEqual(rules('core/tasks/x.mjs', 'const s = await app.getAXState();'), ['ui-without-guard']);
+  // 同名方法（list.find / map.click）不是界面操作，别误判成任务在动界面（H3 批次踩过）
+  assert.deepEqual(rules('core/tasks/x.mjs', 'const row = list.find((i) => i.app === app); map.click(1);'), []);
+  assert.ok(rules('core/tasks/x.mjs', 'const s = await state(APP);').includes('ui-without-guard'));
+  assert.deepEqual(rules('core/tasks/x.mjs', 'const s = await app.getAXState();'), ['ui-without-guard']);
   assert.deepEqual(rules('core/tasks/x.mjs', 'if (await isScreenLocked()) return; const s = await app.getAXState();'), []);
   assert.deepEqual(rules('core/tasks/x.mjs', 'if (risk.shouldSkip(app)) return; const s = await app.getAXState();'), []);
 });
