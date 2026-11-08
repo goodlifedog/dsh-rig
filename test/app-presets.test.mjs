@@ -4,8 +4,53 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PRESETS, presetNames, presetApps } from '../core/app-presets.mjs';
 
+// 允许带空格的 process（系统应用的可执行名本身就带空格，pgrep -x 能匹配，属"必要"例外）
+const PROCESS_ALLOW_SPACE = new Set(['System Settings']);
+
 test('预设门类齐全', () => {
-  assert.deepEqual(presetNames(), ['dev', 'im', 'media', 'office', 'system', 'tools']);
+  assert.deepEqual(presetNames(), [
+    'calendar',
+    'dev',
+    'im',
+    'mail',
+    'media',
+    'office',
+    'photos',
+    'reading',
+    'system',
+    'tools',
+  ]);
+});
+
+test('新增门类：mail / calendar / reading / photos 及 media 里的 Music', () => {
+  // 值来自各应用 Info.plist（CFBundleIdentifier / CFBundleExecutable），不是猜的
+  const expected = {
+    mail: [{ name: 'Mail', bundle: 'com.apple.mail', process: 'Mail' }],
+    calendar: [
+      { name: 'Calendar', bundle: 'com.apple.iCal', process: 'Calendar' },
+      { name: 'Reminders', bundle: 'com.apple.reminders', process: 'Reminders' },
+    ],
+    reading: [{ name: 'Preview', bundle: 'com.apple.Preview', process: 'Preview' }],
+    photos: [{ name: 'Photos', bundle: 'com.apple.Photos', process: 'Photos' }],
+  };
+  for (const [preset, apps] of Object.entries(expected)) {
+    assert.ok(PRESETS[preset], preset + ' 门类不存在');
+    assert.deepEqual(presetApps(preset), apps, preset + ' 门类内容不对');
+  }
+  // Music 并入 media，原有两个创作类应用不挪走
+  assert.deepEqual(presetApps('media'), [
+    { name: 'iMovie', bundle: 'com.apple.iMovieApp', process: 'iMovie' },
+    { name: 'GarageBand', bundle: 'com.apple.garageband10', process: 'GarageBand' },
+    { name: 'Music', bundle: 'com.apple.Music', process: 'Music' },
+  ]);
+});
+
+test('新增门类的 bundle 都是 com.apple.* 系统应用', () => {
+  for (const preset of ['mail', 'calendar', 'reading', 'photos']) {
+    for (const app of PRESETS[preset]) {
+      assert.ok(app.bundle.startsWith('com.apple.'), preset + ' 的 ' + app.name + ' 不是系统应用：' + app.bundle);
+    }
+  }
 });
 
 test('每个条目都有 name / bundle / process', () => {
@@ -15,6 +60,10 @@ test('每个条目都有 name / bundle / process', () => {
       assert.ok(app.name && typeof app.name === 'string', preset + ' 有条目缺 name');
       assert.ok(/^[a-z0-9-]+(\.[A-Za-z0-9-]+)+$/.test(app.bundle), preset + ' 的 ' + app.name + ' bundle 不像反向域名：' + app.bundle);
       assert.ok(app.process && typeof app.process === 'string', preset + ' 的 ' + app.name + ' 缺 process');
+      // process 是 pgrep -x 的匹配串，通常不应带空格（「系统设置」这类系统应用的可执行名确实有空格）
+      if (!PROCESS_ALLOW_SPACE.has(app.process)) {
+        assert.ok(/^[A-Za-z0-9._+-]+$/.test(app.process), preset + ' 的 ' + app.name + ' process 含空格或非法字符：' + app.process);
+      }
     }
   }
 });
