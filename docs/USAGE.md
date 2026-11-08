@@ -391,20 +391,41 @@ curl -s -H "X-Agent-Token: $TOKEN" http://127.0.0.1:7788/health | head -c 400   
 
 ### 4.4 权限缺失
 
-需要两项系统权限：**辅助功能**（读/点 AX 树）和 **屏幕录制**（按窗口抓图）。
+需要**三项**系统权限（对照表见下）：**辅助功能**（读/点 AX 树）、**屏幕录制**（按窗口抓图、读窗口标题）、
+**自动化**（AppleScript 控制别的应用，按「发起方 → 目标应用」成对授权）。
 
-1. 判定：`npm run doctor` 看「ocu 可执行文件 / 控制后端」；更细的用
-   ```bash
-   OPEN_COMPUTER_USE_VISUAL_CURSOR=0 ocu doctor --json
-   ```
-   （`core/permissions.mjs` 就是解析它的 `accessibilityTrusted` / `screenCaptureGranted`）。
-2. 授权对象：**启动小窗的那个进程**——终端（Terminal/iTerm）、Electron、或打包后的 App，三个是不同的授权条目。
+1. 判定：
+   - 统一自检：`npm run doctor`（或 daemon 的 `/selftest`）现在把 **辅助功能 / 自动化 / 屏幕录制** 三项分开报，
+     缺哪项、去哪个设置页都写清楚（旧版只报一项、还把自动化误标成辅助功能）。
+   - 底层结论：`OPEN_COMPUTER_USE_VISUAL_CURSOR=0 ocu doctor --json`
+     （`core/permissions.mjs` 解析它的 `accessibilityTrusted` / `screenCaptureGranted`）。
+   - 任务被跳过时看输出：`环境跳过：缺少辅助功能权限…` 这类行就是权限闸门（`core/permission-gate.mjs`）拦下的，
+     **不算失败、退出码 0**；临时要强跑可设 `AGENT_ALLOW_MISSING_PERMISSION=1`（只用于排障）。
+2. 授权对象（谁被授权取决于「谁在发起操作」，不同启动方式会变成不同条目，这是正常的）：
+   | 谁在跑 | 需要授权的条目 |
+   | --- | --- |
+   | 终端里跑 `npm run …` | 你的终端（Terminal / iTerm / VS Code 集成终端） |
+   | 通过 launchd 后台服务跑（daemon） | 跑 daemon 的那个 node（`process.execPath`，通常 `~/.local/bin/node`） |
+   | 打包后的 Desktop Agent.app | 应用自身 |
+   | ocu 自己截图 / 读窗口 | `Open Computer Use.app`（ocu 原生运行时） |
+   | AppleScript 控制某个应用 | 发起方进程 × 目标应用（例如「node 想控制 System Events」） |
 3. 打开设置：
    - 辅助功能：系统设置 → 隐私与安全性 → 辅助功能
    - 屏幕录制：系统设置 → 隐私与安全性 → 屏幕录制
-   - 改完必须**重启小窗/终端**才生效。
-4. 打包 App 首次打开被 Gatekeeper 拦：`xattr -cr "/Applications/Desktop Agent.app"`，或右键 → 打开。
-5. 症状速查：AX 读不到 → 辅助功能；缩略图黑/「画面不可用」/ `GET /windows` 500 → 屏幕录制；锁屏时两项都不可用（见 4.5）。
+   - 自动化：系统设置 → 隐私与安全性 → 自动化（展开对应发起方，勾上目标应用）
+   - 改完必须**重启对应进程**（终端 / 小窗 / daemon）才生效。
+4. 我们自己会做静默预检，尽量不打扰你：
+   - 前台读取默认走 ObjC（不发 AppleEvent），失败才回退 AppleScript（`AGENT_FRONT_READ=applescript` 可强制旧行为）；
+   - Safari JS 探针、笔记清理、退出应用、冷启动验收在发 AppleEvent 前都会先静默查自动化授权（不会弹框）；
+   - 小窗抓图前先查屏幕录制权限（`CGPreflightScreenCaptureAccess`，不弹框）；未授权就不抓图并显示「缺少屏幕录制权限」。
+5. 打包 App 首次打开被 Gatekeeper 拦：`xattr -cr "/Applications/Desktop Agent.app"`，或右键 → 打开。
+6. 症状速查：
+   | 症状 | 缺哪项 | 去哪授权 |
+   | --- | --- | --- |
+   | AX 读不到 / 任务「环境跳过：缺少辅助功能权限」 | 辅助功能 | 隐私与安全性 → 辅助功能 |
+   | 缩略图黑 / 「画面不可用：缺少屏幕录制权限」/ 窗口标题全空 | 屏幕录制 | 隐私与安全性 → 屏幕录制 |
+   | AppleScript 报 `-1743` / `-1744` / 任务「环境跳过：缺少自动化权限」 | 自动化 | 隐私与安全性 → 自动化 |
+   | 锁屏时辅助功能 + 屏幕录制都不可用 | 环境限制 | 解锁后重跑（见 4.5） |
 
 ### 4.5 锁屏时变慢 / 超时
 

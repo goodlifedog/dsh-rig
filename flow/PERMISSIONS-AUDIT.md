@@ -274,7 +274,7 @@ TCC 服务名：`kTCCServiceAccessibility`（辅助功能）、`kTCCServiceApple
 | H5 daemon 自检把自动化误报成辅助功能 | ✅ 已修 | `selfTest` 拆成 accessibility / automation / screenCapture 三项，hint 各自指向正确设置页；旧 `checks.systemEvents`/`ok` 兼容 | `9202961` |
 | M1 屏幕录制零预检 | ✅ 已修 | 抓图前 `CGPreflightScreenCaptureAccess` 静默预检（15s 缓存、unknown 不阻断）；未授权不跑 screencapture，回 `permission-missing` +「打开设置」 | `2bd5f8a`；11 条单测 |
 | M2 无录屏时窗口标题静默为空 | ✅ 已修 | `classifyWindowTitles` 判「全空/大量为空」，`/health.windowTitles` 暴露；抓图失败文案与「目标窗口已失效」区分 | `2bd5f8a` |
-| M3 授权主体说法不统一 | ⬜ 待办 | 文档层统一（node / 打包 App / ocu 三种主体在不同启动方式下各自成立，需要写清对照表） | — |
+| M3 授权主体说法不统一 | 🟡 文档已统一 | `docs/USAGE.md` 4.4 改成「启动方式 → 被授权条目」对照表（终端 / launchd daemon 的 node / 打包 App / ocu 自己截图 / AppleScript 发起方 × 目标应用），并补上自动化权限与三项症状速查；daemon 自检 hint 已按 H5 分项指对设置页 | 本次（见 CHANGELOG） |
 | M4 ocu 首次截图是否弹授权框 | ⬜ 待办 | 需要干净 TCC 环境实测，不能靠静态推断 | — |
 | M5 openPermissionSettings 死代码 | ⬜ 待办 | 删掉或让 overlay 复用；属小重构 | — |
 
