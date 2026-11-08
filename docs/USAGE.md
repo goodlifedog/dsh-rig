@@ -449,7 +449,7 @@ curl -s -H "X-Agent-Token: $TOKEN" http://127.0.0.1:7788/health | head -c 400   
 | `npm run restart:check` | `node scripts/restart-check.mjs` | 真重启两服务并验证健康 |
 | `npm run accept` | `node core/acceptance.mjs` | 端到端验收（需要两服务在线） |
 | `npm run verify:live` | `node scripts/live-verify.mjs` | 解锁后一条命令跑完全部屏幕类验收（acceptance + bg:verify + 小窗回归 + 会话隔离 + 帧率），锁屏时如实环境跳过（`LIVE_KEEP_AWAKE=1` 用 caffeinate 防跑一半锁屏） |
-| `npm run front:risk` | `node scripts/front-risk.mjs` | 前台风险名单：哪些应用「一读就把自己顶到前台」会被矩阵/协商跳过（默认 30 天过期）；`--clear "应用名"` 清掉重测、`--seed` 从历史报告补种、`--clear-all` 全清；`AGENT_FRONT_RISK=off` 临时强制全测 |
+| `npm run front:risk` | `node scripts/front-risk.mjs` | 前台风险名单：哪些应用「一读就把自己顶到前台」会被所有后台读取（readSafe/findSafe，含矩阵/协商）跳过（默认 30 天过期）；`--clear "应用名"` 清掉重测、`--seed` 从历史报告补种、`--clear-all` 全清；`AGENT_FRONT_RISK=off` 临时强制全测 |
 | `npm run demo:platform` | `node core/runner.mjs run platform-demo` | 平台通路演示 |
 | `npm run bench:ocu` | `node scripts/bench-ocu.mjs 4` | ocu 效率基线（CLI vs MCP 常驻） |
 | `npm run check:ocu` | `node scripts/check-ocu.mjs` | 对比随包 ocu 与 npm 最新版 |

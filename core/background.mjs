@@ -14,10 +14,27 @@ import { getOcuMcp } from './ocu-mcp.mjs';
 import { restoreFront } from './front-watch.mjs';
 import { loadCache, saveCache, methodOrder, recordMethod } from './capabilities.mjs';
 import { isSafeIdentifier, pidMatchesProcess } from './safety.mjs';
+import { createRiskGate } from './front-risk.mjs';
 import os from 'node:os';
 import path from 'node:path';
 
 const exec = promisify(execFile);
+
+/**
+ * 默认前台风险门控：所有 readSafe / findSafe 都受它保护。
+ * 名单里的应用"一读就会自己跳到前台"，已经记录过证据，就不再读——这是用户最在意的"不切屏"。
+ * 不想用（例如确认应用已修好要重测）：AGENT_FRONT_RISK=off，或单次调用传 { risk: false }。
+ */
+let defaultRiskGate = null;
+export function frontRiskGate() {
+  if (!defaultRiskGate) defaultRiskGate = createRiskGate({ enabled: process.env.AGENT_FRONT_RISK !== 'off' });
+  return defaultRiskGate;
+}
+
+/** 测试用：丢掉缓存的名单（改了 AGENT_FRONT_RISK 或名单文件后重新读） */
+export function resetFrontRiskGate() {
+  defaultRiskGate = null;
+}
 
 /** 当前前台应用（中文名） */
 export async function frontName() {
@@ -471,7 +488,7 @@ export async function readSafe(app, options = {}) {
   const deps = Object.assign({ frontName, state, restoreFront }, opts.deps || {});
   // 前台风险名单：应用之前实测过"一读就自己跳到前台"，就别再读它了——
   // 每次读虽然会还原，但用户已经看到一次闪动，反复跑矩阵会一直闪。
-  const risk = opts.risk || null;
+  const risk = opts.risk === false ? null : (opts.risk || frontRiskGate());
   if (risk && typeof risk.shouldSkip === 'function' && risk.shouldSkip(app)) {
     return {
       text: '',
@@ -509,7 +526,7 @@ export async function readSafe(app, options = {}) {
 export async function findSafe(app, query, options = {}) {
   const opts = options || {};
   const deps = Object.assign({ frontName, find, restoreFront }, opts.deps || {});
-  const risk = opts.risk || null;
+  const risk = opts.risk === false ? null : (opts.risk || frontRiskGate());
   if (risk && typeof risk.shouldSkip === 'function' && risk.shouldSkip(app)) {
     return {
       matches: [],

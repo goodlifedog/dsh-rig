@@ -26,7 +26,7 @@ function makeDeps({ tree = 'x'.repeat(80), matches = [], stealOnState = null, st
 
 test('读取把前台抢走时：立刻还原，并如实标记', async () => {
   const d = makeDeps({ stealOnState: 'Ghostty' });
-  const r = await readSafe('Ghostty', { deps: d.deps });
+  const r = await readSafe('Ghostty', { deps: d.deps, risk: false });
   assert.equal(r.frontStolen, true);
   assert.deepEqual(d.restored, ['DSH'], '一次读取只该还原一次');
   assert.equal(d.state.front, 'DSH');
@@ -35,14 +35,14 @@ test('读取把前台抢走时：立刻还原，并如实标记', async () => {
 
 test('读取没有抢前台：不做任何还原', async () => {
   const d = makeDeps();
-  const r = await readSafe('备忘录', { deps: d.deps });
+  const r = await readSafe('备忘录', { deps: d.deps, risk: false });
   assert.equal(r.frontStolen, false);
   assert.equal(d.restored.length, 0);
 });
 
 test('读取抛错也要检查并还原前台', async () => {
   const d = makeDeps({ stealOnState: 'ChatGPT', stateError: new Error('AX 挂了') });
-  const r = await readSafe('某应用', { deps: d.deps });
+  const r = await readSafe('某应用', { deps: d.deps, risk: false });
   assert.ok(/AX 挂了/.test(r.error));
   assert.equal(r.frontStolen, true);
   assert.deepEqual(d.restored, ['DSH']);
@@ -50,7 +50,7 @@ test('读取抛错也要检查并还原前台', async () => {
 
 test('可以关闭自动还原（交给上层统一处理）', async () => {
   const d = makeDeps({ stealOnState: 'Ghostty' });
-  const r = await readSafe('Ghostty', { deps: d.deps, restore: false });
+  const r = await readSafe('Ghostty', { deps: d.deps, restore: false, risk: false });
   assert.equal(r.frontStolen, true);
   assert.equal(d.restored.length, 0);
 });
@@ -91,7 +91,7 @@ test('查询也走风险名单', async () => {
 
 test('查询同样有前台保护', async () => {
   const d = makeDeps({ stealOnFind: 'ChatGPT', matches: [{ index: 1, title: '按钮' }] });
-  const r = await findSafe('ChatGPT', { role: 'AXButton' }, { deps: d.deps });
+  const r = await findSafe('ChatGPT', { role: 'AXButton' }, { deps: d.deps, risk: false });
   assert.equal(r.matches.length, 1);
   assert.equal(r.frontStolen, true);
   assert.deepEqual(d.restored, ['DSH'], '查询也只还原一次');

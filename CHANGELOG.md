@@ -2,6 +2,7 @@
 
 ## 未发布
 
+- 前台风险门控改为**默认生效**：`readSafe`/`findSafe` 不传 `risk` 也会查名单（`risk:false` 或 `AGENT_FRONT_RISK=off` 关闭），任何后台读取都不会再碰到「一读就抢前台」的应用；实测对 Ghostty 的读取 125ms 返回跳过、前台全程未变
 - `settleFront` 再收紧：只还原「抢前台的那个应用」，如果前台换成了第三个应用（用户自己切走了）立刻停手并标 `stoppedByUser`，不再把用户拽回来；期望前台未知（`(unknown)`）时不盲目 set frontmost。Chrome 启动后的延迟还原也只在「前台仍是 Chrome」时才执行，不会再把你从手动切换的应用拉回去。新增 2 项单测
 - 新增不切屏前台风险名单（用户最在意的点）：实测 Ghostty/ChatGPT/QQ/Gemini/Telegram/WPS 等应用被 AX 读取后会自己激活、导致闪前台；现在一旦读到抢前台就记进 `~/.desktop-agent/front-risk.json`（600、30 天过期），矩阵/通道协商对名单里的应用直接跳过读取（连抓帧也不做）并标环境跳过，报告可查；`npm run front:risk` 看/清名单（`--clear`、`--clear-all`、`--seed`），`AGENT_FRONT_RISK=off` 可强制全测。已从 41 份历史矩阵报告补种 9 个应用（ChatGPT 5 次、Telegram 5 次、Steam 4 次、WPS 4 次、UURemote 2 次、Gemini/Ghostty/iRightMouse/QQ 各 1 次）
 - 修 `guard()` 只报错不还原的问题：检测到目标应用被激活时，先把前台还原给操作前的应用再抛错（以前会把被抢的应用留在前台，用户看到的就是一次切屏）；新增 5 项单测

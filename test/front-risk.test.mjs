@@ -112,6 +112,16 @@ test('门控：shouldSkip/note/clear 走同一份文件；enabled=false 时全�
   }
 });
 
+test('默认门控：AGENT_FRONT_RISK=off 时全部放行（保留强制重测的出口）', async () => {
+  const { frontRiskGate, resetFrontRiskGate } = await import('../core/background.mjs');
+  const prev = process.env.AGENT_FRONT_RISK;
+  process.env.AGENT_FRONT_RISK = 'off';
+  resetFrontRiskGate();
+  assert.equal(frontRiskGate().shouldSkip('Ghostty'), false);
+  if (prev === undefined) delete process.env.AGENT_FRONT_RISK; else process.env.AGENT_FRONT_RISK = prev;
+  resetFrontRiskGate();
+});
+
 test('从历史矩阵报告补种：只认明确抢过前台的证据', () => {
   const now = Date.now();
   const rows = [

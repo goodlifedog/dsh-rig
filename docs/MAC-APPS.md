@@ -251,7 +251,7 @@ npm run apps:probe -- 抖音,Antigravity --keep
 虽然 `readSafe()` 会立刻把前台还原，用户还是能看到一次闪动。现在按实测证据积累名单，不再反复触发：
 
 - 读取时一旦发现前台被抢，就记进 `~/.desktop-agent/front-risk.json`（600 权限，默认 30 天自动过期）
-- 矩阵/通道协商对名单里的应用**直接跳过界面读取**（连抓帧也不做），报告里标「该应用读取会抢前台，已跳过」，不会产出假的"不可读"结论
+- **所有 `readSafe()` / `findSafe()` 默认都受名单保护**：名单里的应用直接跳过界面读取（连抓帧也不做），报告里标「该应用读取会抢前台，已跳过」，不会产出假的"不可读"结论
 - 查看/清除：`npm run front:risk` 看名单；`npm run front:risk -- --clear "Ghostty"` 清一个重新测；`--clear-all` 全清；`--seed` 从历史矩阵报告补种
 - 临时强制全测：`AGENT_FRONT_RISK=off npm run matrix`
 - 任务里的 `guard()` 检测到目标被激活时，会**先把前台还原给操作前的应用，再报错**，不会把被抢的应用留在前台
