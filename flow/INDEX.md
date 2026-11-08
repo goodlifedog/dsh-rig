@@ -7,6 +7,7 @@
 | 让它控制某个应用（能做什么、怎么控、有什么坑） | [BACKGROUND-CONTROL.md](BACKGROUND-CONTROL.md) + [../docs/MAC-APPS.md](../docs/MAC-APPS.md) |
 | 知道它为什么能支持一大类软件（运行时/通道/驱动链） | [../docs/APP-SUPPORT-ARCHITECTURE.md](../docs/APP-SUPPORT-ARCHITECTURE.md) |
 | 加一个新应用或新门类进适配 | [../docs/MAC-APPS.md](../docs/MAC-APPS.md) 第七节 + `core/app-presets.mjs` |
+| 下一批该适配哪些应用（候选、通道、风险、不建议名单） | [APP-ADAPTER-PLAN.md](APP-ADAPTER-PLAN.md) |
 | 看它现在健康不健康、验收跑什么 | [MONITORING.md](MONITORING.md) + [COVERAGE.md](COVERAGE.md) |
 | 查安全边界（能防什么、还差什么） | [../docs/SECURITY.md](../docs/SECURITY.md) |
 | 搞 Chrome / 浏览器后台控制 | [CDP-FALLBACK.md](CDP-FALLBACK.md) |
