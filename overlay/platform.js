@@ -11,6 +11,7 @@ const fsp = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { psQuote, psLikeContains, hwndExpression } = require('./ps-quote.js');
+const { appleScriptQuote } = require('./quote.js');
 
 const isMac = process.platform === 'darwin';
 const isWindows = process.platform === 'win32';
@@ -37,7 +38,7 @@ async function macFrontmostBundle() {
 
 async function macWindowBounds(processName) {
   const r = await run('/usr/bin/osascript', ['-e',
-    'tell application "System Events" to tell process "' + processName + '" to get {position, size} of window 1']);
+    'tell application "System Events" to tell process ' + appleScriptQuote(processName) + ' to get {position, size} of window 1']);
   if (!r.ok) return null;
   const nums = r.out.match(/-?\d+/g);
   if (!nums || nums.length < 4) return null;
@@ -47,7 +48,7 @@ async function macWindowBounds(processName) {
 
 async function macWindowTitle(processName) {
   const r = await run('/usr/bin/osascript', ['-e',
-    'tell application "System Events" to tell process "' + processName + '" to get name of window 1']);
+    'tell application "System Events" to tell process ' + appleScriptQuote(processName) + ' to get name of window 1']);
   return r.ok ? r.out : null;
 }
 

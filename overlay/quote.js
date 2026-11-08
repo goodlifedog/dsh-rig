@@ -9,7 +9,16 @@
 
 function appleScriptQuote(text) {
   const raw = String(text == null ? '' : text);
-  return '"' + raw.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+  // AppleScript 2.0 支持 \n / \r / \t / \" / \\ 转义。
+  // 先转义反斜杠和双引号，再把换行等控制字符转成转义序列：
+  // 变量里即使带换行，也不会把 osascript -e 的脚本截断成两条语句。
+  const escaped = raw
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\r/g, '\\r')
+    .replace(/\n/g, '\\n')
+    .replace(/\t/g, '\\t');
+  return '"' + escaped + '"';
 }
 
 module.exports = { appleScriptQuote };
