@@ -2,7 +2,7 @@
 
 ## 0.8.0（未发布）
 
-- **摘掉招聘相关能力（BOSS）**：删除 6 个招聘任务与 4 份站点文档、硬编码招聘站正则与探针脚本（合计 13 个文件、2696 行）；form-fill 重写成通用「当前标签页表单填充」（按无障碍 role 找文本栏→写值→读回→恢复），验收里的旧扫描任务换成通用网页点击示例；README/CAPABILITIES/ARCHITECTURE/USAGE/CHANGELOG 的招聘叙事全部改成通用后台操作表述。
+- **摘掉招聘相关能力（BOSS）**：删除 6 个招聘任务、4 份站点文档、2 个探针脚本（合计 12 个文件、2556 行），并把 form-fill 改写成通用表单填充；form-fill 重写成通用「当前标签页表单填充」（按无障碍 role 找文本栏→写值→读回→恢复），验收里的旧扫描任务换成通用网页点击示例；README/CAPABILITIES/ARCHITECTURE/USAGE/CHANGELOG 的招聘叙事全部改成通用后台操作表述。
 - **克隆即用（内置 ocu）**：`open-computer-use` 变成 npm 依赖，`resolveOcu` 按 OCU_BIN → node_modules → third_party → 全局的顺序查找；打包只从 node_modules 拷 ocu 运行时与 LICENSE / NOTICE / THIRD_PARTY_NOTICES（不整包打 node_modules）；README/THIRD-PARTY 注明「底层能力来自 open-computer-use（MIT），未修改其源码」。
 - **通用网页点击示例**：新增 `examples/web-click`——headless Chrome + CDP，任意页面按可见文字找按钮 → 后台点击 → 读回结果 → 断言，全程不抢前台；已接进验收替代旧的招聘扫描步骤（8 条单测）。
 - **适配工具与本轮实测**：新增 `core/tasks/adapter-demo.mjs`（读界面树 / 按文字点击 / 键入 / 小窗回显证据，带锁屏/用户活跃/front-risk/运行门禁、临时样例副本与清理）；Safari 端到端 S 级实测通过（读 105 节点/40 按钮 → 点「显示边栏」节点 105→112 → 回显 → 前台不变 → 点「隐藏边栏」还原）；front-unchanged 加了系统浮层忽略与基线稳定校验（通知横幅不再造成假失败/假通过）；适配候选与证据等级见 `docs/ADAPTERS.md`。
