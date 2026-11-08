@@ -10,7 +10,7 @@ import { acquireLock, releaseLock } from './acceptance-lock.mjs';
 import { findForeignUiRunsNow } from './foreground-guard.mjs';
 import { overlay } from './agentd.mjs';
 import { overlayBase } from './ports.mjs';
-import { localHeaders } from './local-token.mjs';
+import { tokenHeadersFor } from './local-token.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -316,14 +316,14 @@ async function tidyOverlayWindows() {
     try {
       await fetch(base + p, {
         method: 'POST',
-        headers: localHeaders({ 'Content-Type': 'application/json' }),
+        headers: tokenHeadersFor(base + p, { 'Content-Type': 'application/json' }),
         body: JSON.stringify(body || {}),
         signal: AbortSignal.timeout(1500),
       });
     } catch {}
   };
   try {
-    const res = await fetch(base + '/sessions', { headers: localHeaders(), signal: AbortSignal.timeout(1500) });
+    const res = await fetch(base + '/sessions', { headers: tokenHeadersFor(base + '/sessions'), signal: AbortSignal.timeout(1500) });
     const data = await res.json();
     for (const s of data.sessions || []) {
       if (!s || !s.session) continue;

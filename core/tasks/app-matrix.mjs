@@ -22,7 +22,7 @@ import { presetApps } from '../app-presets.mjs';
 import { scanDirs, findByBundle, userAppDirs, SYSTEM_APP_DIRS } from '../app-scan.mjs';
 import { recommendStrategy } from '../app-strategy.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
-import { localHeaders } from '../local-token.mjs';
+import { tokenHeadersFor } from '../local-token.mjs';
 import { decideRestore } from '../front-restore.mjs';
 import { createRiskGate } from '../front-risk.mjs';
 import { installEmergencyAppCleanup } from '../task-emergency-cleanup.mjs';
@@ -93,11 +93,11 @@ async function restoreFrontChecked(target, touched = [], attempts = 3) {
 }
 
 const getJson = async (url) => {
-  try { return await (await fetch(url, { headers: localHeaders(), signal: AbortSignal.timeout(3000) })).json(); } catch { return null; }
+  try { return await (await fetch(url, { headers: tokenHeadersFor(url), signal: AbortSignal.timeout(3000) })).json(); } catch { return null; }
 };
 const post = (pathname, body) => fetch(OVERLAY + pathname, {
   method: 'POST',
-  headers: localHeaders({ 'Content-Type': 'application/json' }),
+  headers: tokenHeadersFor(OVERLAY + pathname, { 'Content-Type': 'application/json' }),
   body: JSON.stringify(body || {}),
   signal: AbortSignal.timeout(5000),
 }).then((r) => r.json()).catch(() => null);

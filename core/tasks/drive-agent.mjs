@@ -12,7 +12,7 @@ import { execFileSync } from 'node:child_process';
 import { getOcuMcp, closeOcuMcp } from '../ocu-mcp.mjs';
 import { restoreFront } from '../front-watch.mjs';
 import { isScreenLocked } from '../platform.mjs';
-import { localHeaders } from '../local-token.mjs';
+import { tokenHeadersFor } from '../local-token.mjs';
 
 const APP = process.env.AGENT_APP || 'ChatGPT';
 // 读这些应用可能让它自己跳到前台；这个任务是"主动驱动另一个 agent"，
@@ -29,11 +29,11 @@ function front() {
   } catch { return '(unknown)'; }
 }
 const getJson = async (url) => {
-  try { return await (await fetch(url, { headers: localHeaders(), signal: AbortSignal.timeout(3000) })).json(); } catch { return null; }
+  try { return await (await fetch(url, { headers: tokenHeadersFor(url), signal: AbortSignal.timeout(3000) })).json(); } catch { return null; }
 };
 const post = (pathname, body) => fetch(OVERLAY + pathname, {
   method: 'POST',
-  headers: localHeaders({ 'Content-Type': 'application/json' }),
+  headers: tokenHeadersFor(OVERLAY + pathname, { 'Content-Type': 'application/json' }),
   body: JSON.stringify(body || {}),
   signal: AbortSignal.timeout(5000),
 }).then((r) => r.json()).catch(() => null);

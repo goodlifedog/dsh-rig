@@ -12,7 +12,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { launch } from '../browser.mjs';
-import { localHeaders } from '../local-token.mjs';
+import { tokenHeadersFor } from '../local-token.mjs';
 
 const OVERLAY = overlayBase();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -21,11 +21,11 @@ const SESSION_A = 'parallel-a';
 const SESSION_B = 'parallel-b';
 
 const getJson = async (url) => {
-  try { return await (await fetch(url, { headers: localHeaders(), signal: AbortSignal.timeout(3000) })).json(); } catch { return null; }
+  try { return await (await fetch(url, { headers: tokenHeadersFor(url), signal: AbortSignal.timeout(3000) })).json(); } catch { return null; }
 };
 const post = (pathname, body) => fetch(OVERLAY + pathname, {
   method: 'POST',
-  headers: localHeaders({ 'Content-Type': 'application/json' }),
+  headers: tokenHeadersFor(OVERLAY + pathname, { 'Content-Type': 'application/json' }),
   body: JSON.stringify(body || {}),
   signal: AbortSignal.timeout(5000),
 }).then((r) => r.json()).catch(() => null);

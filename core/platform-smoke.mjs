@@ -9,7 +9,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMac, isWindows, platform, controlBackend, resolveOcu, dataDir } from './platform.mjs';
-import { localHeaders } from './local-token.mjs';
+import { tokenHeadersFor } from './local-token.mjs';
 import { daemonUrl, daemonPort } from './ports.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -61,7 +61,8 @@ let overlayOk = false;
 let overlayInfo = '';
 try {
   // overlay 也要 token（2026-11-08 起），不带票会被 401，doctor 会误报小窗不可用
-  const r = await fetch(overlayUrl('/health'), { headers: localHeaders(), signal: AbortSignal.timeout(2000) });
+  const healthUrl = overlayUrl('/health');
+  const r = await fetch(healthUrl, { headers: tokenHeadersFor(healthUrl), signal: AbortSignal.timeout(2000) });
   const d = await r.json();
   overlayOk = Boolean(d.ok);
   overlayInfo = 'pid=' + d.pid + ' sessions=' + (d.session || 'default');

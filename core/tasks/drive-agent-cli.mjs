@@ -17,7 +17,7 @@ import { execFileSync } from 'node:child_process';
 import { getOcuMcp, closeOcuMcp } from '../ocu-mcp.mjs';
 import { restoreFront } from '../front-watch.mjs';
 import { isScreenLocked } from '../platform.mjs';
-import { localHeaders } from '../local-token.mjs';
+import { tokenHeadersFor } from '../local-token.mjs';
 
 const APP = process.env.CLI_TERM_APP || 'Ghostty';
 const ALLOW_FRONT_RISK = process.env.AGENT_DRIVE_ALLOW_FRONT_RISK === '1';
@@ -34,11 +34,11 @@ function front() {
   } catch { return '(unknown)'; }
 }
 const getJson = async (url) => {
-  try { return await (await fetch(url, { headers: localHeaders(), signal: AbortSignal.timeout(3000) })).json(); } catch { return null; }
+  try { return await (await fetch(url, { headers: tokenHeadersFor(url), signal: AbortSignal.timeout(3000) })).json(); } catch { return null; }
 };
 const post = (pathname, body) => fetch(OVERLAY + pathname, {
   method: 'POST',
-  headers: localHeaders({ 'Content-Type': 'application/json' }),
+  headers: tokenHeadersFor(OVERLAY + pathname, { 'Content-Type': 'application/json' }),
   body: JSON.stringify(body || {}),
   signal: AbortSignal.timeout(5000),
 }).then((r) => r.json()).catch(() => null);
