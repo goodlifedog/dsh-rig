@@ -33,8 +33,16 @@ export function controlBackend() {
 }
 
 /** ocu 可执行文件路径（macOS 与 Windows 都有 npm 全局安装） */
+/** npm 依赖装出来的那份 ocu（npm install 后直接可用，不需要用户全局装） */
+export function dependencyOcu() {
+  const cand = path.join(HERE, '..', 'node_modules', 'open-computer-use', 'bin', 'ocu');
+  return existsSync(cand) ? cand : null;
+}
+
 export function resolveOcu() {
   if (process.env.OCU_BIN) return process.env.OCU_BIN;
+  const dep = dependencyOcu();
+  if (dep) return dep;
   const bundled = bundledOcu();
   if (bundled) return bundled;
   if (isMac) return path.join(os.homedir(), '.local/bin/ocu');

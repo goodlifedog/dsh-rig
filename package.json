@@ -10,15 +10,16 @@
     "node": ">=20"
   },
   "keywords": [
+    "dsh",
     "macos",
-    "windows",
-    "accessibility",
+    "desktop-automation",
     "computer-use",
+    "accessibility",
+    "background-control",
+    "overlay",
+    "acceptance-testing",
     "open-computer-use",
-    "mcp",
-    "automation",
-    "electron",
-    "overlay"
+    "agent"
   ],
   "scripts": {
     "status": "node core/status.mjs",
@@ -82,5 +83,44 @@
     "env:doc": "node scripts/env-doc.mjs",
     "away:maintain": "node scripts/away-maintenance.mjs"
   },
-  "homepage": "https://github.com/goodlifedog"
+  "homepage": "https://github.com/goodlifedog",
+  "bin": {
+    "dsh-rig": "./core/cli.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/goodlifedog/dsh-rig.git"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  },
+  "dependencies": {
+    "open-computer-use": "^1.1.3"
+  },
+  "files": [
+    "core/",
+    "overlay/",
+    "examples/",
+    "README.md",
+    "ARCHITECTURE.md",
+    "CAPABILITIES.md",
+    "CHANGELOG.md",
+    "THIRD-PARTY.md",
+    "LICENSE",
+    "docs/USAGE.md",
+    "docs/MAC-APPS.md",
+    "docs/SECURITY.md",
+    "docs/ADAPTERS.md",
+    "docs/OVERLAY-SHOW-PATHS.md",
+    "docs/APP-SUPPORT-ARCHITECTURE.md",
+    "third_party/open-computer-use/LICENSE",
+    "third_party/open-computer-use/NOTICE.md",
+    "third_party/open-computer-use/THIRD_PARTY_NOTICES.md",
+    "!overlay/node_modules/**",
+    "!overlay/docs/**",
+    "!third_party/open-computer-use/bin/**",
+    "!third_party/open-computer-use/dist/**",
+    "!third_party/open-computer-use/scripts/**"
+  ]
 }
