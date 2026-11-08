@@ -24,6 +24,23 @@ const exec = promisify(execFile);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const APP = { appName: '计算器', bundleId: 'com.apple.calculator', processName: 'Calculator' };
 
+/**
+ * 快速读前台应用名（lsappinfo，约 10ms，比 System Events 的 120ms 快一个量级）。
+ * 采样要覆盖"闪一下"这种瞬时抢占，越快的采样越不容易漏。
+ */
+async function frontFast() {
+  try {
+    const { stdout: asnOut } = await exec('/usr/bin/lsappinfo', ['front'], { timeout: 1500 });
+    const asn = String(asnOut || '').trim();
+    if (!asn) return '';
+    const { stdout } = await exec('/usr/bin/lsappinfo', ['info', '-only', 'name', asn], { timeout: 1500 });
+    const m = /"LSDisplayName"="([^"]*)"/.exec(String(stdout || ''));
+    return m ? m[1] : '';
+  } catch {
+    return '';
+  }
+}
+
 /** 你的键鼠多久没动（毫秒）；读不到 -1 */
 async function hidIdleMs() {
   try {
@@ -78,7 +95,7 @@ async function main() {
   const sampler = (async () => {
     while (sampling) {
       try {
-        const front = await frontName();
+        const front = (await frontFast()) || (await frontName());
         samples.push(front);
         if (front && front !== frontStart) {
           steals.push({ at: Date.now() - startedAt, to: front });
@@ -86,11 +103,12 @@ async function main() {
           await restoreFront(frontStart);
         }
       } catch {}
-      await sleep(150);
+      await sleep(80);
     }
   })();
 
   const steps = [];
+  let minIdleDuringHold = -1;
   const record = (name, ok, detail) => { steps.push({ name, ok, detail: detail || '' }); console.log((ok ? '  ✅ ' : '  ❌ ') + name + (detail ? '  ' + detail : '')); };
 
   try {
@@ -120,7 +138,12 @@ async function main() {
     const holdMs = Number(process.env.CONCURRENT_HOLD_MS || 5000);
     if (holdMs > 0) {
       console.log('  后台保持工作 ' + Math.round(holdMs / 1000) + ' 秒（这期间你正常操作就行）…');
-      await sleep(holdMs);
+      const holdUntil = Date.now() + holdMs;
+      while (Date.now() < holdUntil) {
+        const idle = await hidIdleMs();
+        if (idle >= 0) minIdleDuringHold = minIdleDuringHold < 0 ? idle : Math.min(minIdleDuringHold, idle);
+        await sleep(400);
+      }
     }
   } catch (error) {
     record('工作负载', false, String((error && error.message) || error).slice(0, 120));
@@ -133,8 +156,9 @@ async function main() {
     const frontEnd = await frontName();
     const idleEnd = await hidIdleMs();
     const runMs = Date.now() - startedAt;
-    // HID 空闲时间比运行时长还短 ⇒ 这期间你确实动过键鼠（AI 干活时你也在用电脑）
-    const userWasActive = idleEnd >= 0 && idleEnd < runMs;
+    // 保持期间采到的最小空闲 < 5 秒 ⇒ 你在这段时间里确实动过键鼠（AI 干活时你也在用电脑）。
+    // 比只看首尾更可靠：首尾可能刚好都没动，但中间动过。
+    const userWasActive = (minIdleDuringHold >= 0 && minIdleDuringHold < 5000) || (idleEnd >= 0 && idleEnd < runMs);
 
     const frontOk = frontEnd === frontStart && steals.length === 0;
     record('全程前台未被抢占', frontOk, frontStart + ' -> ' + frontEnd + '（采样 ' + samples.length + ' 次' + (steals.length ? '，被抢 ' + steals.length + ' 次' : '') + '）');
@@ -155,6 +179,7 @@ async function main() {
       userWasActive,
       idleStart,
       idleEnd,
+      minIdleDuringHold,
       windowsDuring,
       steps,
     };
