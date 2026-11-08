@@ -61,6 +61,12 @@
 | task-64 | human-input | H2 缺口 A：6 个任务的本地 front() 改共享 frontName（去掉 System Events AppleEvent） | 核验后合并提交 `bb6fecd` |
 | task-65 | cdp-bridge | H2 缺口 B：Chrome 标签与 app-matrix 前台还原接静默预检 | 核验后合并提交 `bb6fecd` |
 | task-66 | ocu-recipe | H2 缺口 C：cleanup-test-data 的 TextEdit/Chrome AppleEvent 接静默预检 | 核验后合并提交 `bb6fecd` |
+| task-67 | overlay-multi | 独立复核（只读）：AppleEvent 预检批次是否改变授权正常时的语义 | 0 高危；5 中危 + 8 低危，均已分流修复或记录取舍；Lead 核验后提交 `9a3b0df` 等 |
+| task-68 | ocu-recipe | 独立复核（只读）：权限闸门/前台读取/入口守卫的回归风险 | 2 高危（daemon 预检窗口并发与 /stop 丢失）+ 4 中危 + 4 低危；Lead 修 `6e2a1dd`，其余分流到 task-69/70 |
+| task-69 | headless-engineer | 复核修复：doctor fail-closed、权限文本不重试、doctor 超时收敛 | 核验后提交 `129a8d1` |
+| task-70 | ocu-recipe | 复核修复：录屏判定剥注释、前台读取失败熔断 | 核验后提交 `3fcd769` |
+| task-71 | cdp-bridge | 复核修复：Chrome 没运行不发事件、-1743/-1744 归环境跳过、matrix 还原错误处理 | 核验后提交 `a1ec1be` |
+| task-72 | overlay-multi | 复核修复：清理跳过可见、验收收尾查终态前台、预检缓存分级 | 核验后提交 `9a3b0df` |
 
 ## 当前状态
 
@@ -73,3 +79,5 @@
 - 待办：等屏幕解锁 + 用户离开足够久（≥15 分钟）时跑一次 `verify:live` 完整验收（含会动屏幕的步骤），确认修复后 app-matrix 不再被抢前台、权限闸门不会把正常步骤误跳过。当前屏幕处于锁定状态，`verify:live` 无法在锁屏下跑（AX/截图不可用），后台 watcher 会等「已解锁 + 空闲 ≥15 分钟」自动开跑。
 - 2026-11-08 20:48 已把 daemon/overlay 服务重启到当前代码（之前落后 70+ 分钟），健康检查全部正常、`/selftest` 三项权限实测正确；锁屏下 `platform-smoke` 与 `cdp-channel`（headless）也实测通过，说明今天的改动没破坏平台层与 CDP 通道。
 - 2026-11-08 20:53 锁屏下跑 `npm run verify:safe`：**7 PASS / 2 SKIP / 0 FAIL**（跳过的两项是后台稳定性与并发验证，锁屏下本就该跳过）；顺带修掉「健康统计行里的『其中 1 次环境跳过』让健康检查整步变 SKIP」的分类误判。
+- 2026-11-08 21:1x 两个子 agent 独立只读复核今天全部改动：共 2 高危 + 若干中低危，已全部修复或明确记录取舍（daemon 预检窗口并发/取消、doctor fail-open、权限缺失误重试、注释误判录屏、前台读取耗时熔断、Chrome 未运行仍发事件、清理跳过不可见、验收无终态前台检查等）。全量 1145 项 / 1143 过 / 2 跳过 / 0 失败。
+- 遗留低风险（已记录、暂不改）：① `invokedDirectly` 在仓库路径是符号链接时可能判 false（当前无 symlink）；② `OCU_JS_CLI_RE` 是 6 行窗口启发式；③ daemon 预检期间 /status 显示 stage=preflight 但 UI 未展示；④ 权限文本里「已授权 + 连接被拒绝」同时出现时会被判缺权限（健康面板罕见场景）。
