@@ -495,6 +495,20 @@ export function writeGuardDecision(currentValue, allowWrite) {
   if (allowWrite) return { allow: true, current, reason: '目标输入区有内容（' + JSON.stringify(current) + '），已显式 --allow-write，写后恢复' };
   return { allow: false, current, reason: '目标输入区已有内容（' + JSON.stringify(current) + '），拒绝写入；确需覆盖请加 --allow-write（写后会恢复原值）' };
 }
+
+/**
+ * 清空一个输入框（纯流程，deps 注入便于单测）。
+ * 实测：AX set_value('') 对 Electron/Chromium 无效，必须「聚焦 → 全选 → 删除」。
+ */
+export async function clearFieldByKeyboard(deps, app, index) {
+  await deps.click(app, index);
+  await deps.sleep(150);
+  await deps.pressKey(app, 'cmd+a');
+  await deps.sleep(80);
+  await deps.pressKey(app, 'DELETE');
+  return { ok: true, method: 'keyboard-clear' };
+}
+
 export function extractValue(stateText, index) {
   const text = String(stateText || '');
   const lines = text.split('\n');
@@ -795,14 +809,8 @@ export async function runAdapterDemo(options = {}, depsInput = {}) {
       let restoreRes = { ok: true, skipped: true };
       if (shouldRestore) {
         if (decision.current === '') {
-          // 实测：set_value('') 清不空字段（Electron/Chromium），必须走键盘全选+删除
           try {
-            await deps.click(app, target.index);
-            await deps.sleep(150);
-            await deps.pressKey(app, 'cmd+a');
-            await deps.sleep(80);
-            await deps.pressKey(app, 'DELETE');
-            restoreRes = { ok: true, method: 'keyboard-clear' };
+            restoreRes = await clearFieldByKeyboard(deps, app, target.index);
           } catch (e) {
             restoreRes = { ok: false, error: String((e && e.message) || e).slice(0, 120) };
           }

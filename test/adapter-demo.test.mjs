@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  clearFieldByKeyboard,
   parseArgs,
   processNameFor,
   decideRunGate,
@@ -556,4 +557,17 @@ test('本地化显示名能映射到真实进程名（--app 计算器 不应误�
 test('extractValue：Safari 地址栏带 Placeholder 元数据时只取值本身', () => {
   const tree = '	89 文本栏 (settable, string) Description: 智能搜索栏 ID: WEB_BROWSER_ADDRESS_AND_SEARCH_FIELD, Value: hello, Placeholder: 搜索或输入网站名称';
   assert.equal(extractValue(tree, '89'), 'hello');
+});
+
+
+test('clearFieldByKeyboard：聚焦 → cmd+a → DELETE（AX 设值清不空字段）', async () => {
+  const order = [];
+  const deps = {
+    click: async (app, index) => { order.push('click:' + index); return { ok: true }; },
+    sleep: async () => {},
+    pressKey: async (app, key) => { order.push('key:' + key); return { ok: true }; },
+  };
+  const r = await clearFieldByKeyboard(deps, 'Electron', '9');
+  assert.equal(r.ok, true);
+  assert.deepEqual(order, ['click:9', 'key:cmd+a', 'key:DELETE']);
 });
