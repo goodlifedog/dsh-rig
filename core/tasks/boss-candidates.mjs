@@ -7,6 +7,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { overlay } from '../agentd.mjs';
 import { scoreJob } from '../lib/score.mjs';
+import { isScreenLocked, lockedSkipNotice } from '../platform.mjs';
+import { frontName, settleFront, frontRiskGate } from '../background.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
@@ -53,6 +55,19 @@ const inner = [
   'nodeRepl.write(JSON.stringify({ url: (/URL: (https:\\/\\/[^\\s,)]+)/.exec(t) || [])[1] || "", jobs: jobs }));',
 ].join('\n');
 async function main() {
+  // 锁屏下 AX 整体不可用：这是环境限制，不是任务失败
+  if (await isScreenLocked()) {
+    console.log(lockedSkipNotice('boss-candidates.mjs'));
+    return;
+  }
+  // 读的是 Chrome 的页面树：Chrome 本身在 AX 读取后可能激活自己，统一走「前台风险名单 + 还原」
+  const target = 'Google Chrome';
+  const risk = frontRiskGate();
+  if (risk.shouldSkip(target)) {
+    console.log('环境跳过：' + target + ' 读取会抢前台（前台风险名单），先不读它的界面树；确认修好后 npm run front:risk -- --clear "' + target + '"');
+    return;
+  }
+  const frontBefore = await frontName();
   await overlay.status('BOSS：只筛选，不投递');
   const tmp = path.join(os.tmpdir(), 'boss-candidates-' + Date.now() + '.mjs');
   await fsp.writeFile(tmp, inner, 'utf8');
@@ -64,6 +79,12 @@ async function main() {
   for (const line of raw.trim().split('\n').reverse()) {
     if (!line.trim().startsWith('{')) continue;
     try { data = JSON.parse(line); break; } catch {}
+  }
+  // 读页面期间 Chrome 可能自己抢前台：立刻还给用户，并把这次行为记进风险名单
+  const settled = await settleFront(frontBefore, { waitMs: 200, retries: 2 });
+  if (settled.stolen) {
+    risk.note(target);
+    console.error('提示：读取期间前台被 ' + target + ' 抢走，已' + (settled.restored ? '还原到 ' + frontBefore : '尝试还原（未成功）') + '，并记入前台风险名单');
   }
   if (!data || !data.jobs) { console.error('FAIL: 读不到岗位列表'); process.exit(1); }
 
