@@ -18,6 +18,7 @@ import {
   bundleSdefCommands,
   runAppScript,
   redactUrl,
+  checkSafariJavaScript,
 } from '../applescript-driver.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -106,6 +107,18 @@ async function main() {
     console.log(JSON.stringify(row));
   }
 
+  // Safari 页面内容只能走 Apple Events 注入 JS，而这条通道默认被 Safari 关着：
+  // 探测一下，把边界说清楚（不影响本任务的通过/失败判定）
+  const safariJs = await checkSafariJavaScript().catch(() => ({ available: false, reason: 'error', detail: '' }));
+  const safariJsNote = {
+    disabled: '被 Safari 设置关掉了：设置 → 高级 → 显示网页开发者功能，再到 开发 菜单勾 Allow JavaScript from Apple Events',
+    'no-document': 'Safari 没有打开的页面，无法注入 JS',
+    'not-running': 'Safari 没在运行',
+    denied: '自动化权限被拒，无法注入 JS',
+    error: '探测失败',
+  }[safariJs.reason] || '';
+  console.log('Safari 页面 JS 通道：' + (safariJs.available ? '可用' : '不可用（' + (safariJsNote || safariJs.detail || safariJs.reason) + '）'));
+
   const frontEnd = await frontName();
   const verdict = summarizeApplescriptRows(rows, helper.ok);
   const summary = {
@@ -118,6 +131,7 @@ async function main() {
     frontStart,
     frontEnd,
     total: rows.length,
+    safariJs: { available: safariJs.available, reason: safariJs.reason, note: safariJsNote },
     rows,
   };
   const dir = path.join(ROOT, 'reports');

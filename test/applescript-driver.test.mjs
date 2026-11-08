@@ -9,6 +9,8 @@ import {
   ensureHelper,
   checkAutomationPermission,
   runAppScript,
+  classifySafariJsError,
+  checkSafariJavaScript,
 } from '../core/applescript-driver.mjs';
 
 test('权限状态码解析', () => {
@@ -163,4 +165,24 @@ test('没给 bundleId 时不做授权检查（自己人调用/测试用）', asy
   });
   assert.equal(r.ok, true);
   assert.equal(checked, 0);
+});
+test('Safari JS 通道错误分类：设置没开要说清楚，不能笼统报错', () => {
+  assert.equal(classifySafariJsError("You must enable 'Allow JavaScript from Apple Events' in the Developer section of Safari Settings"), 'disabled');
+  assert.equal(classifySafariJsError('execution error: Safari got an error: document does not contain a JavaScript context'), 'no-document');
+  assert.equal(classifySafariJsError('execution error: 不能获得 application "Safari" (-600)'), 'not-running');
+  assert.equal(classifySafariJsError('execution error: 不允许发送 Apple 事件 (-1743)'), 'denied');
+  assert.equal(classifySafariJsError('weird'), 'error');
+});
+
+test('Safari JS 通道探测：可用时返回结果，不可用时带分类', async () => {
+  const ok = await checkSafariJavaScript({ exec: async () => ({ stdout: '2\n' }) });
+  assert.equal(ok.available, true);
+  assert.equal(ok.result, '2');
+
+  const err = new Error('Command failed');
+  err.stderr = "You must enable 'Allow JavaScript from Apple Events' in the Developer section of Safari Settings";
+  const disabled = await checkSafariJavaScript({ exec: async () => { throw err; } });
+  assert.equal(disabled.available, false);
+  assert.equal(disabled.reason, 'disabled');
+  assert.ok(/Apple Events/.test(disabled.detail));
 });

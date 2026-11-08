@@ -194,7 +194,7 @@ overlay 的系统窗口列表（CGWindowList）。只信 AX 会把菜单栏工�
 | --- | --- | --- |
 | 备忘录 / 文本编辑 / 计算器 / 访达 / 系统设置 / FastZip / State / GarageBand / OrbStack / Pages Creator Studio / 腾讯会议 / UURemote / iRightMouse | 已适配 | AX 完整，可读可点可设值 |
 | QQ / 微信 / Gemini / ChatGPT | 已适配 | chromium/electron 系；操作后异步抢前台，已自动还原；**在风险名单里**（读取会抢，默认跳过） |
-| Safari | 已适配 | 已收进 system 预设，实测可读（105 节点 / 47 按钮）；冷启动不留窗口，需要已有窗口 |
+| Safari | 已适配 | 已收进 system 预设，实测可读（105 节点 / 47 按钮）；**页面内容不在 AX 树里**，要控制页面得在 Safari 设置里打开 Allow JavaScript from Apple Events（本机当前关着，通道检测会明确提示）；冷启动不留窗口，需要已有窗口 |
 | Ghostty / Telegram / Steam / WPS Office | 已适配 | Ghostty 读会抢前台；Telegram 只读（0 按钮）；Steam 只读；WPS 在 qt 族——**都在风险名单里**，默认跳过读取 |
 | iMovie | 已适配 | 读取瞬间抢前台，已还原（不在名单时仍会读一次） |
 | Keynote / Numbers Creator Studio | 可只用画面 | 首次启动是许可/新功能引导，**不代点「继续」**；用户过完引导并打开文稿后 AX 可读 |
@@ -264,6 +264,8 @@ npm run apps:inventory                     # 刷新清点
 - **Windows 实机**：本机无硬件，未验证。
 - **锁屏**：锁屏下 AX 整体不可用，所有验收会标「环境跳过」，不能算通过。
 - **用户正在用的应用**：不要调用 `quitApp`；矩阵的自动收尾只关 `launch === 'launched'` 的应用。
+- **Safari 页面内容**：网页内容不在 AX 树里（只能读浏览器壳）；页面级读写需要 Safari 设置 → 高级 → 显示网页开发者功能，
+  再到「开发」菜单勾 Allow JavaScript from Apple Events。本机当前是关闭状态，`applescript-channel` 会探测并用一句话说清怎么开。
 
 ## 十、不切屏：前台风险名单（2026-11-08 新增）
 

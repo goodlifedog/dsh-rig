@@ -55,6 +55,41 @@ export function classifyOsascriptError(stderr) {
   return 'error';
 }
 
+/**
+ * Safari「Allow JavaScript from Apple Events」是否可用（纯函数，按错误文本分类）。
+ * 返回：disabled（设置里关着）/ no-document / not-running / denied / error
+ */
+export function classifySafariJsError(text) {
+  const s = String(text || '');
+  if (/Allow JavaScript from Apple Events/i.test(s) || /Developer section/i.test(s)) return 'disabled';
+  if (/-1728|does not contain|no document|不包含|没有文档/i.test(s)) return 'no-document';
+  if (/-600|application isn.t running|不能获得.*application/i.test(s)) return 'not-running';
+  if (/-1743|不允许发送 Apple 事件|not authorized/i.test(s)) return 'denied';
+  return 'error';
+}
+
+/**
+ * 探测 Safari 的页面级 JS 通道（只执行 1+1，不碰用户数据）。
+ *
+ * 为什么需要：Safari 的网页内容不在 AX 树里，只能读浏览器壳；要读/点页面内容
+ * 必须靠 Apple Events 注入 JS，而这条通道默认被 Safari 关着。
+ * 探测一下能给出明确边界，而不是让调用方猜。
+ *
+ * @param {{exec?:Function, timeoutMs?:number}} [options]
+ * @returns {Promise<{available:boolean, reason:string, result?:string, detail?:string}>}
+ */
+export async function checkSafariJavaScript(options = {}) {
+  const opts = options || {};
+  const run = opts.exec || exec;
+  try {
+    const { stdout } = await run('/usr/bin/osascript', ['-e', 'tell application "Safari" to do JavaScript "1+1" in front document'], { timeout: opts.timeoutMs || 5000 });
+    return { available: true, reason: '', result: String(stdout || '').trim() };
+  } catch (error) {
+    const text = String((error && (error.stderr || error.message)) || error);
+    return { available: false, reason: classifySafariJsError(text), detail: text.split('\n')[0].slice(0, 160) };
+  }
+}
+
 /** 权限查询小程序的缓存路径 */
 export function helperPath() {
   return path.join(os.homedir(), '.desktop-agent', 'bin', 'ae-permission');

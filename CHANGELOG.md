@@ -2,6 +2,7 @@
 
 ## 未发布
 
+- Safari 页面级通道探测：网页内容不在 AX 树里，要控制页面必须开 Safari 的 Allow JavaScript from Apple Events。新增 `checkSafariJavaScript()`（只执行 `1+1`，不碰用户数据，错误分类：disabled/no-document/not-running/denied），`applescript-channel` 每次会打印「Safari 页面 JS 通道：可用/不可用 + 怎么开」；本机实测关着，提示已给出。补 2 项单测
 - 实测（2026-11-08，用户正在用电脑）：AppleScript 通道 4/4（Finder/Chrome/Safari/TextEdit，frontStolen=false、权限 granted）、CDP 通道 4/4（headless 独立 profile）、headless-demo 全流程（启动 652ms、4 帧回显、点击 455ms、屏幕窗口数 0、残留 0，前台始终 DSH）；结果记进 docs/MAC-APPS 的实机验证表
 - 退出保护补上 AXSheet：`dialogs()` 原来只把 subrole=AXDialog 的窗口算弹窗，而「要存储吗」这类确认可能是 sheet（AXSheet）。漏识别会把用户没保存的内容当"没有弹窗"直接强杀；现在两种都算，有保存/覆盖/删除提示就拒绝强杀（补 1 项结构测试）
 - 验收矩阵样本换成 FastZip + 计算器：原来用 FastZip + iRightMouse，但 iRightMouse 已被前台风险名单收录（历史报告里抢过前台），继续当样本会被矩阵跳过、白白少验一个；换成两个原生应用，读起来稳定不抢前台
