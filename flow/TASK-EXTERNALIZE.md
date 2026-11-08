@@ -63,7 +63,7 @@ docs/ 里混进 REVIEW.md / HANDOFF-2026-11-07.md / SECURITY-REVIEW-2026-11-08.m
       `REVIEW-*.md` `TEAM-BOARD.md` `FINAL-REPORT.md` `PATCHES.md` `START-HERE.md`
       `TASK-RENAME-TO-RIG.md` `PUBLISH-*.md` `patch-publish.diff`
 - [ ] `flow/` 里的 4 个脚本移到 `scripts/`（或 `tools/`）：
-      `probe.mjs` `probe-inner.mjs` `cdp-probe.mjs` `review-watch.mjs`
+      `flow/probe.mjs` `flow/probe-inner.mjs` `flow/cdp-probe.mjs` `flow/review-watch.mjs`
 - [ ] 真文档并进 `docs/`（BACKGROUND-CONTROL、MONITORING、WRITE、PACKAGING、CROSS-PLATFORM、TASK-ENV…）
       最终 `flow/` 可以整个消失，或只留少数方法论文档
 - [ ] `docs/` 里的过程文档（REVIEW/HANDOFF/SECURITY-REVIEW）移出
@@ -74,10 +74,10 @@ docs/ 里混进 REVIEW.md / HANDOFF-2026-11-07.md / SECURITY-REVIEW-2026-11-08.m
 | 项 | 值 |
 | --- | --- |
 | 英文 / 中文 | DSH Rig / DSH 装置 |
-| 仓库 / npm | `dsh-rig` / `@goodlifedog/dsh-rig` |
+| 仓库 / npm | `dsh-rig` / `@<你的npm名>/dsh-rig` |
 | 命令 / App | `dsh-rig` / `DSH Rig` |
-| appId | `com.goodlifedog.dsh-rig` |
-| launchd | `com.goodlifedog.dsh-rig.daemon` / `.overlay` |
+| appId | `com.<你的域名反写>.dsh-rig` |
+| launchd | `com.<你的域名反写>.dsh-rig.daemon` / `.overlay` |
 | 版本 | 0.7.0 → 0.8.0 |
 | 副标题 | DSH 的后台电脑控制装置 —— 后台操作 · 小窗回显 · 自动化验收 |
 
