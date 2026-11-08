@@ -173,50 +173,34 @@
     }
     #card:hover #close { opacity: 1; }
 
-    /* 放大：切到屏幕居中 4:3 */
+    /* 放大：窗口中央的浏览器全屏按钮（hover 才出现；点击仍是 toggleExpand）。
+       隐藏时 pointer-events:none，避免挡住画面中心的点击穿透。 */
     #expand {
       position: absolute;
-      top: 9px;
-      right: 37px;
-      z-index: 6;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 7;
       -webkit-app-region: no-drag;
-      width: 22px;
-      height: 22px;
+      width: 38px;
+      height: 38px;
       padding: 0;
-      border: 0;
-      border-radius: 50%;
-      background: rgba(0, 0, 0, 0.45);
-      color: rgba(255, 255, 255, 0.85);
-      font-size: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 10px;
+      background: rgba(0, 0, 0, 0.46);
+      -webkit-backdrop-filter: blur(10px) saturate(1.2);
+      backdrop-filter: blur(10px) saturate(1.2);
+      color: rgba(255, 255, 255, 0.92);
+      font-size: 18px;
       line-height: 1;
       cursor: pointer;
       opacity: 0;
-      transition: opacity 140ms ease;
+      pointer-events: none;
+      transition: opacity 140ms ease, background 140ms ease, transform 140ms ease;
     }
-    #card:hover #expand { opacity: 1; }
-    #expand:hover { background: rgba(0, 0, 0, 0.7); }
+    #card:hover #expand { opacity: 1; pointer-events: auto; }
+    #expand:hover { background: rgba(0, 0, 0, 0.68); transform: translate(-50%, -50%) scale(1.04); }
     #close:hover { background: rgba(0, 0, 0, 0.7); }
-
-    /* 任务运行时才出现的「停止」按钮：用户看到小窗在动，要能随时叫停 */
-    #stop {
-      position: absolute;
-      top: 9px;
-      right: 65px;
-      z-index: 6;
-      -webkit-app-region: no-drag;
-      width: 22px;
-      height: 22px;
-      padding: 0;
-      border: 0;
-      border-radius: 50%;
-      background: rgba(255, 69, 58, 0.55);
-      color: #fff;
-      font-size: 10px;
-      line-height: 1;
-      cursor: pointer;
-      display: none;
-    }
-    #stop:hover { background: rgba(255, 69, 58, 0.85); }
 
     /* 画面区域 */
     #stage {
@@ -296,6 +280,8 @@
       left: 8px;
       right: 8px;
       bottom: 44px;
+      /* 日志抽屉打开时压住中央放大按钮，避免按钮和日志内容抢点击 */
+      z-index: 8;
       max-height: 62%;
       padding: 6px 2px 6px 8px;
       border-radius: var(--radius-frame);
@@ -407,7 +393,6 @@
       <div id="drag-right" class="drag-strip" aria-hidden="true"></div>
       <div id="drag-bottom" class="drag-strip" aria-hidden="true"></div>
 
-      <button id="stop" type="button" title="停止当前任务" aria-label="停止任务">■</button>
       <button id="expand" type="button" title="放大（按画面比例）" aria-label="放大">⤢</button>
       <button id="close" type="button" title="关闭（Esc）" aria-label="关闭">✕</button>
 

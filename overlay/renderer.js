@@ -23,7 +23,6 @@
     loglist: document.getElementById('loglist'),
     thumb: document.getElementById('thumb'),
     expand: document.getElementById('expand'),
-    stop: document.getElementById('stop'),
     vcur: document.getElementById('vcur'),
     vcurRing: document.getElementById('vcur-ring'),
     backdrop: document.getElementById('thumb-backdrop'),
@@ -169,8 +168,6 @@
       }
     }
     view.activity = next;
-    // 只有任务在跑时才给「停止」入口，空闲时别多一个按钮干扰
-    if (elements.stop) elements.stop.style.display = next === 'running' ? 'block' : 'none';
     updateBar();
   }
 
@@ -402,6 +399,9 @@
     ];
     for (const element of zones) {
       if (!element) continue;
+      // 只对真正可点的元素开热区：隐藏的按钮（opacity:0 / pointer-events:none）不能挡住画面中心
+      const style = window.getComputedStyle(element);
+      if (style.pointerEvents === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) continue;
       const rect = element.getBoundingClientRect();
       if (!rect.width || !rect.height) continue;
       if (x >= rect.left - 2 && x <= rect.right + 2 && y >= rect.top - 2 && y <= rect.bottom + 2) {
@@ -437,13 +437,6 @@
       document.addEventListener('mouseenter', () => api.setHover(true));
       document.addEventListener('mouseleave', () => api.setHover(false));
     }
-    if (elements.stop && api.stopTask) {
-      elements.stop.addEventListener('click', (event) => {
-        event.stopPropagation();
-        api.stopTask();
-      });
-    }
-
     if (elements.expand && api.toggleExpand) {
       elements.expand.addEventListener('click', () => { api.toggleExpand().catch(() => {}); });
     }

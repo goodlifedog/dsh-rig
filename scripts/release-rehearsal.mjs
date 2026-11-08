@@ -162,7 +162,8 @@ export const TARBALL_FORBIDDEN = Object.freeze([
   /^flow\//,
   /(^|\/)node_modules\//,
   /^\.git\//,
-  /(^|\/)(?:简历|resume|resumes|cv)(?:\.[^/]*)?$/i,
+  /(^|\/)[^/]*简历[^/]*$/,
+  /(^|\/)(?:resume|resumes|cv)(?:\.[^/]*)?$/i,
   /(^|\/)\.DS_Store$/,
 ]);
 
@@ -373,6 +374,8 @@ export async function runRehearsal(options = {}, deps = {}) {
   let keptDir = '';
 
   const finish = () => {
+    // --keep 时先把临时目录记下来：finally 在 return 之后才跑，不能等它设
+    if (opts.keep && workDir) keptDir = workDir;
     // 没跑到的步骤记为 SKIP，别让人误以为是 PASS
     const done = new Set(results.map((result) => result.id));
     for (const step of plan) {

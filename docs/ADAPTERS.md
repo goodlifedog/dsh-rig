@@ -1,133 +1,180 @@
-# macOS 软件适配盘点与建议清单
+# macOS 软件适配盘点与建议清单（2026-11-08 修正版）
 
-- 盘点时间：2026-11-08
-- 盘点方式：**只读**。没有启动/激活任何应用、没有跑矩阵/探测/验收、没有动屏幕、没有改代码。
-- 主要输入（均只读）：
-  - reports/app-inventory-2026-11-08T13-54-57-858Z.md（最新清点，38 个应用）
-  - core/app-presets.mjs（门类预设）
-  - flow/CDP-READINESS.md、flow/COVERAGE.md（适配总览见本文与 docs/MAC-APPS.md）
-  - docs/MAC-APPS.md（第六~十节：覆盖情况、边界、前台风险名单）
-  - reports/app-matrix-*.json、reports/applescript-channel-*.json、reports/cdp-driver-*.json（历史实测）
-- 证据标记：**S = 有实测证据**（AX 读数 / AppleScript 通道 / CDP 实测 / 真任务通过）；**P = 预判**（包结构、运行时族、历史报告推断，尚未实测）；**画面级** = 读不到结构化树，只能回显画面。
-- 本文所有「建议」都是预判/方案，不等于已经适配；真机探测仍必须在「屏幕解锁 + 用户离开 + 键鼠空闲」的窗口里做。
+- 盘点时间：2026-11-08（本版按**外部监控实跑**的结果修正了上一版的三个预判）
+- 盘点方式：**只读**。本文不启动/激活任何应用、不跑矩阵/验收、不动屏幕。
+- 证据等级（全文统一标注）：
+  - **S = 实测通过**（有可指认的报告/任务日志）
+  - **P = 预判**（包结构/历史报告推断，当前版本未实测）
+  - **X = 实测否定**（跑过、结论是「这条路走不通」，**不要再按预判硬试**）
+- 真机探测必须等「屏幕解锁 + 用户离开 + 键鼠空闲」的窗口再跑；本文所有命令都只是**可复制清单**，本轮一条都没执行。
 
-## 0. 一句话结论
+## 0. 一句话结论（修正后的顺序）
 
-本机 38 个应用里已适配 21 个，native / chromium / qt 三族都有跑通样本；真正的结构性空白是 **electron 族端到端（0 个已适配）** 和 **阅读/邮件/日历等系统门类**。本轮建议跨门类选 **7 个** 进入适配清单：
+上一版把 **Preview 排第一**、把 **OpenCode / ChatGPT 当 Electron 走 CDP**，这三点都已被实跑推翻（见第 2 节）。
+修正后的顺序是：
 
-**Preview（系统/阅读，新）、Safari（浏览器，AS 已实测）、Google Chrome（浏览器，独立 profile CDP 已实测）、TextEdit（编辑器，AX+AS 已实测）、QQ（IM，AX 已实测）、Ghostty（终端，AX 弱+抢前台）、WPS Office（办公，qt/AX 强但抢前台）**。
+1. **先做两个通道已验证、且不在前台风险名单里的**：**Safari**（AppleScript 4/4 实测）、**Google Chrome**（独立 profile CDP 实测）；
+2. **再做「真 Electron」**：**Antigravity / 抖音**——但必须先过一道**二进制是否接受调试参数**的预检（OpenCode 就是死在这一步）；
+3. **其余全部排后、按前台风险名单决定**：Preview（新进名单）、TextEdit、QQ、Ghostty、WPS Office 都在名单里，默认读取会被跳过；
+   要用 `npm run front:risk` 显式清名单并单独评估。
 
-顺序上先做「只读、低风险、能补新门类」的 Preview，再做两个浏览器通道，最后做有写入/抢前台风险的 TextEdit、QQ、Ghostty、WPS。**Messages、密码库、App Store、系统设置隐私页、宿主 DeepSeek Harness、加速器、抖音、Antigravity/OpenCode 明确不建议适配。**
+一句话：**先做「通道已通 + 不抢前台」的，再做「文件证明是 Electron」的，最后才是会抢前台的。**
 
 ## 1. 本机软件现状
 
-### 1.1 按运行时族（数据源：最新清点报告）
+### 1.1 按运行时族（本版按包结构复核，修正了 ChatGPT 归类）
 
-| 运行时族 | 装了 | 已适配 | 部分验证 | 可只用画面 | 专用方案 | 限制 | 不动 | 未测 | 默认通道链 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| native | 29 | 18 | 0 | 2 | 0 | 0 | 2 | 7 | ax → applescript → visual |
-| electron | 5 | 0 | 1 | 0 | 0 | 2 | 1 | 1 | ax → cdp → applescript → visual |
-| chromium | 3 | 2 | 0 | 0 | 1 | 0 | 0 | 0 | cdp → ax → applescript → visual |
-| qt | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | ax → applescript → visual |
-
-合计 38 个：已适配 21、部分验证 1（ChatGPT）、可只用画面 2（Keynote/Numbers Creator Studio）、专用方案 1（Google Chrome 独立实例）、不动 3（Clash Verge / 奇游加速器 / DeepSeek Harness）、限制 2（Antigravity / 抖音）、未测 8（Calendar / Mail / Music / OpenCode / Photos / Preview / Reminders / Telegram）。另有 2 个 Steam 快捷方式壳（只有 run.sh、没有 bundle id），不计入可接管应用。
-
-> 归类差异：清点报告把 QQ / 微信归到 chromium；CDP-READINESS 进一步确认 QQ 是 Electron 40（QQNT.framework），微信是 native + Cronet（不是完整 Chromium）。本文以「运行时族看清点、通道结论看 CDP-READINESS」为准，正文里逐条注明。
-
-### 1.2 状态与风险概况
-
-- 已适配 21 个：Finder、Notes、TextEdit、Calculator、System Settings、Safari、QQ、Gemini、WPS、Ghostty、Steam（只读）、OrbStack、Pages Creator Studio、iMovie、GarageBand、FastZip、State、iRightMouse、UURemote、TencentMeeting、ChatGPT（部分验证单列，未计入 21）。
-- **前台风险名单**（读取会自己激活、默认跳过界面读取，30 天过期）：清点报告汇总 9 个（Ghostty / ChatGPT / QQ / Gemini / Steam / UURemote / Telegram / WPS / iRightMouse）；审计时本机 ~/.desktop-agent/front-risk.json 已有 10 条（后加了「文本编辑」，count=1）。
-- **限制/不动**：Antigravity 与抖音启动后无窗口/CDP 起不来；DeepSeek Harness 是宿主本身；Clash Verge、奇游加速器是用户代理/加速工具，不接管。
-- **未测 8 个**：系统应用为主（Mail / Calendar / Reminders / Preview / Photos / Music）+ Telegram + OpenCode。其中 Preview 是只读价值最高、风险最低的一个（本批入选）。
-- **IDE 空白**：本机没有装 VS Code / Cursor / Xcode；OpenCode、Antigravity 是 electron IDE 但 CDP 实测起不来/零实测，且重启会丢工作区，不建议现在排适配。因此「编辑器/IDE」门类本轮用 **TextEdit（纯文本编辑器）** 代表，不把 IDE 硬算进去。
-
-### 1.3 已实测的通道证据（可复用）
-
-- **AppleScript**：reports/applescript-channel-2026-11-08T12-52-51-134Z.json → Finder / Google Chrome / Safari / TextEdit 4/4 成功，frontStolen=false、frontUnchanged=true、自动化权限 granted；Safari 的页面 JS 桥默认关闭（需在 Safari 设置打开 Allow JavaScript from Apple Events）。
-- **CDP（独立 profile Chrome）**：docs/MAC-APPS.md 第八节记录 4/4 通过（读标题/正文、写输入框、按文字点按钮），独立 profile，不碰用户正在用的 Chrome。
-- **AX**：flow/COVERAGE.md 的覆盖率表（Finder 77 节点/22 可交互、Google Chrome 946/114、Safari 32/12、TextEdit 50/4 来自清点、QQ 125/20、Ghostty 17/3、WPS 81/23、Telegram 20/11、微信 20/7）。注意这是 2026-11-05 的只读探测，版本/登录态变化后需要复核。
-
-## 2. 建议适配清单（7 个，跨门类）
-
-| 应用（现状/证据） | 运行时 | 首选通道 | 能做什么 | 风险 | 现有可复用任务/守卫 |
-| --- | --- | --- | --- | --- | --- |
-| **Preview 预览**<br>未测（P；已在 reading 预设） | native | AX（窗口/菜单/标题/页码） | 只读：窗口标题、文档页数/缩放、菜单项；不实现打开/保存/导出/批注等写操作 | 打开文档会改变窗口状态；大 PDF 树可能超节点预算；冷启动可能没有文档窗口；不要猜用户在看哪个文件 | `core/tasks/coverage-probe.mjs` 的只读统计、`core/tasks/app-matrix.mjs` 的读树判定、`core/app-presence.mjs` 的「未运行就跳过」闸门；判定模板见 `docs/MAC-APPS.md` 第七节 |
-| **Safari**<br>已适配（S：AS 4/4；AX 105/47，仅浏览器壳） | native / WebKit | AX（壳）+ AppleScript（标签页/URL） | 读/写当前标签页 URL、新开/切换标签、后台打开页面；页面 DOM 需开发者菜单开 Allow JavaScript from Apple Events | 自动化权限首次会弹系统框（必须先静默 checkAutomationPermission）；冷启动不留窗口；页面内容不在 AX 树；JS 桥默认关闭 | `core/tasks/applescript-channel.mjs`、`core/applescript-driver.mjs`、`core/app-presence.mjs` 的 requireAppRunning、`core/tasks/app-matrix.mjs` 的只读断言 |
-| **Google Chrome**<br>专用方案（S：独立 profile CDP 4/4） | chromium | CDP（独立 user-data-dir 的 headless/离屏实例；browser:bg） | 页面导航、DOM/文本读取、按文字点击、输入、截图回显；**不接管用户正在用的 Chrome** | 必须独立 profile；用户实例加不了调试端口；CDP 端口只绑回环、无鉴权（用完即退）；不要读用户默认 profile 的登录态 | `core/browser.mjs`、`core/tasks/browser-background.mjs`、`core/tasks/cdp-driver.mjs`（端口/退出模板）、`core/local-token.mjs` 的本地票据；`docs/MAC-APPS.md` 第八节 headless 实测 |
-| **TextEdit 文本编辑**<br>已适配（S：AX 50/4 + AS ok；front-risk count=1） | native | AX（set_value/读文本）+ AppleScript | 读写纯文本、打开/切换文稿；**只对「未命名且空内容」的文稿写**，不覆盖用户文档 | 覆盖写不可逆；首次冷启动是打开面板、没有文稿窗口；读取可能抢一次前台（已在名单） | `core/text-edit-guard.mjs`、`core/note-write-guard.mjs`、`core/tasks/background-control.mjs` 的写入前 guard、`core/front-risk.mjs` 的前台风险名单 |
-| **QQ**<br>已适配（S：AX 125/20；front-risk count=1；CDP 未实测） | electron（QQNT，清点归 chromium） | AX 主、CDP 备选（未验证，沙盒可能起不来） | 只读：会话列表、聊天标题、按文字点可见按钮；写消息/发文件不在本批范围 | 启动/读取会抢前台（名单）；重启/操作可能丢未发送草稿；App Store 沙盒下 CDP 端口大概率起不来 | `core/tasks/app-matrix.mjs` 历史读数、`core/tasks/cdp-driver.mjs` 的 CDP 重启/退出模板、`core/app-presence.mjs`、`core/front-risk.mjs` |
-| **Ghostty**<br>已适配（S：AX 17/3；front-risk count=1） | native | AX 只读；键盘输入需前台+空闲门禁（sky_key） | 读终端窗口文本/标题；命令执行优先直接 shell，不建议驱动终端 | 读取会抢前台（名单默认跳过）；后台键入要求目标在前台且用户键鼠空闲，否则有误操作/打扰风险；命令不可逆 | `core/tasks/terminal-control.mjs`（空闲/前台门禁模板）、`core/front-risk.mjs`、`core/user-activity.mjs` 的 hidIdleMs、`core/app-presence.mjs` |
-| **WPS Office**<br>已适配（S：AX 81/23；front-risk count=4） | qt | AX 只读优先（qt 族） | 读文档窗口/菜单/正文控件；本批不做保存/覆盖，写操作后续单独评审 | 读取会抢前台（名单）；保存/覆盖/另存不可逆；首启可能登录/广告弹窗，不能代点 | `core/tasks/background-control.mjs` 的只读断言与写入守卫模式、`core/front-risk.mjs`、`core/dialog-guard.mjs`（权限/系统弹窗不代点） |
-
-> 说明 1：Preview 是唯一「未测、预判」入选项；其余 6 个都是已有实测/已适配，但本轮把它们收成「可复用的正式 adapter 说明」：明确首选通道、禁区、守卫和判定口径。
->
-> 说明 2：所有「能做什么」都是本批**只读/低副作用**范围；写操作（发消息、保存、删除、播放、新建日程）一律不在本批。
-
-## 3. 适配顺序建议
-
-| 顺序 | 应用 | 为什么排这个位置 | 完成标志（判定口径见第 4 节） |
+| 运行时族 | 装了 | 已适配 | 说明 |
 | --- | --- | --- | --- |
-| 1 | Preview | 新门类、纯只读、风险最低；一次适配就能补上「阅读/系统」空白，适合当只读样板 | 已运行时 AX 读到窗口/页码/菜单；真任务只读通过且前台不变；环境跳过分支有单测 |
-| 2 | Safari | 浏览器是最高频场景；AppleScript 4/4 已实测，坑（自动化权限、JS 桥开关）已有现成探测 | AS 只读任务 4/4；未授权/无窗口时环境跳过；页面 JS 桥关闭时给出明确提示 |
-| 3 | Google Chrome | 浏览器自动化主力；独立 profile CDP 已实测，安全边界和临时目录/端口模板齐全 | 独立 profile 启动/退出、端口回收、任务前后台不变；不碰用户默认 profile |
-| 4 | TextEdit | 编辑器/纯文本；AX+AS 都有证据，写守卫已存在，先固化「只写空文稿」规则 | 只写空文稿；覆盖场景被 guard 拦住；读取抢前台时走风险名单跳过 |
-| 5 | QQ | IM 唯一 AX 够用样本；先把只读会话列表做稳，再讨论 CDP | AX 读到会话/标题；只读任务通过；草稿/登录态不触碰；CDP 只做只读验证 |
-| 6 | Ghostty | 终端读文本价值中等，但抢前台风险明确；放到后段，只做只读+严格前台门禁 | 只读窗口文本；读取触发风险名单时跳过；任何键入都要求前台+空闲门禁 |
-| 7 | WPS Office | 办公文档写风险最高（保存/覆盖不可逆）+ 抢前台 count=4；最后做，且先只读 | 只读窗口/正文结构；写/保存不实现；首启弹窗不代点 |
+| native | 多数 | 18+ | Finder / 备忘录 / 计算器 / 系统设置 / Safari / TextEdit 等 |
+| **electron（真）** | 4 | **0** | Antigravity、抖音、OpenCode、DeepSeek Harness（宿主，不接管）；QQ 是 QQNT Electron 但清点归 chromium |
+| chromium | 3 | 2 | **Google Chrome**（专用方案：独立 profile 实例）、QQ、微信（微信实为 native + Cronet） |
+| qt | 1 | 1 | WPS Office |
+| **Chromium 派生但非 Electron** | 1 | 部分验证 | **ChatGPT**：Frameworks 里只有 Codex Framework + Sparkle，**没有 Electron Framework**（X） |
 
-排序原则：**新门类/低风险 → 高频浏览器 → 有守卫的编辑器 → IM → 终端/办公（高风险写操作）**。每一步都先跑「用户离开窗口」的只读探测，再谈写能力。
+> 上一版把 ChatGPT 记成 electron 是**分类器误判**（按 app.asar / framework 名字猜的），已由外部监控实跑确认：
+> ChatGPT 是 Codex 自己的 Chromium 派生壳，不是 Electron。分类器修正另任务负责，本文先按事实写。
 
-## 4. 判定口径（避免假绿）
+### 1.2 状态与前台风险名单（读取会自己激活、默认跳过）
 
-1. **S 级证据 = 读得到**：目标应用已在运行，AX/AppleScript/CDP 真的读到窗口/控件/页面内容，并且一次真实任务通过、前后台未被抢。对应的报告要能指到具体文件（app-matrix / applescript-channel / cdp-driver / 任务日志）。
-2. **画面级 = 读不到但能回显**：只有 live 帧、没有结构化树。只能标记「画面+坐标」，不宣称元素级能力，也不做写操作。
-3. **环境跳过 = 不算通过也不算失败**：目标没运行、屏幕锁定、权限缺失（辅助功能/屏幕录制/自动化）、应用在风险名单里，都打环境跳过、退出码 0，并在报告里写清原因；**不许为了全绿去掉门禁或伪造读数**。
-4. **预判必须标注**：没有 app-matrix/通道实测的条目写 P；不得把「包结构看起来支持」「历史报告说支持」当成当前版本已适配。
-5. **前置门禁**：读之前先 `core/app-presence.mjs` 的 requireAppRunning；需要刻意启动时走 ensureAppRunning → 登记 launchedByUs → installEmergencyAppCleanup → 结束 quitApp；权限用静默预检（Automation / ScreenCapture），未授权一律环境跳过；读取可能抢前台的先看 `core/front-risk.mjs` 名单。
-6. **写操作单独评审**：发消息、保存、删除、播放、新建日程等不可逆动作不进本批；必须另有 guard（text-edit-guard / note-write-guard / dialog-guard）与只写空内容等约束。
+| 应用 | 是否在 front-risk | count | 对本批意味着什么 |
+| --- | --- | --- | --- |
+| **Safari** | 否 | — | 可直接实测（S） |
+| **Google Chrome** | 否 | — | 可直接实测（S，走独立 profile） |
+| Antigravity / 抖音 | 否（但零实测 / CDP 全失败） | — | 可试，但必须先过调试参数预检 |
+| QQ | **是** | 1 | 默认跳过；需 front:risk -- --clear "QQ" 才能读 |
+| Ghostty | **是** | 1 | 默认跳过 |
+| WPS Office | **是** | 4 | 默认跳过 |
+| 文本编辑（TextEdit） | **是** | 1 | 默认跳过 |
+| 预览（Preview） | **是**（本版新增） | 1 | 默认跳过；见第 2 节 X-1 |
+| ChatGPT / Gemini / Telegram / Steam / UURemote / iRightMouse | 是 | 4~5 | 本批不做 |
 
-## 5. 不建议适配名单（含理由）
+> 名单是**累积证据**（30 天过期），不是永久判决；确认修好后可用 `npm run front:risk -- --clear` "<应用名>" 清一条重测。
 
-| 应用/类型 | 理由 |
-| --- | --- |
-| DeepSeek Harness（宿主） | 本工具运行在它里面；带调试端口重启会杀掉当前会话（CDP-READINESS 明确列为不用于实验） |
-| Clash Verge / 奇游加速器 | 用户的代理与游戏加速工具，已在「不动」名单：只读状态、永不退出、不点按钮 |
-| 密码库类（Passwords / 钥匙串访问） | 自动化密码库 = 批量导出凭据；TCC 授权弹窗属于「绝不代点」红线（`core/dialog-guard.mjs`） |
-| App Store / 系统设置「隐私与安全性」页 | 安装/购买/授权不可逆，且项目红线是不替用户点授权（`docs/SECURITY.md`） |
-| Messages（iMessage） | 读=看他人私信（隐私）、写=不可撤回的消息；没有「后台只读」的正当用途 |
-| 抖音 | Electron 但 CDP 实测 10/10 失败（ECONNREFUSED）+ App Store 沙盒 + 登录/草稿风险，两条路都断 |
-| Antigravity / OpenCode | 本机唯一的两类 electron IDE：CDP 起不来或零实测，重启会丢工作区/终端；只值得一次只读排查，不值得排适配 |
-| Steam | front-risk count=4，自动化价值低；只保留了只读样本 |
-| Telegram | AX 历史只有 20~26 节点/0 按钮（只读窗口壳），front-risk count=5，聊天内容属隐私；本批不做，若用户明确需要再单独评估 |
-| Keynote / Numbers Creator Studio | 只能画面；首启许可/引导不能代点；深控投入产出低 |
-| iMovie / GarageBand | 音视频编辑副作用大、自动化价值低，且首次启动引导多 |
-| Steam 快捷方式壳（Dome Keeper / Escape From Duckov） | 只有 run.sh、没有 bundle id，不是可接管的独立应用 |
+### 1.3 已实测的通道证据（可复用，S）
+
+- **AppleScript**：reports/applescript-channel-2026-11-08T12-52-51-134Z.json → Finder / Google Chrome / Safari / TextEdit 4/4 成功，frontStolen=false、自动化权限 granted；Safari 页面 JS 桥默认关闭。
+- **CDP（独立 profile Chrome）**：docs/MAC-APPS.md 第八节记录 4/4 通过（读标题/正文、写输入框、按文字点按钮），不碰用户正在用的 Chrome。
+- **AX**：flow/COVERAGE.md 覆盖率表（Chrome 946/114、Safari 32/12、QQ 125/20、Ghostty 17/3、WPS 81/23、TextEdit 50/4 等）。注意是 2026-11-05 的读数，版本/登录态变化后要复核。
+- **adapter-demo**：`core/tasks/adapter-demo.mjs`（本轮新增的实测工具，见第 4 节）。
+
+## 2. 三个被实跑推翻的假设（X 清单，不要再按预判做）
+
+### X-1　Preview 不是「低风险只读样板」（上一版排第 1，作废）
+
+- **冷启动 12 秒仍无窗口**：open -g 之后进程在，但窗口迟迟不建；用「等窗口就绪」的判定会一直等到超时。
+- **带文档打开后再读会抢前台**：open -a Preview <file> 把文档交给 Preview 之后，读它的 AX 树会把 Chrome / 用户应用顶掉一次；外部监控实跑已复现，**「预览」已进 front-risk（count=1）**。
+- **结论**：Preview 从「第 1 位、只读样板」降为**排后候选**；要做只能在 front-risk 名单清掉 + 用户离开窗口时，且只读窗口/菜单，不打开/保存/导出/批注。
+- 同步修正上一版「冷启动可能没有文档窗口」的模糊说法：**不是「可能」，是实测 12 秒都没有**。
+
+### X-2　OpenCode 不能用 CDP 接（应用侧限制，别再试）
+
+- 实跑：给 OpenCode 传 `--remote-debugging-port` → **二进制直接拒绝（bad option）**，端口从没起来过。
+- 归因：**应用侧限制**（它主动裁掉了调试开关），不是「参数不对」也不是「沙盒拦截」。
+- **结论**：OpenCode 归「应用侧限制」，从候选里移除；**不要再换端口/换启动方式重试**（之前 CDP 10/10 ECONNREFUSED 也是同一根因）。
+- 这条经验要泛化到所有 Electron：**先证明二进制接受参数，再谈 CDP**（见第 3 节的预检）。
+
+### X-3　ChatGPT 不是 Electron（分类器误判）
+
+- 包结构：Contents/Frameworks 只有 **Codex Framework** + **Sparkle**，**没有 Electron Framework**；没有 app.asar。
+- 之前它被记成 electron，是因为分类器看到 app.asar / 类 Electron framework 名字就归类；实跑 /json/version 回的是 Codex 自己的 Chrome 版本，**是 Chromium 派生，不是 Electron**。
+- **结论**：ChatGPT 不能作为「electron 族已打通」的证据；本批不做（且它在 front-risk，count=5）。
+
+## 3. 建议适配顺序（三档）
+
+| 档 | 应用 | 证据等级 | 开工前置条件 | 完成标志 |
+| --- | --- | --- | --- | --- |
+| **A（先做）** | **Safari** | S（AS 4/4；AX 105/47 仅壳） | 无（不在名单）；首次自动化权限走静默预检 | adapter-demo `--app` Safari 读到窗口/按钮；只读任务通过、前台不变 |
+| **A（先做）** | **Google Chrome** | S（独立 profile CDP 4/4） | 无（不在名单）；**只碰独立 profile 实例** | 独立实例起停、端口回收、任务前后台不变 |
+| **B（真 Electron，先过预检）** | **Antigravity** | P（零实测）→ 先做 B0 预检 | 二进制接受 `--remote-debugging-port`；退出当前工作区前先问用户 | 端口起来 + /json/version 有响应 + 读到页面标题 |
+| **B（真 Electron，先过预检）** | **抖音** | X（CDP 10/10 ECONNREFUSED）→ 先做 B0 预检 | 同上；App Store 沙盒版优先试固定端口 | 同上；**起不来就如实记「应用侧限制」，不算适配失败** |
+| **C（排后，front-risk）** | Preview | P + X（12s 无窗口、抢前台） | 清「预览」名单 + 用户离开 15 分钟；只读 | 只读窗口/菜单成功；不打开文档 |
+| **C（排后，front-risk）** | TextEdit | S（AX+AS） | 清「文本编辑」名单；只写空文稿 | 只写空文稿 + 读回校验 |
+| **C（排后，front-risk）** | QQ | S（AX 125/20）+ P（CDP 未验） | 清「QQ」名单 | 只读会话/标题；不碰草稿 |
+| **C（排后，front-risk）** | Ghostty | S（AX 17/3） | 清「Ghostty」名单 | 只读窗口文本；键入需前台+空闲门禁 |
+| **C（排后，front-risk）** | WPS Office | S（AX 81/23，count=4） | 清「WPS Office」名单 | 只读正文结构；不保存 |
+
+**B0 预检（真 Electron 必做，OpenCode 的教训）**——只在用户离开窗口时跑，这一条**会启动应用**，跑完立刻退出：
+
+    # 把 <App> 换成 Antigravity / 抖音；先看二进制是否接受调试参数（不接受会像 OpenCode 一样报 bad option）
+    BIN="/Applications/<App>.app/Contents/MacOS/<exe>"
+    "$BIN" --remote-debugging-port=0 --headless --version 2>&1 | head -5
+    # 看到 bad option / unknown option → 应用侧限制，直接停止，不要再试
+    # 参数被接受 → 再走 adapter-demo / cdp-driver 的正式实测
+
+> 说明：QQ 是「Electron 内核但 AX 已够用」的样本，放到 C 档不是因为它难，而是**它在名单里**（读取会抢前台）；
+> 名单清掉后它其实比 B 档更稳（AX 125 节点 / 20 按钮）。
+
+## 4. 适配完成判定 + adapter-demo 7 条可复制命令
+
+### 4.1 判定口径（避免假绿）
+
+- **PASS（S 升级）**：应用已运行 → 读到窗口/控件 → 一次真实动作读回校验通过 → 任务前后前台未变，且能指到具体报告/日志。
+- **环境跳过**：应用没运行 / 屏幕锁 / 权限缺失 / 在 front-risk 名单 → **exit 0 + `envSkip:true`**，报告写清原因。**环境跳过不等于通过，也不许为了全绿去掉门禁。**
+- **能力失败（真失败）**：应用在跑、权限也有，但读不到树 / 点不动 / 写不进 → exit 1，如实记 FAIL。
+- **区分原则**：所有「没跑成」都要先回答一句——**是环境问题（没开/锁屏/没授权/名单）还是能力问题（通道不通/结构不支持）**。两者混在一起就是假绿/假红。
+- **不许假绿**：禁止「读不到就当通过」「弹窗提示当结果」「没运行时静默算 PASS」。
+
+### 4.2 adapter-demo（`core/tasks/adapter-demo.mjs`，没有 npm 脚本，直接用 node 跑）
+
+用法：`node core/tasks/adapter-demo.mjs --app <显示名> [--file <样例>] [--click-text <文字>] [--type-text <文字>] [--allow-launch]`
+
+守卫顺序（都是环境跳过，exit 0）：锁屏 → 用户键鼠活跃 → **front-risk 名单（`--allow-launch` 也绕不过）** → 应用没运行（不加 `--allow-launch` 不启动）。
+样例文件在 `examples/adapters/`（sample.txt / sample.png / sample.html）；`--file` 会先复制到 0700 临时目录再 `open -g`，**不会写仓库里的样例**。
+
+| # | 命令 | 覆盖的用法 | 预期（跑完看 JSON 的 steps / envSkip） |
+| --- | --- | --- | --- |
+| 1 | `node core/tasks/adapter-demo.mjs --app Safari` | 最简：只读树 | Safari 在跑 → 读到窗口/按钮；不在跑 → envSkip |
+| 2 | `node core/tasks/adapter-demo.mjs --app Chrome` | 只读树（用户 Chrome） | 读到地址栏/按钮；**只读，不碰 profile** |
+| 3 | `node core/tasks/adapter-demo.mjs --app Chrome --file examples/adapters/sample.html` | `--file`：后台开临时副本 | 临时目录里打开、读完删掉；仓库样例不改 |
+| 4 | `node core/tasks/adapter-demo.mjs --app TextEdit --file examples/adapters/sample.txt --type-text "[AGENT-TEST] typed"` | `--file` + `--type-text` | **会先被 front-risk（文本编辑）拦成 envSkip**；要真跑先 `npm run front:risk -- --clear "文本编辑"` |
+| 5 | `node core/tasks/adapter-demo.mjs --app Preview --file examples/adapters/sample.png` | 带文档打开（Preview 专用） | **会先被 front-risk（预览）拦成 envSkip**；且见 X-1：即使清名单也可能 12s 无窗口/抢前台 |
+| 6 | `node core/tasks/adapter-demo.mjs --app QQ` | 只读树（名单内应用） | **envSkip：QQ 在 front-risk（count=1）**；清名单后才读得到 125 节点 |
+| 7 | `node core/tasks/adapter-demo.mjs --app Safari --allow-launch` | `--allow-launch`：没运行就启动 | Safari 没跑时：ensureAppRunning → 读树 → 结束 quitApp 只关自己拉起的；跑完前台不变 |
+
+补充：`node core/tasks/adapter-demo.mjs --help` 看完整参数；`--click-text "确定"` 是「按可见文字点按钮并读回变化」的用法，在 C 档应用上使用前先清名单（否则同样 envSkip）。
+
+### 4.3 真实输出怎么记
+
+本轮**没有执行**这些命令（不启动应用是硬约束）。S 级结论要求：把命令、完整 JSON（steps / nodes / envSkip / reason）和前后台对比贴进 reports/adapters-<日期>.md，
+并把 envSkip 与 FAIL 分开统计——**没有真实输出的条目只能写 P，不能写 S**。
+
+## 5. 不建议适配名单
+
+| 应用/类型 | 等级 | 理由 |
+| --- | --- | --- |
+| **OpenCode** | **X** | 二进制拒绝 `--remote-debugging-port`（bad option），应用侧限制；CDP 10/10 失败同根因。**不要再试** |
+| DeepSeek Harness（宿主） | X | 本工具运行在它里面；带调试端口重启会杀掉当前会话 |
+| Clash Verge / 奇游加速器 | — | 用户代理/加速工具，已在「不动」名单：只读状态、永不退出、不点按钮 |
+| 密码库（Passwords / 钥匙串） | — | 自动化=批量导出凭据；TCC 授权弹窗属「绝不代点」红线 |
+| App Store / 系统设置隐私页 | — | 安装/购买/授权不可逆，项目红线是不替用户点授权 |
+| Messages（iMessage） | — | 读=看他人私信、写=不可撤回；没有后台只读的正当用途 |
+| ChatGPT | X（原分类归 electron） | 不是 Electron（Codex Framework + Sparkle）；且 front-risk count=5 |
+| Steam | — | front-risk count=4，自动化价值低，只保留只读样本 |
+| Telegram | — | AX 20~26 节点 / 0 按钮，front-risk count=5，聊天内容隐私 |
+| Keynote / Numbers Creator Studio | — | 只能画面；首启许可/引导不能代点 |
+| iMovie / GarageBand | — | 音视频编辑副作用大、引导多 |
+| Steam 快捷方式壳（Dome Keeper / Escape From Duckov） | — | 只有 run.sh、没有 bundle id，不是可接管应用 |
 
 ### 5.1 暂缓（不是永久不建议）
 
 | 应用 | 暂缓原因 | 将来可做的安全范围 |
 | --- | --- | --- |
-| Mail 邮件 | 自动化权限首次弹框；发信/删除不可逆；未配账号时是引导页 | 只读未读数/主题列表；严格权限预检 + 不发信 |
-| Calendar / Reminders | 新建/删除是写操作；iCloud 同步提示；低优先 | 只读「今天的日程/未完成提醒」 |
-| Photos 照片 | 图库巨大、加载慢；删除/编辑不可逆；隐私 | 只读相册/最近照片，绝不写 |
-| Music 音乐 | 播放会出声；资料库修改不可逆 | 只读当前曲目/播放状态，不点播放 |
-| 终端（若装 Terminal/iTerm2） | 本机未装/未测；命令执行有不可逆风险 | 只读窗口文本；执行命令优先直接 shell |
+| Mail | 自动化权限首次弹框；发信/删除不可逆；未配账号是引导页 | 只读未读数 / 主题列表 |
+| Calendar / Reminders | 新建/删除是写操作；iCloud 同步提示 | 只读今天日程 / 未完成提醒 |
+| Photos | 图库巨大、加载慢；删除/编辑不可逆 | 只读相册 / 最近照片 |
+| Music | 播放会出声；资料库修改不可逆 | 只读当前曲目 / 播放状态 |
+| Terminal / iTerm2（本机未装） | 未测；命令执行不可逆 | 只读窗口文本；执行优先直接 shell |
 
-## 6. 证据索引与建议 INDEX 行
+## 6. 证据索引
 
-- 最新清点：reports/app-inventory-2026-11-08T13-54-57-858Z.md
-- 应用手册与风险名单：docs/MAC-APPS.md
+- 最新清点：reports/app-inventory-*.md（取最新时间戳那份）
+- 应用手册与风险名单：docs/MAC-APPS.md 第六~十节
 - CDP 三档：flow/CDP-READINESS.md
 - AX 覆盖率：flow/COVERAGE.md
-- 应用手册/风险名单：docs/MAC-APPS.md 第六~十节
-- AppleScript 通道：reports/applescript-channel-2026-11-08T12-52-51-134Z.json
-- CDP 实测：reports/cdp-driver-2026-11-07T21-13-27-981Z.json；headless Chrome 验收见 docs/MAC-APPS.md 第八节
+- AppleScript 通道：reports/applescript-channel-*.json
+- CDP 实测：reports/cdp-driver-*.json
+- 适配实测工具：`core/tasks/adapter-demo.mjs`（用法见第 4.2 节）
+- 前台风险名单：`npm run front:risk`（读取 ~/.desktop-agent/front-risk.json，30 天过期）
 
-**建议 flow/INDEX.md 新增一行（由 Lead 添加，本文不越权修改）：**
-
-| 我想… | 看这份 |
-| --- | --- |
-| 本机装了哪些软件、下一批建议适配哪 7 个（跨门类/通道/风险/不建议名单） | [../docs/ADAPTERS.md](../docs/ADAPTERS.md) |
-
-> 本文按「只读盘点 + 历史证据 + 明确预判」编写；所有 S 级结论都能指到上列报告，P 级结论需要等用户离开窗口后补 probe/matrix 才能升级。
+> 本版修正自外部监控的实跑结论；标注 P 的条目仍需等用户离开窗口后补实测才能升级为 S，标注 X 的条目不要再按预判重试。

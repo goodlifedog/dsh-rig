@@ -10,9 +10,41 @@ import {
 } from '../core/app-runtime.mjs';
 import { findByBundle, scanDirs } from '../core/app-scan.mjs';
 
-test('Electron：框架或 app.asar 任一命中都算', () => {
+test('Electron：Electron Framework / Electron Helper 命中才算，app.asar 只是疑似', () => {
   assert.equal(classifyRuntime(['Electron Framework.framework']).type, 'electron');
-  assert.equal(classifyRuntime([], { hasAsar: true }).type, 'electron');
+  assert.equal(classifyRuntime(['Electron Framework.framework'], { hasAsar: true }).type, 'electron');
+  // 没有 asar 但有 Electron Framework：仍然是 electron
+  assert.equal(classifyRuntime(['Electron Framework.framework']).evidence.length > 0, true);
+  // Electron Helper.app / Helper (Renderer).app 也算真判据
+  assert.equal(classifyRuntime(['Electron Helper.app']).type, 'electron');
+  assert.equal(classifyRuntime(['Electron Helper (Renderer).app'], { hasAsar: true }).type, 'electron');
+});
+
+test('ChatGPT 形状：有 app.asar 但只有 Codex Framework/Sparkle → 不判 electron，回落 native', () => {
+  const r = classifyRuntime(['Codex Framework.framework', 'Sparkle.framework', 'Squirrel.framework'], { hasAsar: true });
+  assert.equal(r.type, 'native', JSON.stringify(r));
+  assert.ok(r.evidence.some((e) => e.includes('app.asar') && e.includes('疑似')), JSON.stringify(r.evidence));
+});
+
+test('app.asar 不会把 chromium 一族带偏', () => {
+  for (const frameworks of [
+    ['Chromium Embedded Framework.framework'],
+    ['Chromium Framework.framework'],
+    ['libmmmojo.dylib'],
+    ['Contents/Frameworks/Google Chrome Framework.framework/Versions/1/Helpers/Google Chrome Helper (Renderer).app'],
+  ]) {
+    const r = classifyRuntime(frameworks, { hasAsar: true });
+    assert.notEqual(r.type, 'electron', JSON.stringify(frameworks));
+    assert.equal(r.type, 'chromium', JSON.stringify(frameworks));
+  }
+});
+
+test('普通原生应用不回归：有 asar 但没有 Electron 证据也只算 native', () => {
+  const native = classifyRuntime(['AppKit.framework']);
+  assert.equal(native.type, 'native');
+  const asarOnly = classifyRuntime([], { hasAsar: true });
+  assert.equal(asarOnly.type, 'native');
+  assert.ok(asarOnly.evidence.some((e) => e.includes('app.asar')));
 });
 
 test('Chromium 系：Chromium Embedded Framework', () => {

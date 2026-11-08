@@ -66,7 +66,7 @@
 - 标题门控：带 titleHint 的会话只在 DSH 当前前台会话标题命中时显示；没有 titleHint 的会话保持旧行为（只要 DSH 在前台就可显示）。
 - 手动开关：POST /visible {"visible":true} 固定显示（暂停自动隐藏），{"visible":false} 立即淡出隐藏。
 - 悬停/点击底部胶囊：日志抽屉滑出（悬停临时展开，点击可固定，鼠标移出窗口自动收起；胶囊和面板之间留了缓冲，不会瞬间收起）。
-- 点击穿透：默认整窗对鼠标穿透，点击落到下面的 DSH 页面；只有右上角 ⤢/✕、左上角状态胶囊、四周 8px 拖拽条会临时接管鼠标（/health 的 clickThrough 可查当前是否穿透）。
+- 点击穿透：默认整窗对鼠标穿透，点击落到下面的 DSH 页面；只有**中央 ⤢**、右上角 ✕、左上角状态胶囊、四周 8px 拖拽条会临时接管鼠标（/health 的 clickThrough 可查当前是否穿透）。
 - 拖动：只能从四周/顶部 8px 的拖拽条拖（不再整窗可拖）；拖动后该窗口位置固定，空闲仍会隐藏。
 - 缩放：拖窗口边缘（最小 250 x 160）。
 - 关闭：点右上角 ×，或先点一下浮窗再按 Esc。
@@ -400,7 +400,8 @@ headless 浏览器在用户屏幕上没有窗口，画面只能靠 CDP 截图推
 - 推一次 /status：0.8s 内 visible=true；不再操作 5 秒后 visible=false。
 - 悬停暂停：真实鼠标停在窗上，8 秒仍 visible=true；继续停到 20 秒，兜底强制 visible=false（hardHideMs=15000）。
 - 拖拽条：鼠标在顶部 8px 条内 clickThrough=false；从上边条拖 80px，窗口 y 坐标 49→129；之后空闲仍隐藏，位置保持。
-- 点击穿透：clickThrough=true 时点击小窗中心（1346,200），点击落到下面的测试窗口（日志记录 CLICK 714,48 H1），小窗自身无反应；把鼠标移到右上角 ⤢ 上 clickThrough 变 false，点击可触发放大（expanded=true）。
+- 点击穿透：clickThrough=true 时点击小窗中心（1346,200），点击落到下面的测试窗口（日志记录 CLICK 714,48 H1），小窗自身无反应；把鼠标移到**中央 ⤢** 上 clickThrough 变 false，点击可触发放大（expanded=true）。
+- UI 变更说明（2026-11-08）：已删掉红色「■ 停止任务」按钮；放大 ⤢ 从右上角移到**窗口中央**（浏览器全屏按钮样式，hover 才出现）。下面这些截图大多摄于旧版 UI（右上角 ⤢、含红色停止钮），以实际界面为准；待重拍清单见 `overlay/docs/` 与验收任务。
 - 放大截图：docs/clarity-expanded.png；小窗清晰度截图：docs/clarity-small.png；多会话截图：docs/multi-session.png。
 - 外观改版数据（外部帧 example.com 1280×800，窗口仍 300×190）：改前 fps=10、frameBytes=59031、clickThrough=true；改后 fps=9.2、frameBytes=59031、clickThrough=true；运行中状态胶囊显示「正在读取页面内容（headless CDP） 2s」，悬停/日志交互不变；空闲 7 秒后 visible=false（未 pinned），pinned 时按规则保持；放大态 960×600 截图状态胶囊位置/字号一致（docs/ui-after.png、docs/ui-after-error.png、docs/ui-before.png）。
 - 宿主可见性：把宿主进程名临时改成不存在的应用后重启，/health hostVisible=false、hostBoundsStale=true、visible=false，CGWindowList 里没有任何 Desktop Agent 窗口；恢复后 hostVisible=true、hostBoundsStale=false、小窗重新出现。DSH 真身隐藏（System Events set visible=false）在锁屏状态下 CGWindowList 仍会列出窗口，属于系统锁屏行为，解锁后按 OnScreenOnly 判定。

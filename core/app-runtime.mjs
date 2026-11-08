@@ -24,11 +24,18 @@ export function classifyRuntime(frameworks = [], info = {}) {
   const has = (re) => list.find((x) => re.test(x)) || '';
   const evidence = [];
 
-  const electron = has(/electron framework/i);
-  if (electron) evidence.push('包含 ' + electron);
-  if (info.hasAsar) evidence.push('包含 app.asar');
-
-  if (electron || info.hasAsar) return { type: 'electron', evidence };
+  // app.asar 只是「疑似 Electron」，不能单凭它判：ChatGPT 这类 Electron 外壳会换成自家
+  // 框架名（Codex Framework + Sparkle），app.asar 还在，但根本没有 Electron Framework/Helper。
+  // 真判据是 Electron 自己的框架或 Helper 子进程（Electron Helper.app / Helper (Renderer).app 等）。
+  const electron = has(/electron framework/i) || has(/electron helper[^/]*\.app/i);
+  if (electron) {
+    evidence.push('包含 ' + electron);
+    if (info.hasAsar) evidence.push('包含 app.asar');
+    return { type: 'electron', evidence };
+  }
+  if (info.hasAsar) {
+    evidence.push('包含 app.asar（仅疑似 Electron：没有 Electron Framework/Helper，不据此判定）');
+  }
 
   const flutter = has(/fluttermacos|flutter\.framework/i);
   if (flutter) return { type: 'flutter', evidence: ['包含 ' + flutter] };
