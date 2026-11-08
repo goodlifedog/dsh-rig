@@ -351,3 +351,20 @@ npm test    # 664 tests，663 pass / 0 fail / 1 skip
 **明确没做的事**：没有启动/显示任何窗口；没有运行 `npm run accept`、`verify:live`、`matrix`、`overlay`、`monitor`；
 没有执行任何会写用户数据的清理脚本（`cleanup-test-data`、`prune --apply` 等）；
 没有修改代码；没有 git commit/push。
+---
+
+## 修复状态（2026-11-08 收尾，Lead 核验后统一提交）
+
+| 编号 | 问题 | 状态 | 修复/验证 |
+| --- | --- | --- | --- |
+| H-1 | 笔记清理回退无闸门 | ✅ 已修 | `deleteTestNotes` 默认 fail-closed（`allowTopFallback` 才放开），任务路径永不回退；单测 15 项（dadfaaa） |
+| M-1 | daemon 停止/超时只杀 pid | ✅ 已修 | `killTaskTree` 杀进程组 + 孤儿 Chrome 清理；daemon-kill 13 项、orphan-cleanup 9 项（760396a） |
+| M-1b | 孤儿 Chrome 可能误清别的会话 | ✅ 已修 | SingletonLock 活跃实例守卫（活 pid 跳过，死/缺失仍清）；orphan-cleanup 18 项、runner 宽限 6s（f3335a1） |
+| M-2 | 中止清理预算不足 | ✅ 已修 | `quitAppSync` 共享 deadline + 紧急清理总预算 2500ms，外层宽限 6s；单测 11 项（323f971 + f3335a1） |
+| M-3 | 验收锁写失败 fail-open | ✅ 已修 | 默认 `{ok:false, reason:'lock-unwritable'}` + 退出码 3；仅 `AGENT_ALLOW_UNLOCKED=1` 降级；单测 25 项（be02764） |
+| M-4 | CDP 端口主人可伪装 | ✅ 已修 | 无 expectedPid 时只接受可执行路径整串相等，否则 fail-closed；删除 argv 子串；单测 38 项（99ecff0） |
+| M-5 | token 可随自定义 URL 外发 | ✅ 已修 | `tokenHeadersFor(url)` 仅回环带 token，非回环需 `AGENT_ALLOW_REMOTE_TOKEN=1`；13 + 40 项（c4fb28f + 5846b88） |
+| 低危 6 条 | 临时文件/权限/拼接/kill 复核等 | ◐ 部分顺带处理 | 其余保留在正文，不作为发布阻塞 |
+| 待确认 3 条 | Windows 未实机 / Notes 标题可读性 / AGENTD_TASKS_DIR | ⏳ 保留 | 需要真机或更多数据才能定论 |
+
+全量回归：`npm test` **743 项 / 742 过 / 1 跳过 / 0 失败**；`npm run check`、`npm run repo:check`、`npm run safety:audit`、`env-doc --check` 全过。

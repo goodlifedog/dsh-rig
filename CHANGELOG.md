@@ -2,6 +2,14 @@
 
 ## 0.7.0（未发布）
 
+- 安全评审（docs/SECURITY-REVIEW-2026-11-08.md）的 1 高危 + 5 中危 + 1 衍生全部修复，全程由子 agent 执行、Lead 抽样核验后统一提交：
+  H-1 笔记清理回退无闸门（默认 fail-closed）；M-1 daemon 停止/超时杀进程组 + 孤儿 Chrome 清理；
+  M-1b 孤儿清理加 SingletonLock 活跃实例守卫、runner 宽限 6s；M-2 中止清理共享预算（2500ms / 外层 6s）；
+  M-3 验收锁写失败 fail-closed（退出码 3 / AGENT_ALLOW_UNLOCKED=1）；M-4 CDP 端口主人 fail-closed（删除 argv 子串）；
+  M-5/M-5b token 只随回环地址发送（tokenHeadersFor，非回环需 AGENT_ALLOW_REMOTE_TOKEN=1）。
+  小窗显示路径审查后修 R1–R6（showOverlay 主漏斗补 hostVisible/快照新鲜度、未知前台/标题 fail-closed、re-show 补 opacity、clear 不算活动、首活动绑标题、隐藏态 expand 忽略），冷启动实测无窗口弹出。
+  全量回归 743 项测试 / 742 过 / 1 跳过 / 0 失败。
+- 团队改为固定 8 个成员复用、不再新增（flow/TEAM-BOARD.md 记录分工与监督规则：Lead 拆单 → 成员 claim → 只跑目标单测/不提交 → Lead 核验后统一 commit）。
 - 修小窗会在别的应用/别的桌面闪出来：`ready-to-show` 原来**无条件** `showInactive()`——任何请求新建会话窗口的瞬间，小窗都会无视「宿主是否在前台、宿主窗口是否可见、当前会话标题是否匹配、有没有活动」直接冒出来一下（实测用户正在别的应用/桌面干活时会看到）。现在必须四条同时满足才显示，否则先隐藏、等有活动且条件恢复再由 attach 循环决定出现；另加兜底：被门控隐藏但窗口实际可见时强制 hide。补 7 项单测，重启 overlay 后冷启动不再弹窗（实测 onscreen 窗口列表为空）
 - 修清理策略会删掉验收证据：`prune` 原来对所有报告一刀切「只留最近 200 个」，把 app-matrix 等历史报告删掉后，清点会把「限制」退回「未测」（OpenCode 已发生）。现在 app-matrix / cdp-driver / applescript-channel 三类证据报告不受数量上限影响，只按 `KEEP_EVIDENCE_DAYS`（默认 90 天）老化；补 3 项单测，MONITORING 文档同步
 - 补全 10 个任务的用途说明（boss-candidates/boss-greet/boss-scan/coverage-probe/form-fill/greet-inner/human-demo/mcp-demo/platform-demo/user-chrome-demo），`flow/TASKS.md` 里 32 个任务现在都有说明、没有「没写用途说明」占位
@@ -215,8 +223,3 @@
 - `parseJobs` / `countElements` 对 null/undefined 界面树不再抛错（ocu 读失败时任务不会因此崩）
 - 任务队列加上限（默认 50，`AGENTD_MAX_QUEUE` 可调）：超过返回 429 并说明原因，队列不会被狂刷撑爆
 - 修后台 `/run` 的目录穿越：任务名原来直接拼路径，`../` 可跳出任务目录执行任意脚本；现在按任务白名单校验并返回 400
-- 真实窗口回显的瞬时失败不再飘红：`could not create image from window`（窗口长期被遮挡后系统要补画）
-  连续失败 4 次才报错，期间 120ms 快速重试；实测 1–3 秒出首帧且无「画面暂时不可用」闪烁，
-  失败原始报错会写进日志便于排查（OVERLAY_CAPTURE_FAIL_TOLERANCE 可调）
-- 帧率口径按实测校准：真实窗口回显约 6fps / 150ms 一帧，离屏推帧约 13fps / 48ms；隐藏时暂停抓帧
-- daemon 对外暴露 `pendingRetry`：失败到退避重跑之间不再显示「空闲」，健康面板显示「等待重试：任务（第 N 次，约 Xs 后）」

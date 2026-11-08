@@ -11,6 +11,7 @@
 | 查安全边界（能防什么、还差什么） | [../docs/SECURITY.md](../docs/SECURITY.md) |
 | 搞 Chrome / 浏览器后台控制 | [CDP-FALLBACK.md](CDP-FALLBACK.md) |
 | 哪些应用能走 CDP（实测/理论/不支持三档） | [CDP-READINESS.md](CDP-READINESS.md) |
+| 团队分工与监督规则（固定 8 个成员） | [TEAM-BOARD.md](TEAM-BOARD.md) |
 | 安全评审发现了什么（高危/中危/已确认安全） | [../docs/SECURITY-REVIEW-2026-11-08.md](../docs/SECURITY-REVIEW-2026-11-08.md) |
 | 看 ocu（底层能力）怎么接进来的 | [OCU-INTEGRATION.md](OCU-INTEGRATION.md) |
 | 打包、发布、CI | [PACKAGING.md](PACKAGING.md) + [PUBLISH.md](PUBLISH.md) |

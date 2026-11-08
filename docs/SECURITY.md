@@ -13,7 +13,7 @@
 | 本机任意进程驱动守护进程 / 小窗 | 任何本地进程都能 POST /run 让后台跑任务，或调 overlay 读窗口标题、往浮窗塞图 | **daemon 与 overlay 的全部接口都要 `X-Agent-Token`**（唯一例外是 daemon 的 `GET /` 存活探测：只回 ok/pid/uptime，不带任务列表）；token 启动时随机生成写到 `~/.desktop-agent/api-token`（文件 600、目录 700），客户端自动读取；实测两个服务无 token 均 401。默认只认请求头：`?token=` 会漏进 shell history/访问日志，必须显式 `AGENT_ALLOW_QUERY_TOKEN=1` 才认（实测默认下查询串 401） |
 | AppleScript 注入 | 应用名/进程名里塞引号或换行把脚本截断，执行任意命令 | 拼进脚本的名字走白名单校验（`isSafeIdentifier`），含引号/反斜杠/控制字符一律不执行；`isSafeScriptLiteral` 再做一层 |
 | AppleScript 授权弹窗 | 后台流程被系统弹框打断，或替用户点"允许" | 先用 `AEDeterminePermissionToAutomateTarget(askUserIfNeeded=false)` 静默查授权，没授权**不发 Apple 事件** |
-| CDP 端口劫持 | 本地进程抢先监听调试端口冒充 CDP，我们连上去等于把页面内容/输入交给它 | 连之前用 `lsof` 查端口主人：知道应用 pid 时必须相等（`debugPortTrust`）；拿不到 pid 时校验端口主人的可执行路径属于该应用；两者都拿不到就**拒绝连接**（fail closed）。启动和 attach 两处都校验，实机用假 CDP 占端口验证过拒绝路径 |
+| CDP 端口劫持 | 本地进程抢先监听调试端口冒充 CDP，我们连上去等于把页面内容/输入交给它 | 连之前用 `lsof` 查端口主人：知道应用 pid 时必须**严格相等**（`debugPortTrust`）；拿不到 pid 时只接受调用方显式提供的目标可执行路径，`ps -o comm=` 必须**整串相等**（不再用 argv 子串，argv 可被伪装）；两者都没有就**拒绝连接**（fail closed，trust=`unverified`）。启动/attach/通道协商三处都校验，实机用假 CDP 占端口验证过拒绝路径 |
 | pid 复用误杀 | pgrep 和 kill 之间 pid 被系统复用，把用户别的程序 TERM 掉 | 杀之前 `ps -p pid -o comm=` 复核，名字对不上就不杀（`pidMatchesProcess`） |
 | 预置可执行文件 | `~/.desktop-agent/bin/ae-permission` 被别人换成恶意程序 | 执行前校验归属和权限（必须本用户所有、不能被组/其他人写），缓存目录不可信时**拒绝执行**；编译走临时文件 + rename |
 | 小窗渲染进程被注入/加载远程资源 | 窗口标题、日志、推帧 note 都可能来自外部，一旦渲染层放开就是注入面 | `overlay/index.html` 带严格 CSP：`default-src 'none'`、脚本只允许本地、图片只允许 `self data:`、`base-uri/form-action 'none'`；渲染层只用 `textContent`、没有内联事件处理器；`test/overlay-csp.test.mjs` 把口径钉住 |
@@ -60,13 +60,18 @@
   同一份日志里就算有"环境字样"也不能整轮豁免；环境跳过只认任务显式声明或环境字样，
   不能拿断言名字当豁免理由（评审复现过 form-fill 的 FAIL 被「页面结构已变」吞掉）。
 - **不拿用户数据做测试**：测试笔记标题统一带 `[AGENT-TEST]` 标记，清理按标记删（历史测试词要 `--force-all` 才认）；
-  标记读不到时退回「写入前后条数差、只删顶部 N 条」，并且要显式 `--force-all` 才允许。
+  标记读不到时任务路径**直接放弃清理**（`deleteTestNotes` 默认返回 0 并警告，fail-closed，宁可留下测试笔记也不误删用户笔记）；
+  只有显式传 `allowTopFallback:true` 或清理脚本 `--force-all` 才允许退回「按条数删顶部 N 条」。
   清理脚本默认只报告；文本编辑只关「未命名 + 正文是我们测试格式（带 [AGENT-TEST] 或带时间的固定句式）」的文稿，
   有名字的、空的、只是正文里包含关键词的用户草稿一律不动（以前只看关键词，会把用户草稿 saving no 掉）；
   验收往文本编辑写内容前先检查：只有「未命名且内容为空」的文稿才写，用户开着有内容的文稿直接跳过。
   任务被中途杀掉（验收中止 / Ctrl-C / 超时）时，会先**同步**把自己拉起的应用关掉再退出（`core/task-emergency-cleanup.mjs` + `quitAppSync`，
   绕过 ocu-mcp 退出钩子的立即退出竞态）；实测 SIGTERM 后计算器被关掉、不留窗口。只优雅退出，退不掉就留着，绝不强杀。
   中止链路是三层：verify:live 杀掉验收进程组 → acceptance 的 SIGTERM 处理杀掉当前任务进程组 → 任务的应急清理同步关掉自己拉起的应用。
+  预算对齐：外层 SIGKILL 宽限 6 秒（verify:live / runner），任务侧同步清理总预算 2500ms（`quitAppSync` 每次按剩余预算截断），预算耗尽不再尝试后续应用，避免清理被外层截断。
+  验收锁写失败（EACCES/ENOSPC/父路径异常等非 EEXIST）默认 fail-closed：返回 `{ok:false, reason:'lock-unwritable'}`，验收以退出码 3 退出；只有显式 `AGENT_ALLOW_UNLOCKED=1` 才降级为「未加锁继续 + 警告」。
+  token 只随回环地址发送：`tokenHeadersFor(url)` 仅对 127.0.0.1/localhost/[::1] 附带 `X-Agent-Token`；`OVERLAY_URL`/`AGENTD_URL` 指向非回环时默认不带，需显式 `AGENT_ALLOW_REMOTE_TOKEN=1`（只警告一次）。
+  daemon 停止任务/超时改为**杀整个进程组**（`killTaskTree`：TERM 组 → 3 秒 → KILL 组），孤儿清理也会收掉带本项目 `--user-data-dir` 的残留 Chrome（带 SingletonLock 活跃实例守卫，不误伤别的会话正在用的离屏浏览器）。
   退出应用前会先看有没有「保存/覆盖/删除」这类弹窗（**AXDialog 和 AXSheet 都算**），有就绝不强杀；
   备忘录同理：只有「新建备忘录成功 + 前台没变 + 有可写文本区」才写（`decideNoteWrite`），
   新建失败时第一个文本区可能正是用户正在编辑的笔记，覆盖写会直接盖掉用户内容。
