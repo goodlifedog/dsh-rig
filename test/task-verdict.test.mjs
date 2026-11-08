@@ -112,3 +112,81 @@ test('矩阵收尾候选别名：补上进程名，避免只有本地化名对�
   assert.equal(aliases.filter((x) => x === 'FastZip').length, 1);
   assert.doesNotThrow(() => collectTouchedAliases(null));
 });
+
+// ---------- collectTouchedAliases 边界（task-38） ----------
+
+test('矩阵别名：row 缺 process / 缺 bundle 不崩，也不会塞进 undefined/null', () => {
+  const aliases = collectTouchedAliases([
+    { app: 'Notes' },
+    { app: 'TextEdit', process: undefined },
+    { app: 'Keynote', bundle: null },
+    { process: 'Calculator' },
+    { bundle: 'com.apple.calculator' },
+  ]);
+  assert.ok(aliases.includes('Notes'));
+  assert.ok(aliases.includes('TextEdit'));
+  assert.ok(aliases.includes('Keynote'));
+  assert.ok(aliases.includes('Calculator'), '只有 process 的行也要收进来');
+  assert.ok(aliases.includes('calculator'), '只有 bundle 的行也要收末段');
+  for (const bad of ['undefined', 'null', 'NaN', '']) {
+    assert.equal(aliases.includes(bad), false, '不该出现伪造别名: ' + bad);
+  }
+});
+
+test('矩阵别名：坏行（null / undefined / 非对象）安全跳过', () => {
+  assert.deepEqual(collectTouchedAliases([null, undefined]), []);
+  assert.doesNotThrow(() => collectTouchedAliases([null, {}, '', 0, false]));
+  assert.deepEqual(collectTouchedAliases([]), []);
+  assert.deepEqual(collectTouchedAliases(), []);
+});
+
+test('矩阵别名：本地化名、进程名、bundle 末段三者都收，且顺序稳定', () => {
+  const aliases = collectTouchedAliases([
+    { app: '计算器', bundle: 'com.apple.calculator', process: 'Calculator' },
+  ]);
+  assert.deepEqual(aliases, ['计算器', 'Calculator', 'calculator'],
+    '顺序：app → process → bundle 末段（decideRestore 只依赖集合，顺序只影响可读性）');
+});
+
+test('矩阵别名：去重只在完全相同的时候生效（大小写不同算两个别名）', () => {
+  const aliases = collectTouchedAliases([
+    { app: 'FastZip', process: 'FastZip', bundle: 'FastZip' },
+    { app: 'FastZip' },
+  ]);
+  assert.deepEqual(aliases, ['FastZip'], '同一个名字出现多次只留一份');
+  const mixed = collectTouchedAliases([{ app: 'Calculator', process: 'calculator' }]);
+  assert.deepEqual(mixed, ['Calculator', 'calculator'], '大小写不同保留两个（decideRestore 会统一小写比较）');
+});
+
+test('矩阵别名：bundle 带尾点 / 无点 / 前点都不产生空别名', () => {
+  const aliases = collectTouchedAliases([
+    { app: 'A', bundle: 'FastZip' },        // 没有点：整串就是末段
+    { app: 'B', bundle: 'com.foo.' },        // 尾点：末段是空串，应跳过
+    { app: 'C', bundle: '.leading' },        // 前点：末段是 leading
+    { app: 'D', bundle: '...' },             // 全点：末段空串，跳过
+  ]);
+  assert.deepEqual(aliases, ['A', 'FastZip', 'B', 'C', 'leading', 'D']);
+});
+
+test('矩阵别名：空白 / 纯空格的名字跳过，非字符串值不崩', () => {
+  const aliases = collectTouchedAliases([
+    { app: '   ', process: '' },
+    { app: ' Notes ' },
+    { app: 42, bundle: 123 },
+  ]);
+  assert.deepEqual(aliases, ['Notes', '42', '123'],
+    '数字会被 String() 转成别名（现实中不会出现，但不该崩）');
+});
+
+test('矩阵别名：row 很多时保持收集顺序、返回独立数组', () => {
+  const rows = [
+    { app: 'R1', process: 'P1', bundle: 'a.b.C1' },
+    { app: 'R2', process: 'P2', bundle: 'a.b.C2' },
+    { app: 'R3', process: 'P3', bundle: 'a.b.C3' },
+  ];
+  const first = collectTouchedAliases(rows);
+  assert.deepEqual(first, ['R1', 'P1', 'C1', 'R2', 'P2', 'C2', 'R3', 'P3', 'C3']);
+  first.push('污染');
+  assert.deepEqual(collectTouchedAliases(rows), ['R1', 'P1', 'C1', 'R2', 'P2', 'C2', 'R3', 'P3', 'C3'],
+    '每次调用应返回新数组，不被上一次的结果污染');
+});

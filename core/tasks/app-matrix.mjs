@@ -158,6 +158,37 @@ export function collectTouchedAliases(rows = []) {
 }
 
 /**
+ * 该不该在本轮收尾时自动退出应用（纯函数）。
+ *
+ * 只关「本次由矩阵拉起来」的应用：
+ *   - launched        → 关（除非 MATRIX_QUIT=0 显式关掉这个行为）；
+ *   - running / error → 绝不关。用户本来就在跑的应用被我们关掉是最不能接受的副作用，
+ *                       启动失败的应用也不该去动它。
+ *
+ * @param {{launch?:string}} row 单个探测行
+ * @param {Record<string,string|undefined>} [env] 环境变量表（main 传 process.env，测试传普通对象）
+ * @returns {boolean}
+ */
+export function shouldAutoQuit(row, env = {}) {
+  const r = row || {};
+  const e = env || {};
+  return r.launch === 'launched' && e.MATRIX_QUIT !== '0';
+}
+
+/**
+ * 统计「真正被我们关掉」的应用数量（纯函数）。
+ *
+ * already-stopped 表示目标本来就不在跑，不是我们的功劳，不该计数——
+ * 否则报告里的 autoQuit 会虚高，看起来像关掉了一堆其实没动的应用。
+ * @param {Array<{autoQuit?:string}>} rows
+ * @returns {number}
+ */
+export function countAutoQuit(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  return list.filter((r) => r && r.autoQuit && r.autoQuit !== 'already-stopped').length;
+}
+
+/**
  * 矩阵结论（纯函数）：前台没被抢只是底线。所有应用都被跳过 = 没验证（环境跳过），
  * 有尝试但一个都读不出界面树 = 真失败；不能因为前台没变就报成功（评审 6acf775）。
  */
@@ -344,7 +375,7 @@ async function main() {
       if (!stillRunning) row.selfExited = true;
     }
     // 只关自己拉起来的应用，用户本来就在用的不动（MATRIX_QUIT=0 可关掉这个行为）
-    if (row.launch === 'launched' && process.env.MATRIX_QUIT !== '0') {
+    if (shouldAutoQuit(row, process.env)) {
       const quit = await quitApp({ bundleId: app.bundle, appName: app.name, processName: app.process });
       row.autoQuit = quit.mode;
       row.autoQuitOk = quit.quit;
@@ -393,7 +424,7 @@ async function main() {
     liveCapture: rows.filter((r) => r.capture === 'live').length,
     windowReady: rows.filter((r) => r.windowReady !== false).length,
     onboardingDismissed: rows.filter((r) => r.onboardingDismissed).length,
-    autoQuit: rows.filter((r) => r.autoQuit && r.autoQuit !== 'already-stopped').length,
+    autoQuit: countAutoQuit(rows),
     total: rows.length,
     rows,
   };
