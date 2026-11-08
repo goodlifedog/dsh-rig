@@ -33,4 +33,31 @@ function matchesTitle(titleHint, hostTitle, suffix) {
   return /^[\s\p{P}\p{S}]*$/u.test(rest);
 }
 
-module.exports = { normalizeHostTitle, normalizeDshTitle, matchesTitle, DEFAULT_SUFFIX };
+/**
+ * 窗口刚创建（ready-to-show）时该不该显示（纯函数）。
+ *
+ * 这是个真实 bug 的修复：以前 ready-to-show 里无条件 showInactive()，
+ * 任何请求新建一个会话窗口的瞬间，小窗都会无视「宿主是否在前台/是否在别的 Space/标题是否匹配」
+ * 闪出来一下——用户正在别的应用/别的桌面干活时会看到它冒出来。
+ *
+ * @param {{hostVisible?:boolean, front?:string, hostBundles?:string[], self?:string,
+ *          titleMatched?:boolean, hasActivity?:boolean}} [input]
+ * @returns {boolean}
+ */
+function shouldShowOnReady(input = {}) {
+  const {
+    hostVisible = true,
+    front = '',
+    hostBundles = [],
+    self = 'com.github.Electron',
+    titleMatched = true,
+    hasActivity = true,
+  } = input || {};
+  if (!hostVisible) return false;
+  if (!hasActivity) return false;
+  if (!titleMatched) return false;
+  const frontOk = !front || (hostBundles || []).includes(front) || front === self;
+  return frontOk;
+}
+
+module.exports = { normalizeHostTitle, normalizeDshTitle, matchesTitle, shouldShowOnReady, DEFAULT_SUFFIX };

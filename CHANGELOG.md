@@ -2,6 +2,7 @@
 
 ## 0.7.0（未发布）
 
+- 修小窗会在别的应用/别的桌面闪出来：`ready-to-show` 原来**无条件** `showInactive()`——任何请求新建会话窗口的瞬间，小窗都会无视「宿主是否在前台、宿主窗口是否可见、当前会话标题是否匹配、有没有活动」直接冒出来一下（实测用户正在别的应用/桌面干活时会看到）。现在必须四条同时满足才显示，否则先隐藏、等有活动且条件恢复再由 attach 循环决定出现；另加兜底：被门控隐藏但窗口实际可见时强制 hide。补 7 项单测，重启 overlay 后冷启动不再弹窗（实测 onscreen 窗口列表为空）
 - 修清理策略会删掉验收证据：`prune` 原来对所有报告一刀切「只留最近 200 个」，把 app-matrix 等历史报告删掉后，清点会把「限制」退回「未测」（OpenCode 已发生）。现在 app-matrix / cdp-driver / applescript-channel 三类证据报告不受数量上限影响，只按 `KEEP_EVIDENCE_DAYS`（默认 90 天）老化；补 3 项单测，MONITORING 文档同步
 - 补全 10 个任务的用途说明（boss-candidates/boss-greet/boss-scan/coverage-probe/form-fill/greet-inner/human-demo/mcp-demo/platform-demo/user-chrome-demo），`flow/TASKS.md` 里 32 个任务现在都有说明、没有「没写用途说明」占位
 - `verify:safe` 增加第 9 项「后台操作稳定性」：实测 15 轮 0 失败、0 次前台抢占、单轮 944–1028ms（中位 973ms），前台始终 DSH；两族并发验证照旧通过。README/USAGE/MAC-APPS 同步成 9 项
@@ -219,5 +220,3 @@
   失败原始报错会写进日志便于排查（OVERLAY_CAPTURE_FAIL_TOLERANCE 可调）
 - 帧率口径按实测校准：真实窗口回显约 6fps / 150ms 一帧，离屏推帧约 13fps / 48ms；隐藏时暂停抓帧
 - daemon 对外暴露 `pendingRetry`：失败到退避重跑之间不再显示「空闲」，健康面板显示「等待重试：任务（第 N 次，约 Xs 后）」
-- 新增 daemon 集成测试（独立端口 + 临时任务目录）：验证队列串行、环境失败不重试、临时失败重试一次、/stats 计数正确
-- 会话窗口自动回收：超过 30 分钟没活动（且没固定/没放大/没悬停）的会话窗口自动关闭，避免开久了堆窗口占内存；`OVERLAY_SESSION_TTL_MS` 可调（0 关闭），短 TTL 实测 14 秒内回收生效

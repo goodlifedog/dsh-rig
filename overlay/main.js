@@ -23,7 +23,7 @@ const path = require('node:path');
 
 const platform = require('./platform.js');
 const supervisor = require('./supervisor.js');
-const { normalizeDshTitle, matchesTitle } = require('./session-gate.js');
+const { normalizeDshTitle, matchesTitle, shouldShowOnReady } = require('./session-gate.js');
 const { createOverlayServer, DEFAULT_SESSION, SESSION_PATTERN } = require('./server.js');
 const { ensureTokenSync } = require('../core/local-token.cjs');
 const { pickReplacementWindow } = require('./recover.js');
@@ -663,6 +663,11 @@ async function attachTick() {
     if (!sessions.size) return;
     for (const s of sessions.values()) {
       attachToDsh(s, front, bounds).catch(() => {});
+      // 兜底：被门控隐藏但窗口实际还 visible（淡出回调丢了/渲染异常）→ 硬藏，别让它卡在屏幕上
+      const w = s.win;
+      if (w && !w.isDestroyed() && !s.state.visible && s.flags.suppressBySession && w.isVisible()) {
+        try { w.hide(); } catch {}
+      }
     }
   } finally {
     attachBusy = false;
@@ -1593,6 +1598,23 @@ function createWindowForSession(s) {
   win.once('ready-to-show', () => {
     if (!s.win || s.win.isDestroyed() || s.win !== win) return;
     s.flags.ready = true;
+    // 不能无条件 showInactive：新建会话窗口的那一刻，用户可能正在别的应用/别的 Space，
+    // 一冒出来就看得见。只有「宿主在前台 + 宿主可见 + 标题匹配 + 这个会话真的有活动」才显示。
+    const allow = shouldShowOnReady({
+      hostVisible,
+      front: frontmostBundle || '',
+      hostBundles: HOST_BUNDLES,
+      self: 'com.github.Electron',
+      titleMatched: !s.titleHint || titleMatches(s),
+      hasActivity: Boolean(s.state.lastActivityAt || s.state.pinned),
+    });
+    if (!allow) {
+      win.setOpacity(0);
+      win.hide();
+      s.state.visible = false;
+      s.flags.suppressBySession = true;  // 条件恢复时由 attach 循环依据 pinned/空闲窗口决定是否重新出现
+      return;
+    }
     win.setOpacity(0);
     win.showInactive(); // 不 activate、不抢焦点
     applyClickThrough(s); // 默认整窗穿透
