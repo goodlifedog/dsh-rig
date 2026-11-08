@@ -2,6 +2,7 @@
 
 ## 0.7.0（未发布）
 
+- 修清理策略会删掉验收证据：`prune` 原来对所有报告一刀切「只留最近 200 个」，把 app-matrix 等历史报告删掉后，清点会把「限制」退回「未测」（OpenCode 已发生）。现在 app-matrix / cdp-driver / applescript-channel 三类证据报告不受数量上限影响，只按 `KEEP_EVIDENCE_DAYS`（默认 90 天）老化；补 3 项单测，MONITORING 文档同步
 - 补全 10 个任务的用途说明（boss-candidates/boss-greet/boss-scan/coverage-probe/form-fill/greet-inner/human-demo/mcp-demo/platform-demo/user-chrome-demo），`flow/TASKS.md` 里 32 个任务现在都有说明、没有「没写用途说明」占位
 - `verify:safe` 增加第 9 项「后台操作稳定性」：实测 15 轮 0 失败、0 次前台抢占、单轮 944–1028ms（中位 973ms），前台始终 DSH；两族并发验证照旧通过。README/USAGE/MAC-APPS 同步成 9 项
 - README 更新到当前能力：并发验证实测（273 次采样 0 抢）写进开头、边界说明改成「风险名单默认跳过 + 还原 + 自动记名单」、补 verify:safe / demo:concurrent 两条命令
@@ -220,4 +221,3 @@
 - daemon 对外暴露 `pendingRetry`：失败到退避重跑之间不再显示「空闲」，健康面板显示「等待重试：任务（第 N 次，约 Xs 后）」
 - 新增 daemon 集成测试（独立端口 + 临时任务目录）：验证队列串行、环境失败不重试、临时失败重试一次、/stats 计数正确
 - 会话窗口自动回收：超过 30 分钟没活动（且没固定/没放大/没悬停）的会话窗口自动关闭，避免开久了堆窗口占内存；`OVERLAY_SESSION_TTL_MS` 可调（0 关闭），短 TTL 实测 14 秒内回收生效
-- 仓库体检新增两项：文档里提到的 `npm run` 命令必须真实存在（75 处引用全部命中）、文档引用的图片必须存在，防文档漂移

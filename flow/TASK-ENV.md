@@ -62,6 +62,7 @@
 | `GREET_SKIP` | — | `core/tasks/greet-inner.mjs` |
 | `HEADLESS_PROFILE` | — | `core/tasks/headless-demo.mjs` |
 | `KEEP_DAYS` | 7 | `scripts/prune.mjs` |
+| `KEEP_EVIDENCE_DAYS` | 90 | `scripts/prune.mjs` |
 | `KEEP_REPORTS` | 200 | `scripts/prune.mjs` |
 | `KEYWORDS` | Java,Agent,AI,后端,全栈,大模型,工作流 | `core/tasks/boss-candidates.mjs` |
 | `LIVE_ABORT_IDLE_SEC` | 20 | `scripts/live-verify.mjs` |

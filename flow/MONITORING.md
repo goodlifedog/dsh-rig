@@ -34,7 +34,7 @@ npm run service:restart   # 只杀确认是本项目 daemon 的监听者，再�
 
 ```bash
 npm run prune              # 演练：只打印会删什么
-npm run prune -- --apply   # 真删（日志留 7 天、报告留最近 200 个）
+npm run prune -- --apply   # 真删（日志留 7 天、报告留最近 200 个；验收证据 app-matrix / cdp-driver / applescript-channel 不按数量删，只按 KEEP_EVIDENCE_DAYS=90 天老化）
 ```
 
 清理只动 `logs/` 和 `reports/` 里的文件；卸载服务时 `npm run service:uninstall` 会顺带清掉

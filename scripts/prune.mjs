@@ -18,6 +18,8 @@ import { planPrune } from '../core/prune.mjs';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const KEEP_DAYS = Math.max(1, Number(process.env.KEEP_DAYS || 7));
 const KEEP_REPORTS = Math.max(10, Number(process.env.KEEP_REPORTS || 200));
+// 验收证据（app-matrix / cdp-driver / applescript-channel）不按数量上限删，只按天数老化
+const KEEP_EVIDENCE_DAYS = Math.max(1, Number(process.env.KEEP_EVIDENCE_DAYS || 90));
 const APPLY = process.argv.includes('--apply');
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -34,7 +36,7 @@ function listFiles(dir) {
 function section(name, dir, keepCount) {
   const files = listFiles(dir);
   if (!files.length) { console.log(name + '：空'); return { removed: 0, bytes: 0 }; }
-  const plan = planPrune({ files, keepReports: keepCount });
+  const plan = planPrune({ files, keepReports: keepCount, keepEvidenceDays: KEEP_EVIDENCE_DAYS });
   console.log(
     name + '：共 ' + files.length + ' 个，保留 ' + plan.keep.length + ' 个，' +
     (APPLY ? '删除 ' : '可删 ') + plan.remove.length + ' 个（' + (plan.bytes / 1024).toFixed(1) + ' KB）'
