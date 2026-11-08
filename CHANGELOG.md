@@ -2,6 +2,8 @@
 
 ## 0.7.0（未发布）
 
+- 新增 `npm run verify:safe`（`scripts/verify-safe.mjs`）：8 项不碰屏幕的验收（语法、安全自查、健康、平台自检、应用清点、CDP headless、AppleScript 只读、并发验证），用户正在用电脑时也能跑；实测 8/8 通过、没有可见窗口
+- 修环境跳过误判：`run-classify` 的「锁屏」规则原来匹配任意含「锁屏」的文本，健康检查里的「锁屏状态 未锁屏」被整步判成 SKIP；收tight到「屏幕已锁/屏幕已锁定/锁屏中/锁屏导致」，补 2 项单测
 - `apps:probe` 也先查前台风险名单：要探测的应用在名单里就直接跳过并提示 `front:risk -- --clear`，不再为了探测闪一次屏；预设模式会提示有几个在名单里。实测 `apps:probe Ghostty --dry` 直接打印跳过、不启动矩阵。补 2 项单测
 - 中止处理覆盖到所有会跑 UI 子任务的脚本：`bg:verify`、`apps:probe`、`monitor` 现在把子进程起在独立进程组，自己收到 SIGINT/SIGTERM 时连子进程一起停（先 SIGTERM 让任务应急清理关应用，3 秒后强杀），不再留下孤儿继续动屏幕；`bg:verify` 单项超时也从直接 SIGKILL 改成先 SIGTERM
 - 修中止链条上的孤儿任务：任务是用独立进程组起的，验收被 SIGTERM 后只杀验收自己收不到任务，任务会变成孤儿继续控制应用。现在 acceptance 收到 SIGTERM/SIGINT 会先 `killActiveTask()` 把当前任务进程组一起杀掉再退出；`verify:live` 中止时等 1.5 秒让应急清理跑完再收小窗，并给 3 秒兜底 SIGKILL。补 2 项单测
@@ -227,6 +229,3 @@
 - headless-demo 在拿不到窗口数（缺辅助功能权限）时标为「环境跳过」，不再误判成失败
 - 状态看板把 `no-window/error` 这类内部枚举翻译成人话
 - 新增 `npm run fps:check` 帧率压测：实测收起态 12.7fps（600px、43KB/帧、49ms/帧）、放大态 12.6fps（1920px、223KB/帧、57ms/帧），内存无明显增长
-- 新增 `npm run soak` 稳定性巡检：连跑多轮任务，量耗时、内存增长、有无有效帧（6 轮实测 +1MB、6/6 成功）
-- 非默认会话悬停时显示会话标题而不是内部 session id
-- 健康信息新增 `hostPoll`（最近轮询时间、当前间隔、是否正在轮询）

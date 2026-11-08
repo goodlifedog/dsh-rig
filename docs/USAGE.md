@@ -448,6 +448,7 @@ curl -s -H "X-Agent-Token: $TOKEN" http://127.0.0.1:7788/health | head -c 400   
 | `npm run repo:check` | `node scripts/repo-check.mjs` | 仓库体检（版本/产物/大文件/隐私） |
 | `npm run restart:check` | `node scripts/restart-check.mjs` | 真重启两服务并验证健康 |
 | `npm run accept` | `node core/acceptance.mjs` | 端到端验收（需要两服务在线） |
+| `npm run verify:safe` | `node scripts/verify-safe.mjs` | **不碰屏幕的验收**：语法/安全自查/健康/平台自检/应用清点/CDP 通道/AppleScript 只读通道/并发验证，8 项全是不抢前台不开可见窗口的，你正在用电脑时也能跑 |
 | `npm run verify:live` | `node scripts/live-verify.mjs` | 解锁后一条命令跑完全部屏幕类验收（acceptance + bg:verify + 小窗回归 + 会话隔离 + 帧率）。**默认要求键鼠空闲 15 分钟才开跑**（`LIVE_MIN_IDLE_SEC` 可调），跑的过程中你一碰键鼠就立刻杀掉当前步骤并收起小窗（`LIVE_ABORT_IDLE_SEC`，默认 20 秒）；锁屏时如实环境跳过，`LIVE_KEEP_AWAKE=1` 用 caffeinate 防跑一半锁屏 |
 | `npm run demo:concurrent` | `node core/tasks/concurrent-demo.mjs` | **并发验证**：后台拉起计算器、读树、点按钮、读显示值，再叠一个 headless 浏览器开页面（原生 + Chromium 两族同时干活），全程每 ~80ms 采样前台（lsappinfo，能抓到瞬时抢占）；判定「前台一次没被抢 + 屏幕上没冒窗口」；运行期间你正常用鼠标打字即可，`CONCURRENT_HOLD_MS` 调长保持时间（默认 5 秒） |
 | `npm run safety:audit` | `node scripts/safety-audit.mjs` | 安全边界静态自查：启动不收尾、强杀进程、open 不带 -g（会切屏）、界面任务没有锁屏/前台/互斥护栏，四类写法直接报错；`npm test` 里也有一条同样的回归测试 |

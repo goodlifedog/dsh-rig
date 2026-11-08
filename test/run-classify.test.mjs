@@ -127,3 +127,17 @@ test('锁屏统一提示必须被出口分类认成「任务自报环境跳过�
   assert.match(notice, /锁屏/);
   assert.equal(envSkipReason(notice), '任务自报环境跳过');
 });
+test('健康检查里的「锁屏状态 未锁屏」不能判成环境跳过（真实踩过：verify:safe 整步误报 SKIP）', () => {
+  const healthLike = [
+    '  ✅ 画面                               state=live',
+    '  ✅ 锁屏状态                             未锁屏',
+    '  ✅ 系统权限                             辅助功能 + 屏幕录制均已授权',
+    '全部正常',
+  ].join('\n');
+  assert.equal(envSkipReason(healthLike), '');
+});
+
+test('「屏幕已锁」这类结论仍然算环境跳过', () => {
+  assert.equal(envSkipReason('屏幕已锁，AX 不可用'), '锁屏');
+  assert.equal(envSkipReason('环境跳过：屏幕已锁，稍后再跑'), '任务自报环境跳过');
+});
