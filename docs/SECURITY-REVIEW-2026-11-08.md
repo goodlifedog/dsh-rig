@@ -371,3 +371,12 @@ npm test    # 664 tests，663 pass / 0 fail / 1 skip
 | 待确认 3 条 | Windows 未实机 / Notes 标题可读性 / AGENTD_TASKS_DIR | ⏳ 保留 | 需要真机或更多数据才能定论 |
 
 全量回归：`npm test` **743 项 / 742 过 / 1 跳过 / 0 失败**；`npm run check`、`npm run repo:check`、`npm run safety:audit`、`env-doc --check` 全过。
+## 运行期新发现并修复（2026-11-08 完整验收，非评审项）
+
+| 问题 | 影响 | 修复 | 提交 |
+| --- | --- | --- | --- |
+| multi-app 对未运行应用调 ocu.snapshot | ocu 会把应用拉起并顶到前台（实测计算器），任务结束不关，后续任务退出别的应用时前台被带到它上面 | 只探测正在运行的应用；未运行环境跳过；probe 前后前台变化还原；兜底收掉「跑前没跑、跑后有」的应用 | task-34 / a2c0ce5 |
+| app-matrix 收尾还原漏本地化名 | touched 里是「计算器/calculator」，前台是「Calculator」，decideRestore 判 leave-user，前台没还回去 | front-restore 大小写/分隔符/别名不敏感；矩阵补 process 名；autoQuit 后立即还原 | task-35 / 9a07201 |
+| 任务意外拉起应用留在后台 | 后续任务退出别的应用时前台被带到它上面 | acceptance 开局采基线，每任务后只收「相对基线新出现」的应用再还原前台；收尾再采一次 | task-36 / f2c67c2 |
+
+> 这三条是完整验收跑出来的，不是评审推断；修复后 799 项测试全过，但这轮完整验收因屏幕自动锁定未能复跑，需等解锁后再跑一次。

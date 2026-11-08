@@ -2,6 +2,11 @@
 
 ## 0.7.0（未发布）
 
+- 完整验收抓出并修复两个「前台污染」真 bug（子 agent 执行、Lead 核验提交）：
+  ① multi-app 对未运行的应用直接 ocu.snapshot，会把应用拉起来并顶到前台（实测计算器被拉起、任务结束不关）；现在只探测正在运行的应用，未运行环境跳过，probe 前后前台变化会还原，并兜底收掉「跑前没运行、跑后却在运行」的应用（task-34）；
+  ② app-matrix 收尾还原用「计算器」比对前台「Calculator」大小写/命名不一致，判 leave-user 没还回去；现在 front-restore 大小写/分隔符/别名不敏感，矩阵补 process 名、autoQuit 后立即还原（task-35）；
+  ③ acceptance 增加通用兜底：开局采样测试应用基线，每个任务后只收「相对基线新出现」的应用（quitAppSync 优雅退出）再还原前台，失败/中止收尾再采一次（task-36）。
+  全量回归 799 项 / 798 过 / 1 跳过 / 0 失败。
 - 安全评审低危项继续收紧（子 agent 执行、Lead 核验提交）：L1 ocu calls-file 改 mkdtemp 私有目录（0700/0600）；L2 浏览器 profile 与数据目录统一 0700（hardenDataDir 全量遍历）；L3 overlay AppleScript 变量全部走 appleScriptQuote（补控制字符转义）；L4 --force-all 按条数删顶部 N 条加硬上限 5（CLEANUP_MAX_TOP / CLEANUP_ALLOW_LARGE）并在删前写计划；L4b 清理默认只关本次启动的应用（用户自己开着的保留，CLEANUP_QUIT_RESIDUAL=1 才恢复旧策略）。补 5 组单测。
 - 安全评审（docs/SECURITY-REVIEW-2026-11-08.md）的 1 高危 + 5 中危 + 1 衍生全部修复，全程由子 agent 执行、Lead 抽样核验后统一提交：
   H-1 笔记清理回退无闸门（默认 fail-closed）；M-1 daemon 停止/超时杀进程组 + 孤儿 Chrome 清理；
@@ -213,6 +218,3 @@
 
 - 切会话时小窗消失更快：宿主轮询从固定 1.2s 改成「可见 0.4s / 隐藏 1.5s」自适应，并把前台应用与窗口列表合并成一次系统调用（单轮 200ms+ → 82ms），切走会话约 0.4–0.5s 内收起（原来要 1.5s）
 - `/status` 支持 `{"clear":true}` 复位成「待命」；截图/回归脚本收尾会清掉演示文案，不再把测试残影当成真任务
-- `npm run health` 的「最近任务失败数」改成看得懂的说法（全成功时显示上一次任务与耗时，失败时给出任务名/退出码/时间）
-- 小窗效果回归的两处断言改成有上限的等待，刚重启预热慢不再误报失败
-- 推帧按需出图：新增 `GET /frame-target`（收起 600×380、放大 1920×1200），headless 任务从固定推 2560×1600 改为按小窗实际尺寸出图——单帧 160KB → 18KB，抓帧 90ms → 20ms
