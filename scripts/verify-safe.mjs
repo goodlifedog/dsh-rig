@@ -66,4 +66,6 @@ for (const s of steps) {
   console.log(mark + s.name.padEnd(w) + s.status.padEnd(6) + (s.detail || ''));
 }
 console.log('\n' + summary.text + '\n');
+console.log('这一组全程不抢前台、不开可见窗口，用户正在用电脑时也可以跑。');
+console.log('会动屏幕的完整验收在：npm run verify:live（要求键鼠空闲 ≥15 分钟，运行中你一碰键鼠就停）\n');
 process.exit(summary.ok ? 0 : 1);
