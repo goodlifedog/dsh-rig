@@ -11,6 +11,8 @@ test('前台被抢一次：还原并计数', async () => {
   const w = startFrontWatch({
     expect: 'DSH',
     intervalMs: 20,
+    // 固定成"用户很久没动"：否则这条测试会随机器当下有没有人在用而变（有人在用时会被当成用户意图）
+    idleMs: async () => 60_000,
     getFront: async () => front,
     restore: async (name) => { restored.push(name); front = name; return true; },
   });
@@ -63,6 +65,7 @@ test('还原失败不抛错、不卡死轮询', async () => {
   const w = startFrontWatch({
     expect: 'DSH',
     intervalMs: 20,
+    idleMs: async () => 60_000,   // 同理：固定在"用户没动"，避免随机器使用状态漂移
     getFront: async () => front,
     restore: async () => { throw new Error('boom'); },
   });

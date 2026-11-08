@@ -186,26 +186,25 @@ overlay 的系统窗口列表（CGWindowList）。只信 AX 会把菜单栏工�
 原来的 3 秒判定会报「启动后仍检测不到进程」。现在 `ensureAppRunning()` 默认等 8 秒
 （矩阵里给到 15 秒），`waitMs` 可调。
 
-## 六、本机已安装应用的覆盖情况
+## 六、本机已安装应用的覆盖情况（2026-11-08 刷新，数据源 `npm run apps:inventory`）
+
+32 个应用（另有 2 个 Steam 快捷方式壳未计入）：**已适配 23，可只用画面 2，专用方案 1，不动 3，限制 3**。
 
 | 应用 | 状态 | 说明 |
 | --- | --- | --- |
-| 备忘录 / 文本编辑 / 计算器 / 访达 / 系统设置 | 已适配 | AX 完整，可读可点可设值 |
-| QQ / 微信 / Gemini / ChatGPT | 已适配 | 操作后异步抢前台，已自动还原 |
-| Ghostty | 已适配 | 读取会抢前台；键入+回车可用 |
-| OrbStack / FastZip / State | 已适配 | Electron / 原生工具 / 菜单栏工具 |
-| Steam | 已适配 | 窗口 677ms 就绪、画面可回显、退出需 TERM |
-| iMovie | 已适配 | 读取瞬间抢前台，已还原 |
-| Safari | 已适配 | 冷启动不留窗口，需要已有窗口 |
-| Chrome | 走独立实例 | 会自己抢前台，用专用 profile 的 headless 实例 |
-| WPS Office | 已适配 | 只开首页时没有文档 |
-| Pages Creator Studio | 已适配 | 有文稿窗口时 AX 可读 |
-| Keynote / Numbers Creator Studio | 可只用画面 | 首次启动是许可/新功能引导，**不代点「继续」**；用户过完引导并打开文稿后 AX 可读（实测 818 字符） |
-| 腾讯会议 | 已适配 | AX 节点不多（9 个）但可读可点 |
-| Telegram | 已适配（只读） | 25 个节点、0 个按钮，能读状态不能点 |
+| 备忘录 / 文本编辑 / 计算器 / 访达 / 系统设置 / FastZip / State / GarageBand / OrbStack / Pages Creator Studio / 腾讯会议 / UURemote / iRightMouse | 已适配 | AX 完整，可读可点可设值 |
+| QQ / 微信 / Gemini / ChatGPT | 已适配 | chromium/electron 系；操作后异步抢前台，已自动还原；**在风险名单里**（读取会抢，默认跳过） |
+| Safari | 已适配 | 不在预设里但实测可读（105 节点）；冷启动不留窗口，需要已有窗口 |
+| Ghostty / Telegram / Steam / WPS Office | 已适配 | Ghostty 读会抢前台；Telegram 只读（0 按钮）；Steam 只读；WPS 在 qt 族——**都在风险名单里**，默认跳过读取 |
+| iMovie | 已适配 | 读取瞬间抢前台，已还原（不在名单时仍会读一次） |
+| Keynote / Numbers Creator Studio | 可只用画面 | 首次启动是许可/新功能引导，**不代点「继续」**；用户过完引导并打开文稿后 AX 可读 |
+| Google Chrome | 专用方案 | 会自己抢前台，用独立 profile 的 headless 实例（browser:bg） |
+| Clash Verge / 奇游加速器 / DeepSeek Harness | **不动** | 用户的代理、加速器、宿主应用，只读状态或不碰 |
 | Antigravity / OpenCode / 抖音 | 限制 | 启动后自行退出，或带调试端口的 CDP 也起不来（详见 cdp-driver 报告） |
-| GarageBand / UURemote / iRightMouse | 已适配 | 元素级可读可点 |
-| Clash Verge / 奇游加速器 | **不动** | 用户在用的代理/加速器，只读状态，永不退出 |
+| Dome Keeper / Escape From Duckov | 不在统计内 | `~/Applications` 里的 Steam 快捷方式壳（只有 run.sh、没有 bundle id），不是能接管的独立应用 |
+
+关于风险名单：上表里标「读取会抢」的应用已被 `~/.desktop-agent/front-risk.json` 记录（见第十节），
+所有后台读取默认跳过它们，所以「已适配」指的是历史实测结论，不代表现在每次读取都会去碰它们。
 
 ## 七、给一个新应用做适配的步骤
 
@@ -223,27 +222,37 @@ overlay 的系统窗口列表（CGWindowList）。只信 AX 会把菜单栏工�
 
 整个过程不激活目标应用；探测完自动关掉自己拉起的实例，用户正在用的应用不会被动。
 
-## 八、当前进度与解锁后的待办（2026-11-07 22:20）
+## 八、当前进度与待办（2026-11-08 更新）
 
-机器锁屏时 AX 与抓图整体不可用（`CGSSessionScreenIsLocked`），矩阵会直接标「环境跳过」，
-不会产出假结论。当前卡在这里，已经做完的部分：
+适配面已经按运行时族打通：32 个应用里 23 个元素级可适配，2 个只能画面（Keynote/Numbers 首启引导）、
+1 个走专用实例（Chrome）、3 个不接管（Clash/奇游/宿主）、3 个应用侧限制（Antigravity/OpenCode/抖音 启动即退或 CDP 起不来）。
 
-- 已实测 22 个应用：19 个元素级可读、2 个只能画面+坐标（Keynote/Numbers Creator Studio）、
-  3 个应用侧限制（腾讯会议 AX 不稳定、抖音/Antigravity 启动即退）
-- Clash Verge / 奇游加速器：明确不接管，只读状态
-- Chrome：走独立 headless 实例
+边界与验证这块已经做完的：
 
-**解锁后按顺序做三件事：**
+- 不切屏：前台风险名单默认生效（第十节），`guard()` 被抢会先还原；`settleFront()` 不再把用户从自己切走的应用拽回来
+- 安全自查：`npm run safety:audit` 扫四类致命写法，`npm test` 有同名回归测试
+- 锁屏/环境跳过：矩阵、验收、探测、健康检查都能区分「环境跳过」和「真失败」，不产出假绿/假红
+- 服务新鲜度：`npm run service:status` 会报「跑的是旧代码」，改完核心代码记得 `npm run service:restart`
+
+**还欠一次的实机全量验收**（用户不在电脑前时跑，会短暂占用屏幕）：
 
 ```bash
-npm run apps:probe -- GarageBand,iRightMouse,UURemote   # 三个还没测的
-npm run apps:inventory                                   # 刷新清点，看状态从「未测」变成什么
-# 复验「启动后自行退出」的两个：连开两次看是否稳定自退
-npm run apps:probe -- 抖音,Antigravity --keep
+LIVE_KEEP_AWAKE=1 npm run verify:live     # acceptance + bg:verify + 小窗回归 + 会话隔离 + 帧率
+npm run apps:inventory                     # 刷新清点
 ```
 
-如果复验仍然是自退，就把结论写进本文「实测记录」表，状态保持「应用侧限制」；
-如果这次能起来，就按「建议控法」补全它的能力数据。
+锁屏时这些命令会如实标「环境跳过」并退出 0，不会假装通过；用户正在用电脑时验收会拒绝运行（`ACCEPT_FORCE=1` 才强跑）。
+
+## 九、已知边界
+
+- **菜单栏命令**：备忘录这类应用菜单栏节点不可查询（AXMenuBarItem/AXMenuItem 均为 0），
+  后台点菜单走不通；⌘N 快捷键会把应用顶到前台，AppleScript 控制第三方应用会触发自动化权限弹窗。
+  两条替代方案都实测失败，别再试。
+- **自绘界面**（Telegram）：AX 拿不到控件，只能坐标/快捷键；坐标法会依赖窗口位置，暂不接管。
+- **需要登录/联网的应用**：抖音这类在未登录或受限环境会自退；Antigravity 同样。
+- **Windows 实机**：本机无硬件，未验证。
+- **锁屏**：锁屏下 AX 整体不可用，所有验收会标「环境跳过」，不能算通过。
+- **用户正在用的应用**：不要调用 `quitApp`；矩阵的自动收尾只关 `launch === 'launched'` 的应用。
 
 ## 十、不切屏：前台风险名单（2026-11-08 新增）
 
@@ -259,14 +268,3 @@ npm run apps:probe -- 抖音,Antigravity --keep
 
 边界：这是应用侧行为（不是控制层的 bug），名单只能做到"不再反复触发"，做不到让应用不抢；
 真要读这类应用的界面，只能等应用修好或改用 CDP/画面通道。
-
-## 九、已知边界
-
-- **菜单栏命令**：备忘录这类应用菜单栏节点不可查询（AXMenuBarItem/AXMenuItem 均为 0），
-  后台点菜单走不通；⌘N 快捷键会把应用顶到前台，AppleScript 控制第三方应用会触发自动化权限弹窗。
-  两条替代方案都实测失败，别再试。
-- **自绘界面**（Telegram）：AX 拿不到控件，只能坐标/快捷键；坐标法会依赖窗口位置，暂不接管。
-- **需要登录/联网的应用**：抖音这类在未登录或受限环境会自退；Antigravity 同样。
-- **Windows 实机**：本机无硬件，未验证。
-- **锁屏**：锁屏下 AX 整体不可用，所有验收会标「环境跳过」，不能算通过。
-- **用户正在用的应用**：不要调用 `quitApp`；矩阵的自动收尾只关 `launch === 'launched'` 的应用。
