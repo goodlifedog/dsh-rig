@@ -68,7 +68,7 @@
   备忘录同理：只有「新建备忘录成功 + 前台没变 + 有可写文本区」才写（`decideNoteWrite`），
   新建失败时第一个文本区可能正是用户正在编辑的笔记，覆盖写会直接盖掉用户内容。
   用户正在操作（键鼠 5 秒内动过）时，会写用户内容/退出应用的任务主动让路：
-  备忘录写入（background-control）、冷启动退出应用（cold-launch）都先查 `shouldDeferForActiveUser`，宁可不跑也不打断你；
+  备忘录写入（background-control）、冷启动退出应用（cold-launch）、BOSS 投递（boss-greet）、表单改写（form-fill）都先查 `shouldDeferForActiveUser`，宁可不跑也不打断你；
   终端同理：往终端敲命令并回车前，必须「终端不在前台 + 键鼠空闲 ≥60 秒 + 缓冲区最后一行是空提示符」，
   否则 echo 会拼到用户没写完的命令上、一回车就提前执行（`decideTerminalType`）。
   （实机坑：按"所有可删行"批量删会误伤用户笔记，已修）

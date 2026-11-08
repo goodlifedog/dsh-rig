@@ -2,6 +2,7 @@
 
 ## 未发布
 
+- 写类任务让路范围扩大：`boss-greet`（会真的发消息）和 `form-fill`（会改你 Chrome 里的搜索框）也在入口查 `shouldDeferForActiveUser`，你正在操作时直接环境跳过，不打断输入焦点
 - 用户正在操作时写类任务主动让路：新增 `core/user-activity.mjs`（`shouldDeferForActiveUser`，键鼠 5 秒内动过就 defer）；`background-control`（会点新建备忘录/写文本区）和 `cold-launch`（会先退出备忘录等应用）在入口检查，宁可不跑也不打断用户输入；4 项单测
 - 应用清点报告补风险标注：前台风险名单里的应用会写明「读取会抢前台（30 天后过期），默认跳过界面读取」，不再让「已适配」看起来还在正常被控制；WPS Office 这类显示名/进程名不一致的靠紧凑归一化也能命中；补 2 项单测
 - 入口文档 `flow/START-HERE.md` 按当前状态重写：单测 636、验收 10/3/0、verify:live 门槛与中途停止、前台风险名单、安全自查、并发验证、已修的数据安全洞
@@ -246,6 +247,3 @@
 ## 0.5.0 (2026-11-06)
 
 - 平台层：`overlay/platform.js`、`core/platform.mjs`，把 macOS 专属调用收敛为统一接口
-- Windows 控制后端：`tools/uia-bridge.ps1` + `core/backends/uia.mjs`（UI Automation，未实机验证）
-- Windows 抓图：`POST /window` 支持标题，按 MainWindowTitle 反查 HWND
-- 服务管理：`core/service.mjs`，macOS 用 launchd、Windows 用 schtasks，支持 install/uninstall

@@ -15,6 +15,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { overlay } from '../agentd.mjs';
 import { readChatItems, diffChat } from './greet-verify.mjs';
+import { hidIdleMs } from '../front-watch.mjs';
+import { shouldDeferForActiveUser } from '../user-activity.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
@@ -105,6 +107,12 @@ async function main() {
   // 锁屏下 AX/抓图不可用：这是环境限制，不是任务失败（手动跑也不该红）
   if (await isScreenLocked()) {
     console.log(lockedSkipNotice('boss-greet.mjs'));
+    return;
+  }
+  // 这个任务会真的发消息：你正在用电脑时不做，避免发出的瞬间切走你的输入焦点
+  const activity = shouldDeferForActiveUser(await hidIdleMs());
+  if (activity.defer) {
+    console.log('环境跳过：' + activity.reason);
     return;
   }
   await overlay.status('BOSS 投递：开始（逐条核对）');

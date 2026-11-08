@@ -9,6 +9,8 @@ import { ocu, guard } from '../agentd.mjs';
 const APP = process.env.TARGET_APP || 'Google Chrome';
 const FRAG = 'zhipin.com/web/geek/jobs';
 import { resolveOcu, isScreenLocked, lockedSkipNotice } from '../platform.mjs';
+import { hidIdleMs } from '../front-watch.mjs';
+import { shouldDeferForActiveUser } from '../user-activity.mjs';
 
 import { isMac } from '../platform.mjs';
 if (!isMac) {
@@ -243,6 +245,12 @@ async function main() {
   // 锁屏下 AX/抓图不可用：这是环境限制，不是任务失败（手动跑也不该红）
   if (await isScreenLocked()) {
     console.log(lockedSkipNotice('form-fill.mjs'));
+    return;
+  }
+  // 这个任务会往你 Chrome 的 BOSS 页面里改搜索框：你正在用电脑时不做，免得打断输入
+  const activity = shouldDeferForActiveUser(await hidIdleMs());
+  if (activity.defer) {
+    console.log('环境跳过：' + activity.reason);
     return;
   }
   const evidence = { steps: [] };
