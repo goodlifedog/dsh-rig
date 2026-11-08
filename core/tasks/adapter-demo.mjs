@@ -532,6 +532,8 @@ const defaultDeps = {
   readState: (app) => ocu.snapshot(app, { nodes: 5000 }),
   click: (app, index) => ocu.call('click', { app, element_index: String(index), click_method: 'accessibility' }),
   setValue: (app, index, value) => ocu.call('set_value', { app, element_index: String(index), value }),
+  // 键盘兜底：set_value('') 对多数实现无效，清空字段得走全选+删除
+  pressKey: (app, key) => ocu.call('press_key', { app, key, key_method: 'sky_key' }),
   openBackground: (app, file) => new Promise((resolve) => {
     execFile('/usr/bin/open', ['-g', '-a', app, file], { timeout: 15000 }, (error) => resolve({ ok: !error, error: error ? String(error.message) : '' }));
   }),
@@ -790,9 +792,24 @@ export async function runAdapterDemo(options = {}, depsInput = {}) {
           kept: String(options_.typeText),
         });
       }
-      const restoreRes = shouldRestore
-        ? await deps.setValue(app, target.index, decision.current).catch(() => ({ ok: false }))
-        : { ok: true, skipped: true };
+      let restoreRes = { ok: true, skipped: true };
+      if (shouldRestore) {
+        if (decision.current === '') {
+          // 实测：set_value('') 清不空字段（Electron/Chromium），必须走键盘全选+删除
+          try {
+            await deps.click(app, target.index);
+            await deps.sleep(150);
+            await deps.pressKey(app, 'cmd+a');
+            await deps.sleep(80);
+            await deps.pressKey(app, 'DELETE');
+            restoreRes = { ok: true, method: 'keyboard-clear' };
+          } catch (e) {
+            restoreRes = { ok: false, error: String((e && e.message) || e).slice(0, 120) };
+          }
+        } else {
+          restoreRes = await deps.setValue(app, target.index, decision.current).catch(() => ({ ok: false }));
+        }
+      }
       let restoreOk = true;
       if (shouldRestore) {
         await deps.sleep(Number(options_.typeWaitMs || 600));
