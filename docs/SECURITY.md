@@ -71,6 +71,11 @@
   预算对齐：外层 SIGKILL 宽限 6 秒（verify:live / runner），任务侧同步清理总预算 2500ms（`quitAppSync` 每次按剩余预算截断），预算耗尽不再尝试后续应用，避免清理被外层截断。
   验收锁写失败（EACCES/ENOSPC/父路径异常等非 EEXIST）默认 fail-closed：返回 `{ok:false, reason:'lock-unwritable'}`，验收以退出码 3 退出；只有显式 `AGENT_ALLOW_UNLOCKED=1` 才降级为「未加锁继续 + 警告」。
   token 只随回环地址发送：`tokenHeadersFor(url)` 仅对 127.0.0.1/localhost/[::1] 附带 `X-Agent-Token`；`OVERLAY_URL`/`AGENTD_URL` 指向非回环时默认不带，需显式 `AGENT_ALLOW_REMOTE_TOKEN=1`（只警告一次）。
+  /tmp 临时文件不再用可预测名字：ocu calls-file 走 `mkdtemp('ocu-calls-', 0700)` 私有目录 + 0600 文件，用完即删（防预置/符号链接写穿）。
+  浏览器 profile 与数据目录统一 0700：`ensurePrivateDir` 建目录即 0700、已有目录也纠正；`hardenDataDir` 遍历数据目录下所有真实子目录（不跟符号链接）统一 0700，白名单留作兜底。
+  清理默认**只关本次清理自己启动的应用**：用户自己开着的应用（哪怕人离开）保留并在报告里列 `app-residual-kept`；排障要清残留需显式 `CLEANUP_QUIT_RESIDUAL=1`。
+  `--force-all` 按条数删顶部 N 条有硬上限：默认 5（`CLEANUP_MAX_TOP`），超过默认拒绝并写 `note-delete-refused`，只有 `CLEANUP_ALLOW_LARGE=1` 才放行；删前报告会写 `willDelete/noteTotal/trigger/reason`，dry-run 永不删除。
+  overlay 里所有拼进 AppleScript 的变量统一走 `appleScriptQuote`（补了 \r/\n/\t 转义），overlay 内已无裸拼。
   daemon 停止任务/超时改为**杀整个进程组**（`killTaskTree`：TERM 组 → 3 秒 → KILL 组），孤儿清理也会收掉带本项目 `--user-data-dir` 的残留 Chrome（带 SingletonLock 活跃实例守卫，不误伤别的会话正在用的离屏浏览器）。
   退出应用前会先看有没有「保存/覆盖/删除」这类弹窗（**AXDialog 和 AXSheet 都算**），有就绝不强杀；
   备忘录同理：只有「新建备忘录成功 + 前台没变 + 有可写文本区」才写（`decideNoteWrite`），

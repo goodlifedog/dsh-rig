@@ -2,6 +2,7 @@
 
 ## 0.7.0（未发布）
 
+- 安全评审低危项继续收紧（子 agent 执行、Lead 核验提交）：L1 ocu calls-file 改 mkdtemp 私有目录（0700/0600）；L2 浏览器 profile 与数据目录统一 0700（hardenDataDir 全量遍历）；L3 overlay AppleScript 变量全部走 appleScriptQuote（补控制字符转义）；L4 --force-all 按条数删顶部 N 条加硬上限 5（CLEANUP_MAX_TOP / CLEANUP_ALLOW_LARGE）并在删前写计划；L4b 清理默认只关本次启动的应用（用户自己开着的保留，CLEANUP_QUIT_RESIDUAL=1 才恢复旧策略）。补 5 组单测。
 - 安全评审（docs/SECURITY-REVIEW-2026-11-08.md）的 1 高危 + 5 中危 + 1 衍生全部修复，全程由子 agent 执行、Lead 抽样核验后统一提交：
   H-1 笔记清理回退无闸门（默认 fail-closed）；M-1 daemon 停止/超时杀进程组 + 孤儿 Chrome 清理；
   M-1b 孤儿清理加 SingletonLock 活跃实例守卫、runner 宽限 6s；M-2 中止清理共享预算（2500ms / 外层 6s）；
@@ -215,11 +216,3 @@
 - `npm run health` 的「最近任务失败数」改成看得懂的说法（全成功时显示上一次任务与耗时，失败时给出任务名/退出码/时间）
 - 小窗效果回归的两处断言改成有上限的等待，刚重启预热慢不再误报失败
 - 推帧按需出图：新增 `GET /frame-target`（收起 600×380、放大 1920×1200），headless 任务从固定推 2560×1600 改为按小窗实际尺寸出图——单帧 160KB → 18KB，抓帧 90ms → 20ms
-- 修抓帧竞态：解绑/切换窗口时，仍在途的那次抓帧失败会把「目标窗口已失效」写回已解绑的会话；现在按抓帧开始时的窗口 ID 校验，目标变了就丢弃结果
-- 小窗新增「停止」按钮（任务运行中显示）：走 `POST /stop-task` 停掉后台任务并清空队列；daemon 区分「用户主动停止」与「失败」，前者不触发自动重试
-- 小窗静止降频：连续相同的帧按 2 倍周期退避（下限 2fps），画面变化立刻回满帧率；实测静止窗口 6 秒抓帧 36 → 12 次
-- 图片头解析/字节数/光标校验抽成 `overlay/image-meta.js`（6 项单测），顺带修 JPEG 扫描的边界 off-by-one（SOF 紧贴缓冲区末尾时读不到尺寸）
-- AppleScript 兜底路径的进程名改为转义后再拼接（`overlay/quote.js`，4 项单测），与 PowerShell 侧同样的思路
-- `parseJobs` / `countElements` 对 null/undefined 界面树不再抛错（ocu 读失败时任务不会因此崩）
-- 任务队列加上限（默认 50，`AGENTD_MAX_QUEUE` 可调）：超过返回 429 并说明原因，队列不会被狂刷撑爆
-- 修后台 `/run` 的目录穿越：任务名原来直接拼路径，`../` 可跳出任务目录执行任意脚本；现在按任务白名单校验并返回 400
