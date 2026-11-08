@@ -58,6 +58,8 @@
 | `KEEP_DAYS` | 7 | `scripts/prune.mjs` |
 | `KEEP_REPORTS` | 200 | `scripts/prune.mjs` |
 | `KEYWORDS` | Java,Agent,AI,后端,全栈,大模型,工作流 | `core/tasks/boss-candidates.mjs` |
+| `LIVE_FORCE` | （开关，设 1 开启） | `scripts/live-verify.mjs` |
+| `LIVE_KEEP_AWAKE` | （开关，设 1 开启） | `scripts/live-verify.mjs` |
 | `MATRIX_APPS_JSON` | — | `core/tasks/app-matrix.mjs` |
 | `MATRIX_DISMISS` | — | `core/tasks/app-matrix.mjs` |
 | `MATRIX_PRESET` | — | `core/tasks/app-matrix.mjs` |

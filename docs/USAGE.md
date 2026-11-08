@@ -448,6 +448,7 @@ curl -s -H "X-Agent-Token: $TOKEN" http://127.0.0.1:7788/health | head -c 400   
 | `npm run repo:check` | `node scripts/repo-check.mjs` | 仓库体检（版本/产物/大文件/隐私） |
 | `npm run restart:check` | `node scripts/restart-check.mjs` | 真重启两服务并验证健康 |
 | `npm run accept` | `node core/acceptance.mjs` | 端到端验收（需要两服务在线） |
+| `npm run verify:live` | `node scripts/live-verify.mjs` | 解锁后一条命令跑完全部屏幕类验收（acceptance + bg:verify + 小窗回归 + 会话隔离 + 帧率），锁屏时如实环境跳过（`LIVE_KEEP_AWAKE=1` 用 caffeinate 防跑一半锁屏） |
 | `npm run demo:platform` | `node core/runner.mjs run platform-demo` | 平台通路演示 |
 | `npm run bench:ocu` | `node scripts/bench-ocu.mjs 4` | ocu 效率基线（CLI vs MCP 常驻） |
 | `npm run check:ocu` | `node scripts/check-ocu.mjs` | 对比随包 ocu 与 npm 最新版 |
