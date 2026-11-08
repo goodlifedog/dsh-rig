@@ -80,6 +80,7 @@ async function selfTest() {
   let permissions = null;
   try { permissions = await checkPermissions(); } catch {}
   const permKnown = Boolean(permissions && Array.isArray(permissions.missing) && permissions.missing.indexOf('unknown') === -1);
+  const permUnknown = !permKnown;
   const accessibilityOk = permKnown ? permissions.missing.indexOf('accessibility') === -1 : false;
   const screenCaptureOk = permKnown ? permissions.missing.indexOf('screenCapture') === -1 : false;
 
@@ -90,9 +91,10 @@ async function selfTest() {
     screenCapture: screenCaptureOk,
     executable: process.execPath,
   });
-  checks.accessibility = Object.assign({ source: 'ocu doctor', trusted: accessibilityOk }, classified.checks.accessibility);
+  // M2：读不到权限状态时标 unknown——既不假装已授权（fail-open），也不硬说缺失（会误导用户去重装授权）
+  checks.accessibility = Object.assign({ source: 'ocu doctor', trusted: accessibilityOk, unknown: permUnknown }, classified.checks.accessibility);
   checks.automation = Object.assign({}, automationProbe, classified.checks.automation);
-  checks.screenCapture = Object.assign({ source: 'ocu doctor', granted: screenCaptureOk }, classified.checks.screenCapture);
+  checks.screenCapture = Object.assign({ source: 'ocu doctor', granted: screenCaptureOk, unknown: permUnknown }, classified.checks.screenCapture);
   return {
     // 向后兼容：老消费者只看 ok（旧语义=系统事件/自动化可用）
     ok: automationProbe.ok,
@@ -100,8 +102,11 @@ async function selfTest() {
     checks,
     names: classified.names,
     hints: classified.hints,
-    hint: classified.hint,
+    hint: permUnknown
+      ? '读不到权限状态（ocu doctor 失败/超时）：请手动到 系统设置 → 隐私与安全性 检查辅助功能与屏幕录制'
+      : classified.hint,
     missing: classified.missing,
+    permissionsUnknown: permUnknown,
   };
 }
 
@@ -283,7 +288,31 @@ async function runTask(name, attempt = 0) {
 
   // H1 权限闸门：需要 AX/录屏但系统没授权时按「环境跳过」处理（不 spawn、不记 FAIL）。
   // 探测失败（ocu doctor 读不到）时 evaluateTaskPermissionGate 会 proceed=true + warning，不会卡死队列。
+  //
+  // 并发/取消的坑（复核 H1/H2）：预检要 await（doctor 正常 0.3–2s，卡住最长 15s）。这期间如果
+  // 不先占住 state.current，第二个 /run 进来 drain() 会以为空闲、并发再起一个任务；/stop 也会因为
+  // pid 还是 null 而回「没在跑」。所以先落一个 stage=preflight 的占位（pid=null），spawn 后替换成真 pid。
+  const preflightStartedAt = new Date().toISOString();
+  // 上一轮 /stop 留下的 cancelled 标记只对那一轮有效，新任务开跑前必须清掉，
+  // 否则新任务会在预检后误判成「被取消」（集成测试实测踩到）。
+  state.cancelled = false;
+  state.current = { name, attempt, startedAt: preflightStartedAt, pid: null, logFile: '', stage: 'preflight' };
   const gate = await taskPermissionGate(file);
+  // 预检期间被 /stop：不再 spawn，按「已停止」收尾（不算失败、不重试）
+  if (state.cancelled === true) {
+    state.cancelled = false;
+    state.current = null;
+    const entry = {
+      name, attempt, ok: true, code: 0, cancelled: true,
+      envSkip: false, skipReason: '', frontSteals: 0,
+      startedAt: preflightStartedAt, durationMs: 0, logFile: '', stage: 'cancelled-before-spawn',
+    };
+    state.history.unshift(entry);
+    state.history = state.history.slice(0, 200);
+    overlay.status('已停止：' + name + '（预检阶段）', 'idle').catch(() => {});
+    overlay.log('任务在权限预检阶段被取消：' + name).catch(() => {});
+    return entry;
+  }
   if (gate && gate.warning) {
     console.warn('[daemon] ' + gate.warning);
     overlay.log(gate.warning).catch(() => {});
@@ -298,7 +327,7 @@ async function runTask(name, attempt = 0) {
     const startedAt = Date.now();
     // 任务自成进程组：daemon 退出或取消时按组收，避免 ocu/Chrome 孙进程变孤儿
     const child = spawn(process.execPath, [file], { detached: true, cwd: ROOT, env: { ...process.env, AGENTD_DAEMON: '1' } });
-    state.current = { name, attempt, startedAt: new Date().toISOString(), pid: child.pid, logFile };
+    state.current = { name, attempt, startedAt: new Date().toISOString(), pid: child.pid, logFile, stage: 'running' };
     // 备注：看门狗在下面启动，状态里只暴露"有没有在守"
     state.pendingRetry = null;
     state.cancelled = false;
@@ -374,10 +403,15 @@ async function runTask(name, attempt = 0) {
       const ok = code === 0;
       // 用户主动停止不是失败：单独标记，健康统计和自动重试都不该把它算进去
       const cancelled = state.cancelled === true;
+      state.cancelled = false; // 本轮结束即清标记，别影响下一个任务
       const guard = lastFrontWatchStats;
       // 环境跳过要和「真成功」分开：任务锁屏时退 0 + 打印环境跳过，如果只记 ok=true，
       // soak/monitor 会把整轮跳过说成「成功」（实测踩过）。
-      const skipReason = ok ? envSkipReason(tail) : '';
+      // 复核 M1：失败轮次也要归类——权限缺失时任务会退 1（如 ocu 报 Accessibility permission is required），
+      // 如果只在 ok 时归类，daemon 会把它记成真 FAIL，而 acceptance 对同一份输出记 SKIP，两套口径打架。
+      // envSkipReason 内部已是「真失败优先」（❌/FAIL/未送达/存在失败项 一律返回空），所以这里可以和解耦。
+      // 用户主动停止的轮次不归环境跳过（是用户意志，不是环境）。
+      const skipReason = cancelled ? '' : envSkipReason(tail);
       const entry = {
         name, attempt, ok, code, cancelled,
         envSkip: Boolean(skipReason), skipReason,
@@ -527,17 +561,27 @@ async function handleRequest(req, res) {
   }
 
   if (p === '/stop' && req.method === 'POST') {
-    const hadTask = Boolean(state.current && state.current.pid);
+    // 复核 H2：预检阶段 state.current 已占位但 pid 还是 null——这时也要认「在跑」，
+    // 否则用户点停止会收到 stopped:false，而任务随后照样 spawn。
+    const current = state.current;
+    const hadTask = Boolean(current);
+    const inPreflight = Boolean(current && current.pid == null);
     state.queue = [];
     state.cancelled = hadTask;
+    if (inPreflight) {
+      // 预检阶段还没 spawn：标记取消并清占位；runTask 会在 await 回来后看到 cancelled 直接收尾。
+      state.current = null;
+      overlay.log('已取消预检中的任务：' + current.name).catch(() => {});
+      return json(res, 200, { ok: true, stopped: true, task: current.name, stage: 'preflight-cancelled' });
+    }
     if (hadTask) {
       // 必须按进程组收（负 pid）：只 kill(pid) 会留下任务拉起的 ocu/Chrome，
       // 而 Chrome 带着无鉴权的 --remote-debugging-port 会一直开着。3 秒不退再 KILL。
-      const sent = killTaskTree(state.current.pid, { graceMs: 3000 });
+      const sent = killTaskTree(current.pid, { graceMs: 3000 });
       const how = sent.term && sent.term.group ? '进程组' : '单进程';
-      overlay.log('已停止任务（SIGTERM ' + how + ' pid=' + state.current.pid + '）').catch(() => {});
+      overlay.log('已停止任务（SIGTERM ' + how + ' pid=' + current.pid + '）').catch(() => {});
     }
-    return json(res, 200, { ok: true, stopped: hadTask, task: hadTask ? state.current.name : null });
+    return json(res, 200, { ok: true, stopped: hadTask, task: hadTask ? current.name : null, stage: hadTask ? 'running' : 'idle' });
   }
 
   return json(res, 404, { ok: false, error: 'not found', path: p });

@@ -55,6 +55,8 @@ test('daemon：队列串行、环境失败不重试、临时失败重试一次',
     'flaky-task': 'console.error("FAIL: 等待 Chrome 调试端口超时"); process.exit(1);\n',
     'hard-fail': 'console.error("FAIL: 断言不成立：标题不对"); process.exit(1);\n',
     'env-skip-task': 'console.log("环境跳过：锁屏测试"); process.exit(0);\n',
+    // 缺权限导致任务失败：daemon 也要按环境跳过归类，不能记真 FAIL（复核 M1）
+    'perm-fail-task': 'console.error("Accessibility permission is required to read the app state"); process.exit(1);\n',
     'long-task': 'setTimeout(function () {}, 30000);\n',
   };
   for (const [name, body] of Object.entries(tasks)) {
@@ -256,4 +258,21 @@ test('daemon：队列串行、环境失败不重试、临时失败重试一次',
   assert.ok(afterStop, '/stop 后任务应退出');
   assert.equal(afterStop.hit.cancelled, true, '主动停止要标 cancelled');
   assert.equal((afterStop.st.queue || []).length, 0, '/stop 要清空队列');
+
+  // 复核 M1：失败轮次也要按「权限缺失 = 环境跳过」归类（与 acceptance/run-classify 同一口径），
+  // 否则 daemon 记真 FAIL、验收对同一份输出记 SKIP，健康面板会忽红忽绿。
+  await fetch(BASE + '/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...TOKEN_HEADERS },
+    body: JSON.stringify({ task: 'perm-fail-task' }),
+  });
+  const permFail = await waitFor(async () => {
+    const st = await (await gets('/status')).json();
+    const hit = (st.history || []).find((h) => h.name === 'perm-fail-task');
+    return hit && !st.current ? hit : null;
+  }, 20000);
+  assert.ok(permFail, '缺权限失败任务没有跑完');
+  assert.equal(permFail.ok, false, '退出码 1 仍然要如实记 ok=false');
+  assert.equal(permFail.envSkip, true, '权限缺失导致的失败必须标 envSkip');
+  assert.match(String(permFail.skipReason || ''), /辅助功能权限/, '跳过原因要说清缺哪项权限');
 });
