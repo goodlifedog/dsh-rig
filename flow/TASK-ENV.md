@@ -5,6 +5,7 @@
 
 | 变量 | 代码里的默认值 | 出现位置 |
 | --- | --- | --- |
+| `ACCEPT_ABORT_IDLE_SEC` | 30 | `core/acceptance.mjs` |
 | `ACCEPT_FORCE` | （开关，设 1 开启） | `core/acceptance.mjs` |
 | `AGENTD_MAX_QUEUE` | 50 | `core/daemon.mjs` |
 | `AGENTD_MAX_RETRIES` | （开关，设 1 开启） | `core/daemon.mjs` |
@@ -60,8 +61,10 @@
 | `KEEP_DAYS` | 7 | `scripts/prune.mjs` |
 | `KEEP_REPORTS` | 200 | `scripts/prune.mjs` |
 | `KEYWORDS` | Java,Agent,AI,后端,全栈,大模型,工作流 | `core/tasks/boss-candidates.mjs` |
+| `LIVE_ABORT_IDLE_SEC` | 20 | `scripts/live-verify.mjs` |
 | `LIVE_FORCE` | （开关，设 1 开启） | `scripts/live-verify.mjs` |
 | `LIVE_KEEP_AWAKE` | （开关，设 1 开启） | `scripts/live-verify.mjs` |
+| `LIVE_MIN_IDLE_SEC` | 900 | `scripts/live-verify.mjs` |
 | `MATRIX_APPS_JSON` | — | `core/tasks/app-matrix.mjs` |
 | `MATRIX_DISMISS` | — | `core/tasks/app-matrix.mjs` |
 | `MATRIX_PRESET` | — | `core/tasks/app-matrix.mjs` |

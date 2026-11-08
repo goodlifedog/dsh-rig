@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 验收不再等你回来才停：`acceptance` 每个任务运行期间每秒查一次键鼠空闲，用户一回到电脑前（默认 <30 秒，`ACCEPT_ABORT_IDLE_SEC` 可调）立刻杀掉当前任务并标环境跳过，不再等一个能跑几分钟的 app-matrix 跑完；单测 3 项
+- `verify:live` 启动门槛从「键鼠空闲 3 分钟」提到 **15 分钟**（`LIVE_MIN_IDLE_SEC` 可调），跑的过程中用户一碰键鼠（<20 秒）立刻停掉当前步骤、收起所有小窗，并提示报告未跑完；中途停止不再把整轮标成失败。**背景：这次实测时用户短暂离开又回来，正好撞上验收，屏幕上出现了小窗和应用窗口切换——现在门槛更高、停止更快**
 - Safari 页面级通道探测：网页内容不在 AX 树里，要控制页面必须开 Safari 的 Allow JavaScript from Apple Events。新增 `checkSafariJavaScript()`（只执行 `1+1`，不碰用户数据，错误分类：disabled/no-document/not-running/denied），`applescript-channel` 每次会打印「Safari 页面 JS 通道：可用/不可用 + 怎么开」；本机实测关着，提示已给出。补 2 项单测
 - 实测（2026-11-08，用户正在用电脑）：AppleScript 通道 4/4（Finder/Chrome/Safari/TextEdit，frontStolen=false、权限 granted）、CDP 通道 4/4（headless 独立 profile）、headless-demo 全流程（启动 652ms、4 帧回显、点击 455ms、屏幕窗口数 0、残留 0，前台始终 DSH）；结果记进 docs/MAC-APPS 的实机验证表
 - 退出保护补上 AXSheet：`dialogs()` 原来只把 subrole=AXDialog 的窗口算弹窗，而「要存储吗」这类确认可能是 sheet（AXSheet）。漏识别会把用户没保存的内容当"没有弹窗"直接强杀；现在两种都算，有保存/覆盖/删除提示就拒绝强杀（补 1 项结构测试）

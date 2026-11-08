@@ -15,10 +15,36 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isScreenLocked } from '../core/platform.mjs';
 import { classifyLiveStep, summarizeLiveSteps, midRunStopReason } from '../core/live-verify.mjs';
+import { overlayBase } from '../core/ports.mjs';
+import { localHeaders } from '../core/local-token.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const KEEP_AWAKE = process.env.LIVE_KEEP_AWAKE === '1';
 const FORCE = process.env.LIVE_FORCE === '1';
+// 启动门槛：默认要求键鼠空闲 15 分钟（不是 3 分钟）——3 分钟常常只是用户去倒杯水，
+// 回来就看见屏幕在切。想更快跑：LIVE_MIN_IDLE_SEC=180。
+const MIN_IDLE_MS = Math.max(0, Number(process.env.LIVE_MIN_IDLE_SEC || 900)) * 1000;
+// 跑的过程中用户一回来（键鼠空闲小于这个值）就立刻杀掉当前步骤
+const ABORT_IDLE_MS = Math.max(5000, Number(process.env.LIVE_ABORT_IDLE_SEC || 20) * 1000);
+const OVERLAY = overlayBase();
+
+/** 停下时把任务可能弹出的小窗收掉：关非 default 会话、default 隐藏 */
+async function tidyOverlay() {
+  const post = async (p, body) => {
+    try {
+      await fetch(OVERLAY + p, { method: 'POST', headers: localHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(body || {}), signal: AbortSignal.timeout(1500) });
+    } catch {}
+  };
+  let sessions = [];
+  try {
+    const res = await fetch(OVERLAY + '/sessions', { headers: localHeaders(), signal: AbortSignal.timeout(1500) });
+    sessions = (await res.json()).sessions || [];
+  } catch {}
+  for (const s of sessions) {
+    if (s.session === 'default') await post('/visible', { session: 'default', visible: false });
+    else await post('/close', { session: s.session });
+  }
+}
 
 // 顺序有讲究：先跑最重的端到端验收，再跑分项，最后性能 —— 任何一步真失败都不影响后面把证据跑全
 const STEPS = [
@@ -47,19 +73,36 @@ function runStep(step) {
       ? ['/usr/bin/caffeinate', '-d', '-i', process.execPath, path.join(ROOT, step.script)]
       : [process.execPath, path.join(ROOT, step.script)];
     const cmd = args.shift();
-    const child = spawn(cmd, args, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
+    // detached：整个步骤自成一个进程组，用户回来时能连它起的子进程一起停掉
+    const child = spawn(cmd, args, { cwd: ROOT, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '';
     let timedOut = false;
+    let aborted = false;
+    const killGroup = (sig) => {
+      try { process.kill(-child.pid, sig); } catch {}
+      try { child.kill(sig); } catch {}
+    };
     const timer = setTimeout(() => {
       timedOut = true;
-      try { child.kill('SIGKILL'); } catch {}
+      killGroup('SIGKILL');
     }, step.timeoutMs);
+    const poll = setInterval(() => {
+      if (FORCE) return;
+      const idle = hidIdleMs();
+      if (idle >= 0 && idle < ABORT_IDLE_MS) {
+        aborted = true;
+        killGroup('SIGTERM');
+      }
+    }, 1000);
     child.stdout.on('data', (b) => { out += b; });
     child.stderr.on('data', (b) => { out += b; });
-    child.on('close', (code) => {
+    const done = (code) => {
       clearTimeout(timer);
-      resolve({ code: timedOut ? 124 : code, out, ms: Date.now() - started, timedOut, limitMs: step.timeoutMs });
-    });
+      clearInterval(poll);
+      resolve({ code: timedOut ? 124 : code, out, ms: Date.now() - started, timedOut, aborted, limitMs: step.timeoutMs });
+    };
+    child.on('error', () => done(1));
+    child.on('close', (code) => done(code));
   });
 }
 
@@ -68,16 +111,20 @@ async function main() {
     console.log('环境跳过：屏幕已锁，需要解锁才能跑这些验证（解锁后：npm run verify:live）');
     return;
   }
-  if (!FORCE && hidIdleMs() >= 0 && hidIdleMs() < 180000) {
-    console.error('检测到你正在用电脑（键鼠空闲 < 180 秒），验收会切窗口，先不跑。');
-    console.error('确实要跑：LIVE_FORCE=1 npm run verify:live');
+  if (!FORCE && hidIdleMs() >= 0 && hidIdleMs() < MIN_IDLE_MS) {
+    const mins = Math.round(MIN_IDLE_MS / 60000);
+    console.error('检测到你还在电脑前（键鼠空闲 < ' + mins + ' 分钟），验收会切窗口，先不跑。');
+    console.error('确实要跑：LIVE_FORCE=1 npm run verify:live（跑的过程中你一碰键鼠，它会立刻停）');
     process.exitCode = 2;
     return;
   }
 
   const steps = [];
+  await tidyOverlay();
+  try {
   for (const step of STEPS) {
-    const stop = midRunStopReason({ locked: await isScreenLocked(), userActive: false });
+    const userActive = !FORCE && hidIdleMs() >= 0 && hidIdleMs() < ABORT_IDLE_MS;
+    const stop = midRunStopReason({ locked: await isScreenLocked(), userActive });
     if (stop) {
       steps.push({ name: step.name, status: 'SKIP', ms: 0, detail: '环境跳过：' + stop + '（本轮不再继续）' });
       console.log('  ⏭  ' + step.name + '  环境跳过：' + stop);
@@ -85,10 +132,20 @@ async function main() {
     }
     process.stdout.write('跑 ' + step.name + ' … ');
     const result = await runStep(step);
+    if (result.aborted) {
+      steps.push({ name: step.name, status: 'SKIP', ms: result.ms, detail: '环境跳过：你一碰键鼠就停了（已杀掉当前步骤，不再动屏幕）' });
+      console.log('⏭ SKIP  你回到电脑前，已立刻停止  ' + (result.ms / 1000).toFixed(1) + 's');
+      await tidyOverlay();
+      break;
+    }
     const verdict = classifyLiveStep(result);
     steps.push({ name: step.name, status: verdict.status, ms: result.ms, detail: verdict.detail });
     const mark = verdict.status === 'PASS' ? '✅' : (verdict.status === 'SKIP' ? '⏭' : '❌');
     console.log(mark + ' ' + verdict.status + '  ' + (verdict.detail || '') + '  ' + (result.ms / 1000).toFixed(1) + 's');
+  }
+  } finally {
+    // 不管正常跑完还是中途停，都把任务可能弹出的小窗收拾干净
+    await tidyOverlay();
   }
 
   const summary = summarizeLiveSteps(steps);

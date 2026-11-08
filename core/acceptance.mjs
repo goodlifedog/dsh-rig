@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // 端到端验收：把关键能力跑一遍并出结论表
 // 用法：node core/acceptance.mjs
-import { execFile, execFileSync } from 'node:child_process';
+import { execFile, execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,6 +18,64 @@ function run(cmd, args, opts = {}) {
   return new Promise((resolve) => {
     execFile(cmd, args, { timeout: opts.timeout || 180000, maxBuffer: 64 * 1024 * 1024, cwd: ROOT, env: opts.env ? { ...process.env, ...opts.env } : process.env }, (err, stdout, stderr) => {
       resolve({ code: err ? 1 : 0, stdout: stdout || '', stderr: stderr || '' });
+    });
+  });
+}
+
+/** 键鼠空闲多少秒（读不到返回 -1） */
+function hidIdleSec() {
+  if (process.platform !== 'darwin') return -1;
+  try {
+    const out = execFileSync('/usr/sbin/ioreg', ['-c', 'IOHIDSystem', '-d', '4'], { encoding: 'utf8', timeout: 3000 });
+    const m = /"HIDIdleTime" = (\d+)/.exec(out);
+    return m ? Number(m[1]) / 1e9 : -1;
+  } catch {
+    return -1;
+  }
+}
+
+/** 杀掉子进程整个进程组（任务会再起自己的子进程，只杀父进程会留下孤儿） */
+function killGroup(child, signal) {
+  try { process.kill(-child.pid, signal); } catch {}
+  try { child.kill(signal); } catch {}
+}
+
+/**
+ * 跑一个任务，并在「用户回到电脑前」时立刻停掉它。
+ *
+ * 为什么不能在任务之间才检查：app-matrix 这种一跑就是几分钟，等它跑完再停，
+ * 用户回来这段时间屏幕一直被切来切去。所以任务运行期间每秒查一次键鼠空闲。
+ */
+export function runTaskProcess(cmd, args, opts = {}) {
+  const abortIdleSec = Number(process.env.ACCEPT_ABORT_IDLE_SEC || 30);
+  const idleFn = typeof opts.idleFn === 'function' ? opts.idleFn : hidIdleSec;
+  return new Promise((resolve) => {
+    const env = opts.env ? { ...process.env, ...opts.env } : process.env;
+    const child = spawn(cmd, args, { cwd: ROOT, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    let aborted = false;
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; killGroup(child, 'SIGTERM'); }, opts.timeout || 180000);
+    const poll = setInterval(() => {
+      if (process.env.ACCEPT_FORCE === '1') return;
+      const idle = idleFn();
+      if (idle >= 0 && idle < abortIdleSec) {
+        aborted = true;
+        killGroup(child, 'SIGTERM');
+      }
+    }, 1000);
+    child.stdout.on('data', (b) => { stdout += b; });
+    child.stderr.on('data', (b) => { stderr += b; });
+    child.on('error', (error) => {
+      clearInterval(poll);
+      clearTimeout(timer);
+      resolve({ code: 1, stdout, stderr: stderr + String(error && error.message || error), aborted, timedOut });
+    });
+    child.on('close', (code) => {
+      clearInterval(poll);
+      clearTimeout(timer);
+      resolve({ code: code == null ? 1 : code, stdout, stderr, aborted, timedOut });
     });
   });
 }
@@ -168,7 +226,11 @@ function restoreUserFront() {
 }
 
 async function runTask(name, timeoutMs = 180000, env) {
-  const r = await run('node', ['core/runner.mjs', 'run', name, '--timeout', String(timeoutMs)], env ? { env } : {});
+  const r = await runTaskProcess('node', ['core/runner.mjs', 'run', name, '--timeout', String(timeoutMs)], env ? { env, timeout: timeoutMs + 5000 } : { timeout: timeoutMs + 5000 });
+  if (r.aborted) {
+    record('任务 ' + name, true, '环境跳过（你回到电脑前，已立刻停止这个任务，不再动屏幕）', true);
+    return true;
+  }
   const out = r.stdout + r.stderr;
   // 环境原因跳过不算失败；规则与健康面板共用一份（core/run-classify.mjs）
   const reason = envSkipReason(out);
