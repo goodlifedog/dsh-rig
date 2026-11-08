@@ -1,49 +1,42 @@
 # 外部监控日志（评审侧维护，执行侧按需读取）
 
-> 更新：2026-11-08 23:18
+> 更新：2026-11-08 23:22
 
-## 一、真实应用适配：第一次拿到「读」的证据
+## 一、Safari 端到端适配已通过（评审侧实跑，可复现）
 
-`adapter-demo --app Safari`（Safari 已在运行，只读）：
+**命令与结果**：
 
 ```
-gate       ✅ Safari 已在运行，直接读
-read-tree  ✅ 窗口="起始页"，nodes=105，按钮 40，输入区 1
-echo       ✅ 小窗可回显：windowId=8767，截图 21045 字节
+node core/tasks/adapter-demo.mjs --app Safari --click-text "边栏"
+  gate            ✅ Safari 已在运行，直接读
+  read-tree       ✅ 窗口="起始页"，nodes=105，按钮 40，输入区 1
+  click-by-text   ✅ 点中「显示边栏 ID: SidebarButton」index=81（contains）
+                     节点数 105 → 112，新增「边栏」相关元素 111 条
+  echo            ✅ windowId=8767，截图 21045 字节
+  front-unchanged ✅ DeepSeek Harness → DeepSeek Harness
+
+再跑一次同命令（点「隐藏边栏」）：nodes 112 → 105，恢复原状，前台仍未变。
 ```
 
-**读界面 + 小窗回显两条链路对 Safari 是通的。**
+**请把这条写进 docs/ADAPTERS.md**：Safari = 已适配（读 + 按文字点击 + 回显 + 前台不变 + 状态可还原），
+附上可复制命令与输出摘要。这是目前唯一一个完整闭环的真实应用证据。
 
-## 二、必改：front-unchanged 把系统通知浮层算成「前台被抢」
+## 二、仍未修：front-unchanged 的系统浮层误判
 
-同一个命令连跑两次，结果自相矛盾：
+同一命令曾两次结果相反（通知横幅中途出现→假失败；横幅作基线→假通过）。
+修法见上一版：系统浮层名单 + 基线校验 + 两条单测。这次 Safari 跑通时没触发，但噪声场景仍会误判。
 
-| 次数 | front before → after | 判定 |
+## 三、其余候选现状（adapter-demo 会如实环境跳过）
+
+| 应用 | 状态 | 原因 |
 | --- | --- | --- |
-| 第 1 次 | DeepSeek Harness → **UserNotificationCenter** | ❌ 假失败 |
-| 第 2 次 | **UserNotificationCenter** → UserNotificationCenter | ✅ 假通过 |
+| Safari | ✅ 已适配（见上） | — |
+| Antigravity | 应用侧限制 | `open -g` 拉不起来，冷启动即退 |
+| TextEdit / Preview / QQ / WPS Office / Ghostty / ChatGPT / Gemini / Telegram 等 | 读取抢前台 | 在 front-risk 名单（11 个），工具拒绝、`--allow-launch` 也不绕过 |
+| OpenCode | 应用侧限制 | 二进制拒绝 `--remote-debugging-port` |
 
-根因：`UserNotificationCenter` / `NotificationCenter` 是系统通知浮层。
-- 它中途出现 → 被当成目标应用抢前台（假失败）
-- 它作为基线 → 「前后一致」毫无意义（假通过）
+## 四、下一批适配的建议顺序
 
-修法：
-1. 维护一份「系统浮层进程」名单（`UserNotificationCenter`、`NotificationCenter`、`Window Server`、`loginwindow` 等），
-   前台比较时忽略它们（但要记录「期间出现系统浮层」）
-2. **基线校验**：baseline 是系统浮层时不要判 unchanged，标「基线无效，需重测」
-3. 补两条单测：浮层中途出现不判失败；浮层作为基线时判「基线无效」
-
-## 三、Antigravity：应用侧限制（不要再耗时间）
-
-```
-open -g -a Antigravity            → 无进程
-直接执行二进制 --version          → v24.21.0（能跑）
-bundle: com.google.antigravity, arm64, 有签名
-```
-结论：冷启动即退，不是工具问题。ADAPTERS 里记为「应用侧限制」。
-
-## 四、当前风险名单（11 个，读取会抢前台）
-
-`ChatGPT、Gemini、Ghostty、QQ、Steam、Telegram、UURemote、WPS Office、iRightMouse、文本编辑、预览`
-
-优先级建议：Safari（读已通，下一步验点击）→ Chrome（CDP 已通）→ 再考虑名单外的新应用。
+1. Chrome：CDP 通道已通，用 `--app Chrome --file examples/adapters/sample.html --click-text "[AGENT-TEST] 提交" --allow-launch` 验一次完整闭环
+2. 名单外的新应用：先用只读模式跑 `adapter-demo`（不加 --click-text），确认读树不抢前台后再点
+3. 任何写操作（--type-text）先等「不覆盖用户内容」的守卫落地
