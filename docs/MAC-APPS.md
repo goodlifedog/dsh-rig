@@ -243,6 +243,17 @@ npm run apps:inventory                     # 刷新清点
 
 锁屏时这些命令会如实标「环境跳过」并退出 0，不会假装通过；用户正在用电脑时验收会拒绝运行（`ACCEPT_FORCE=1` 才强跑）。
 
+**2026-11-08 已跑过的实机项（用户正在用电脑、全程未抢前台）：**
+
+| 项目 | 结果 | 证据 |
+| --- | --- | --- |
+| AppleScript 通道 | 4/4 通过 | Finder/Chrome/Safari/TextEdit 都执行成功；`frontStolen=false`、`frontUnchanged=true`、自动化权限 granted |
+| CDP 通道（headless Chrome） | 4/4 通过 | 连端口读标题/正文、写输入框、按文字点按钮都成功；独立 profile，不碰用户 Chrome |
+| headless-demo | 全流程通过 | 启动 652ms、页面加载 1108ms、4 帧回显、拟人点击 455ms、屏幕窗口数 0、收尾残留进程 0；前台始终 DeepSeek Harness |
+| 矩阵跳过风险应用 | 通过 | 只跑 Ghostty 时直接标环境跳过、退出码 0，没有启动/读取目标应用 |
+| 驱动类任务跳过 | 通过 | drive-agent / drive-agent-cli 对风险名单目标直接环境跳过，退出码 0 |
+| 清理脚本 dry-run | 通过 | 用户在用电脑时跳过笔记清理、不动 TextEdit/ChatGPT 数据，前台不变 |
+
 ## 九、已知边界
 
 - **菜单栏命令**：备忘录这类应用菜单栏节点不可查询（AXMenuBarItem/AXMenuItem 均为 0），
