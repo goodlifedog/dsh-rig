@@ -270,8 +270,14 @@ export async function requireRunning(app) {
 - **P2 显式启动器**：`user-chrome-demo` 输出已带 `started`，文档写清它会 `open -g -a Chrome`；
   其余启动器维持「`ensureAppRunning` → 登记 `launchedByUs` → 应急清理 → 只关自己拉起的」。
 - **P3 脚本层**：`bench-ocu` 已门禁（上表）；编排脚本继承任务门禁，另由 `verify:safe` 兜「不碰屏幕」子集。
-- **P4 静态回归检查**：待做——要把「对具体应用调 ocu 前必须有 `isAppRunning/ensureApp*/requireAppRunning`
-  之一或 `// audit-ok:` 豁免」加进 `scripts/safety-audit.mjs` + 两个 fixture 单测，做成常驻测试而不是一次性人工审计。
+- **P4 静态回归检查**：已完成——`core/safety-audit.mjs` 新增规则 5（`raw-ocu-without-presence-gate`）：
+  对具体应用调 ocu（`ocu.snapshot/ocu.call`、`callTool('get_app_state|query|click|type_text|set_value')`、
+  `readSafe/findSafe/state/find/click/typeText/setValue`、`cua.getApp`）时，同文件必须有
+  `isAppRunning/ensureAppRunning/ensureAppWindow/requireAppRunning` 之一，或本行/紧邻上一行有
+  `// audit-ok: <理由>`；根因层与 CDP/AppleScript 通道、内嵌 JXA 脚本文本共 14 条文件级白名单（每条写理由）。
+  扫描范围扩到 `core/tasks` + `core/*.mjs` + `scripts`：**120 个文件 / 103 处调用点 / 0 违规**；
+  规则非空转（命中数下限断言）与白名单防腐烂都有单测。顺带修了 open 规则的误判（`this.state = 'open'`），
+  并把「打开系统设置隐私面板」列为显式例外（必须可见、由用户手动授权）。
 - **P5 单测**：已补 4 个测试文件（见上）；纯逻辑、不碰真实应用。
 - **P6 文档**：已完成——`docs/SECURITY.md` 加了硬约束（「不为了读一个应用把它启动起来」：raw 读取前必须
   `isAppRunning` / `requireAppRunning`，未运行一律环境跳过，不允许「为了演示」启动，唯一启动路径是显式启动器四件套）；

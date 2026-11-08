@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 安全边界自查（静态）：扫 core/tasks 与 scripts 里的危险写法。
+ * 安全边界自查（静态）：扫 core/tasks、core/*.mjs 与 scripts 里的危险写法。
  *
  *   npm run safety:audit
  *
@@ -14,7 +14,7 @@ import { auditTree, summarizeViolations } from '../core/safety-audit.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
-const DIRS = ['core/tasks', 'scripts'];
+const DIRS = ['core/tasks', 'core', 'scripts'];
 
 function collect(dir) {
   const base = path.join(ROOT, dir);

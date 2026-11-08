@@ -30,6 +30,22 @@ test('强杀进程 → 抓出来（-9 / killall）', () => {
 test('open 不带 -g → 抓出来（会激活应用、切屏）', () => {
   assert.ok(rules('core/tasks/x.mjs', 'exec("/usr/bin/open", ["-a", "Calculator"]);').includes('open-without-background'));
   assert.deepEqual(rules('core/tasks/x.mjs', 'exec("/usr/bin/open", ["-g", "-a", "Calculator"]);'), []);
+  // 各种真实写法都要覆盖：exec/spawn/start 的 'open' 子命令
+  assert.ok(rules('core/tasks/x.mjs', 'spawnSync("open", ["-a", "Calculator"]);').includes('open-without-background'));
+  assert.ok(rules('core/tasks/x.mjs', "start('open', ['-a', 'Calculator']);").includes('open-without-background'));
+});
+
+test('open 规则不误判状态字符串（CDP/WebSocket 的 \'open\' 不是启动应用）', () => {
+  // 回归：把 core 纳入扫描后，core/cdp.mjs 的 this.state = 'open' 曾被误报
+  assert.deepEqual(rules('core/cdp.mjs', "this.state = 'open'; this.emit('open');"), []);
+  assert.deepEqual(rules('core/cdp.mjs', "if (this.state === 'open') return ws.open(url);"), []);
+});
+
+test('打开系统设置隐私面板是显式例外（要用户手动授权，必须可见）', () => {
+  const source = "execFile('/usr/bin/open', ['x-apple.systempreferences:com.apple.preference.security'], () => {});";
+  assert.deepEqual(rules('core/permissions.mjs', source), []);
+  // 同一个文件换成非设置页的启动，仍然要报
+  assert.ok(rules('core/other.mjs', source).includes('open-without-background'));
 });
 
 test('界面操作没有锁屏/前台/互斥护栏 → 抓出来', () => {
