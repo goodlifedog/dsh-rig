@@ -102,7 +102,7 @@ electron 族里：2 个应用侧限制（Antigravity、抖音）、1 个不接�
 
 **最小可行步骤**
 
-1. `core/app-presets.mjs` 的 `system` 门类加一条：`{ name: '预览', bundle: 'com.apple.Preview', process: 'Preview' }`
+1. `core/app-presets.mjs` 的 `system` 门类加一条：`{ name: '预览', bundle: 'com.apple.Preview', process: 'Preview' }`（已落地，且在 `reading` 门类）
 2. `npm run apps:inventory`（纯扫描，不动屏幕）→ 看它进清点、runtime 判成 native
 3. `npm run app:resolve -- 预览`（只读通道协商：不启动应用）
 4. 用户离开后 `npm run apps:probe -- 预览`

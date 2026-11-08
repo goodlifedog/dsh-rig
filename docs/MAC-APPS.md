@@ -214,7 +214,7 @@ overlay 的系统窗口列表（CGWindowList）。只信 AX 会把菜单栏工�
 | Google Chrome | 专用方案 | 会自己抢前台，用独立 profile 的 headless 实例（browser:bg） |
 | Clash Verge / 奇游加速器 / DeepSeek Harness | **不动** | 用户的代理、加速器、宿主应用，只读状态或不碰 |
 | Antigravity / 抖音 | 限制 | 启动后自行退出，或带调试端口的 CDP 也起不来（详见 cdp-driver 报告） |
-| Calendar / Reminders / Mail / Preview / Music / Photos | 未测（新门类） | 已进预设（calendar / mail / reading / photos / media），但还没跑矩阵实测；首次冷启动会弹登录/iCloud/通知/媒体库引导，**矩阵只读、不点按钮、不删数据、不发信** |
+| 日历 / 提醒事项 / 邮件 / 预览 / 音乐 / 照片 | 未测（新门类） | 已进预设（calendar / mail / reading / photos / media），但还没跑矩阵实测；首次冷启动会弹登录/iCloud/通知/媒体库引导，**矩阵只读、不点按钮、不删数据、不发信** |
 | OpenCode / Telegram | 未测 | 历史矩阵报告被轮转后回到未测（OpenCode 的 CDP 端口实测起不来）；要恢复结论需重跑矩阵 |
 | Dome Keeper / Escape From Duckov | 不在统计内 | `~/Applications` 里的 Steam 快捷方式壳（只有 run.sh、没有 bundle id），不是能接管的独立应用 |
 

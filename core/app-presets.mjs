@@ -51,31 +51,32 @@ export const PRESETS = Object.freeze({
     { name: 'iMovie', bundle: 'com.apple.iMovieApp', process: 'iMovie' },
     { name: 'GarageBand', bundle: 'com.apple.garageband10', process: 'GarageBand' },
     // 音乐：首次冷启动会弹「媒体库同步 / 欢迎」引导窗，探测只能读、绝不点。
-    { name: 'Music', bundle: 'com.apple.Music', process: 'Music' },
+    // name 用本地化显示名：CGWindowList 的 owner 是「音乐」，英文名匹配不到窗口（实测 备忘录/文本编辑 同理）。
+    { name: '音乐', bundle: 'com.apple.Music', process: 'Music' },
   ],
   // 邮件
   // 系统邮件窗口的 AX 树可读（列表 + 正文），但首次启动会要求登录账号并弹「新建邮箱」向导；
   // 矩阵探测只读，不点任何按钮，不触发发信/删信这类不可逆动作。
   mail: [
-    { name: 'Mail', bundle: 'com.apple.mail', process: 'Mail' },
+    { name: '邮件', bundle: 'com.apple.mail', process: 'Mail' },
   ],
   // 日历 / 提醒：同一个门类，都是"读多写少"的个人数据应用
   // 首次打开可能弹 iCloud 同步 / 通知权限；探测只看窗口是否可用，绝不点"接受/稍后"，
   // 也不删事件、不改日程（读出来的数据涉及个人隐私，报告里不落具体内容）。
   calendar: [
-    { name: 'Calendar', bundle: 'com.apple.iCal', process: 'Calendar' },
-    { name: 'Reminders', bundle: 'com.apple.reminders', process: 'Reminders' },
+    { name: '日历', bundle: 'com.apple.iCal', process: 'Calendar' },
+    { name: '提醒事项', bundle: 'com.apple.reminders', process: 'Reminders' },
   ],
   // 阅读 / 预览
   // Preview 打开文件才有窗口，冷启动是空壳；矩阵里判定的是"壳可读"，不代表 PDF 内容在 AX 树里。
   reading: [
-    { name: 'Preview', bundle: 'com.apple.Preview', process: 'Preview' },
+    { name: '预览', bundle: 'com.apple.Preview', process: 'Preview' },
   ],
   // 照片
   // 首次启动会弹「照片图库」选择 / iCloud 同步引导，且默认可能开始扫描图库——
   // 探测只读窗口与菜单，绝不动图库设置、不导入不删除。
   photos: [
-    { name: 'Photos', bundle: 'com.apple.Photos', process: 'Photos' },
+    { name: '照片', bundle: 'com.apple.Photos', process: 'Photos' },
   ],
   // 效率小工具
   tools: [

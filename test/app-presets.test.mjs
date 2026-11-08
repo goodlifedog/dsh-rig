@@ -23,15 +23,17 @@ test('预设门类齐全', () => {
 });
 
 test('新增门类：mail / calendar / reading / photos 及 media 里的 Music', () => {
-  // 值来自各应用 Info.plist（CFBundleIdentifier / CFBundleExecutable），不是猜的
+  // bundle/process 来自各应用 Info.plist（CFBundleIdentifier / CFBundleExecutable），不是猜的；
+  // name 用**本地化显示名**——CGWindowList 的 owner 是「邮件/日历/预览…」，用英文名匹配不到窗口
+  // （实测同一台机器上「备忘录/文本编辑」的 owner 也是中文）。
   const expected = {
-    mail: [{ name: 'Mail', bundle: 'com.apple.mail', process: 'Mail' }],
+    mail: [{ name: '邮件', bundle: 'com.apple.mail', process: 'Mail' }],
     calendar: [
-      { name: 'Calendar', bundle: 'com.apple.iCal', process: 'Calendar' },
-      { name: 'Reminders', bundle: 'com.apple.reminders', process: 'Reminders' },
+      { name: '日历', bundle: 'com.apple.iCal', process: 'Calendar' },
+      { name: '提醒事项', bundle: 'com.apple.reminders', process: 'Reminders' },
     ],
-    reading: [{ name: 'Preview', bundle: 'com.apple.Preview', process: 'Preview' }],
-    photos: [{ name: 'Photos', bundle: 'com.apple.Photos', process: 'Photos' }],
+    reading: [{ name: '预览', bundle: 'com.apple.Preview', process: 'Preview' }],
+    photos: [{ name: '照片', bundle: 'com.apple.Photos', process: 'Photos' }],
   };
   for (const [preset, apps] of Object.entries(expected)) {
     assert.ok(PRESETS[preset], preset + ' 门类不存在');
@@ -41,7 +43,7 @@ test('新增门类：mail / calendar / reading / photos 及 media 里的 Music',
   assert.deepEqual(presetApps('media'), [
     { name: 'iMovie', bundle: 'com.apple.iMovieApp', process: 'iMovie' },
     { name: 'GarageBand', bundle: 'com.apple.garageband10', process: 'GarageBand' },
-    { name: 'Music', bundle: 'com.apple.Music', process: 'Music' },
+    { name: '音乐', bundle: 'com.apple.Music', process: 'Music' },
   ]);
 });
 
