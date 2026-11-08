@@ -1,6 +1,6 @@
 # Changelog
 
-## 未发布
+## 0.7.0（未发布）
 
 - `apps:probe` 也先查前台风险名单：要探测的应用在名单里就直接跳过并提示 `front:risk -- --clear`，不再为了探测闪一次屏；预设模式会提示有几个在名单里。实测 `apps:probe Ghostty --dry` 直接打印跳过、不启动矩阵。补 2 项单测
 - 中止处理覆盖到所有会跑 UI 子任务的脚本：`bg:verify`、`apps:probe`、`monitor` 现在把子进程起在独立进程组，自己收到 SIGINT/SIGTERM 时连子进程一起停（先 SIGTERM 让任务应急清理关应用，3 秒后强杀），不再留下孤儿继续动屏幕；`bg:verify` 单项超时也从直接 SIGKILL 改成先 SIGTERM
