@@ -95,12 +95,15 @@
 | `OVERLAY_IDLE_HIDE_MS` | — | `overlay/main.js` |
 | `OVERLAY_MARGIN` | — | `overlay/main.js` |
 | `OVERLAY_MAX_SESSIONS` | — | `overlay/main.js` |
+| `OVERLAY_OFFSCREEN` | （开关，设 1 开启） | `overlay/main.js` |
+| `OVERLAY_ORPHAN_DESTROY_STREAK` | — | `overlay/main.js` |
 | `OVERLAY_PORT` | — | `core/ports.mjs`<br>`overlay/main.js` |
 | `OVERLAY_SESSION_RECENT_MS` | 60 | `overlay/main.js` |
 | `OVERLAY_SESSION_TTL_MS` | — | `overlay/main.js` |
 | `OVERLAY_SHOW_DOCK` | （开关，设 1 开启） | `overlay/main.js` |
 | `OVERLAY_URL` | — | `core/ports.mjs` |
 | `OVERLAY_WIDTH` | — | `overlay/main.js` |
+| `OVERLAY_WINDOW_GUARD_MS` | — | `overlay/main.js` |
 | `PARALLEL_KEEP_MS` | 8000 | `core/tasks/parallel-real-demo.mjs` |
 | `PRUNE_ON_START` | — | `core/daemon.mjs` |
 | `SOAK_ROUNDS` | — | `scripts/soak.mjs` |

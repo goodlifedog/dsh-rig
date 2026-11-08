@@ -42,7 +42,16 @@ const { computeFrameTarget } = require('./frame-target.js');
 const layout = require('./layout.js');
 const { appleScriptQuote } = require('./quote.js');
 const { nextCaptureDelay } = require('./capture-policy.js');
-const { shouldEvictSession, pickEvictionVictim, isSessionReallyVisible } = require('./session-policy.js');
+const {
+  shouldEvictSession,
+  pickEvictionVictim,
+  isSessionReallyVisible,
+  DEFAULT_ORPHAN_DESTROY_STREAK,
+  isSessionAllowedToBeVisible,
+  nextViolationStreak,
+  shouldDestroyWindow,
+  summarizeWindowAudit,
+} = require('./session-policy.js');
 const { createCrashLog, shouldReloadAfterCrash } = require('./crash-log.js');
 
 const APP_NAME = 'dsh-rig-overlay';
@@ -97,6 +106,11 @@ const ATTACH_FAST_MS = clamp(Math.round(toNumber(process.env.OVERLAY_ATTACH_FAST
 // 被会话门控藏起来、但宿主还在前台：多半马上会切回来，用中间档轮询（切回时 0.7s 内重新出现）
 const ATTACH_MID_MS = clamp(Math.round(toNumber(process.env.OVERLAY_ATTACH_MID_MS, 700)), 200, 3000);
 const ATTACH_SLOW_MS = clamp(Math.round(toNumber(process.env.OVERLAY_ATTACH_SLOW_MS, 1500)), 300, 5000);
+// task-86：全局窗口兜底。attachTick 每轮清扫 + 1s 校验定时器，任何「状态 hidden 但窗口可见」都在 1s 内收掉。
+const WINDOW_GUARD_MS = clamp(Math.round(toNumber(process.env.OVERLAY_WINDOW_GUARD_MS, 1000)), 200, 5000);
+const ORPHAN_DESTROY_STREAK = Math.max(2, Math.round(toNumber(process.env.OVERLAY_ORPHAN_DESTROY_STREAK, DEFAULT_ORPHAN_DESTROY_STREAK)));
+// 仅测试/调试：窗口建在屏幕外，用来验证门控/清扫而不打扰用户当前桌面。
+const OFFSCREEN_TEST = process.env.OVERLAY_OFFSCREEN === '1';
 
 function toNumber(raw, fallback) {
   const value = Number(raw);
@@ -556,11 +570,14 @@ async function attachToDsh(s, front, bounds) {
   const titleKnown = Boolean(dshTitle);
   const shouldHide = !hostFresh || !frontOk || !titleKnown || !s.matched;
   if (shouldHide) {
-    if (win.isVisible()) {
-      s.flags.suppressBySession = true;
-      win.hide();
-    }
+    s.flags.suppressBySession = true;
     s.state.visible = false;
+    if (win.isVisible()) {
+      // task-86：隐藏必须同时落 opacity，避免后续 showInactive 时出现「状态 hidden 但窗口可见」
+      if (s.timers.fade) { clearInterval(s.timers.fade); s.timers.fade = null; }
+      try { win.setOpacity(0); } catch {}
+      try { win.hide(); } catch {}
+    }
     return;
   }
   if (s.flags.suppressBySession) {
@@ -578,6 +595,7 @@ async function attachToDsh(s, front, bounds) {
       s.state.visible = true;
     }
   }
+  if (OFFSCREEN_TEST) return; // 测试模式：窗口固定在屏幕外，不跟随 DSH 贴靠，避免打扰用户
   if (s.flags.expanded) return;
   if (!s.flags.followDsh || !bounds) return;
 
@@ -649,6 +667,187 @@ let frontmostBundle = null;   // 最近一次轮询到的前台应用（健康�
 
 let attachBusy = false;
 
+// ---------- task-86：全局窗口兜底（状态 hidden 但窗口可见的跨会话泄漏） ----------
+const windowGuardStreaks = new Map(); // BrowserWindow -> 连续异常轮数
+const windowAuditStats = {
+  sweeps: 0,
+  hidden: 0,
+  destroyed: 0,
+  lastSweepAt: 0,
+  lastSource: '',
+  lastDestroyed: null,
+};
+let windowGuardTimer = null;
+
+function safeWindowVisible(win) {
+  try { return Boolean(win && !win.isDestroyed() && win.isVisible()); } catch { return false; }
+}
+
+function safeWindowOpacity(win) {
+  try { return win && !win.isDestroyed() ? Number(win.getOpacity()) : 0; } catch { return 0; }
+}
+
+/** 当前宿主门控是否允许这个会话显示（与 ready-to-show/showOverlay 用同一套 fail-closed 判定）。 */
+function sessionGateAllowed(s) {
+  if (!ATTACH_TO_DSH) return true;
+  const titleMatched = !s.titleHint || titleMatches(s);
+  return shouldShowNow({
+    hostVisible,
+    hostStale: hostBoundsStale,
+    hostCheckedAt,
+    now: Date.now(),
+    maxHostAgeMs: HOST_SNAPSHOT_MAX_AGE_MS,
+    front: frontmostBundle || '',
+    hostBundles: HOST_BUNDLES,
+    self: SELF_BUNDLE,
+    titleKnown: Boolean(dshTitle),
+    titleMatched,
+  });
+}
+
+/** 这个会话的窗口现在是否允许可见（存在/可用/state.visible/suppress/门控全部满足）。 */
+function isSessionWindowAllowed(s) {
+  return isSessionAllowedToBeVisible({
+    sessionExists: sessions.get(s.id) === s,
+    windowUsable: Boolean(s.win && !s.win.isDestroyed()),
+    stateVisible: s.state.visible === true,
+    suppress: s.flags.suppressBySession === true,
+    gateAllowed: sessionGateAllowed(s),
+  });
+}
+
+/** 销毁前的日志（要求：销毁前写日志，便于事后解释）。 */
+function logOrphanWindow(win, s, detail) {
+  const info = {
+    windowId: (() => { try { return win.id; } catch { return null; } })(),
+    session: s ? s.id : null,
+    visible: safeWindowVisible(win),
+    opacity: safeWindowOpacity(win),
+    detail,
+  };
+  windowAuditStats.lastDestroyed = Object.assign({ at: Date.now() }, info);
+  console.error('[overlay] 销毁孤儿/异常窗口：' + JSON.stringify(info));
+  if (s) {
+    try { pushLog(s, '兜底销毁异常窗口（' + detail + '）', 'system'); } catch {}
+  }
+  try { noteCrash('orphan-window', JSON.stringify(info)); } catch {}
+}
+
+/**
+ * 全局扫描本进程的 BrowserWindow：
+ *   - 不属于任何会话、或对应会话已删除/不允许可见/状态不可见 → 立即 hide + opacity 0；
+ *   - 不属于任何会话的隐藏窗口、或 hide 后仍可见的异常窗口 → 连续 N 轮后 destroy（先写日志）。
+ * 保留「会话仍存在、只是被门控藏起来」的隐藏窗口（切回会话时要复用）。
+ */
+function sweepOrphanWindows(source = 'tick') {
+  const all = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed());
+  const ownerByWin = new Map();
+  for (const s of sessions.values()) {
+    if (s.win && !s.win.isDestroyed()) ownerByWin.set(s.win, s);
+  }
+  let hidden = 0;
+  let destroyed = 0;
+  for (const win of all) {
+    const s = ownerByWin.get(win) || null;
+    const visible = safeWindowVisible(win);
+    // 不属于任何会话的隐藏窗口：可能是 closeSession destroy 失败的残留，连续 N 轮清掉
+    if (!visible) {
+      if (!s) {
+        const streak = nextViolationStreak(windowGuardStreaks.get(win) || 0, true);
+        windowGuardStreaks.set(win, streak);
+        if (shouldDestroyWindow(streak, ORPHAN_DESTROY_STREAK)) {
+          logOrphanWindow(win, null, '关闭失败残留的隐藏窗口，连续 ' + streak + ' 轮');
+          try { win.destroy(); } catch {}
+          windowGuardStreaks.delete(win);
+          destroyed += 1;
+        }
+      } else {
+        windowGuardStreaks.delete(win);
+      }
+      continue;
+    }
+
+    const allowed = s ? isSessionWindowAllowed(s) : false;
+    if (allowed) {
+      windowGuardStreaks.delete(win);
+      continue;
+    }
+
+    // 状态说 hidden / 会话不存在 / 门控不允许：立刻隐藏，不能只改状态
+    const detail = s
+      ? ('session=' + s.id + ' stateVisible=' + s.state.visible + ' suppress=' + s.flags.suppressBySession + ' gate=' + sessionGateAllowed(s))
+      : 'untracked-window';
+    if (s) {
+      s.flags.suppressBySession = true;
+      s.state.visible = false;
+    }
+    try { win.setOpacity(0); } catch {}
+    try { win.hide(); } catch {}
+    hidden += 1;
+    const stillVisible = safeWindowVisible(win);
+    const streak = nextViolationStreak(windowGuardStreaks.get(win) || 0, true);
+    windowGuardStreaks.set(win, streak);
+    // 有会话但 hide 已成功：保留窗口（切回会话要复用），不销毁；只有 hide 失败才继续累计销毁
+    const hardViolation = !s || stillVisible;
+    if (hardViolation && shouldDestroyWindow(streak, ORPHAN_DESTROY_STREAK)) {
+      logOrphanWindow(win, s, '连续 ' + streak + ' 轮无法收起（source=' + source + '）');
+      try { win.destroy(); } catch {}
+      windowGuardStreaks.delete(win);
+      destroyed += 1;
+    }
+  }
+  // 清理已销毁/已不在列表里的 streak
+  for (const win of Array.from(windowGuardStreaks.keys())) {
+    if (!all.includes(win) || win.isDestroyed()) windowGuardStreaks.delete(win);
+  }
+  windowAuditStats.sweeps += 1;
+  windowAuditStats.hidden = hidden;
+  windowAuditStats.destroyed += destroyed;
+  windowAuditStats.lastSweepAt = Date.now();
+  windowAuditStats.lastSource = source;
+}
+
+/** 健康信息：可见窗口数 vs 允许显示的会话数（每次调用实时统计）。 */
+function windowAuditSnapshot() {
+  const all = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed());
+  const ownerByWin = new Map();
+  for (const s of sessions.values()) {
+    if (s.win && !s.win.isDestroyed()) ownerByWin.set(s.win, s);
+  }
+  const windows = all.map((win) => {
+    const s = ownerByWin.get(win) || null;
+    return { visible: safeWindowVisible(win), allowed: Boolean(s && isSessionWindowAllowed(s)) };
+  });
+  const allowedSessions = Array.from(sessions.values()).filter(isSessionWindowAllowed).length;
+  const stateVisibleSessions = Array.from(sessions.values())
+    .filter((s) => s.state.visible === true && s.win && !s.win.isDestroyed()).length;
+  return Object.assign(
+    summarizeWindowAudit({ windows, allowedSessions, stateVisibleSessions }),
+    {
+      lastSweepAt: windowAuditStats.lastSweepAt || null,
+      lastSource: windowAuditStats.lastSource || '',
+      sweeps: windowAuditStats.sweeps,
+      lastHidden: windowAuditStats.hidden,
+      destroyedTotal: windowAuditStats.destroyed,
+      lastDestroyed: windowAuditStats.lastDestroyed,
+    },
+  );
+}
+
+function startWindowGuard() {
+  if (windowGuardTimer) return;
+  windowGuardTimer = setInterval(() => {
+    try { sweepOrphanWindows('timer'); } catch (error) { console.error('[overlay] 窗口校验失败：' + ((error && error.message) || error)); }
+  }, WINDOW_GUARD_MS);
+}
+
+function stopWindowGuard() {
+  if (windowGuardTimer) {
+    clearInterval(windowGuardTimer);
+    windowGuardTimer = null;
+  }
+}
+
 async function attachTick() {
   // 上一轮还没返回就跳过这一轮：快轮询时不会堆起一串 osascript 进程
   if (attachBusy) return;
@@ -697,16 +896,19 @@ async function attachTick() {
       const area = screen.getPrimaryDisplay().workArea;
       bounds = { x: area.x, y: area.y, w: area.width, h: area.height };
     }
-    if (!sessions.size) return;
+    // task-86：不能在没有会话时直接 return——恰恰是 closeSession 销毁失败/会话全没了时，
+    // 才最可能留下「不归任何会话」的可见窗口。循环照跑，最后统一做全局清扫。
     for (const s of sessions.values()) {
       attachToDsh(s, front, bounds).catch(() => {});
       // 兜底：被门控隐藏但窗口实际还 visible（淡出回调丢了/渲染异常）→ 硬藏，别让它卡在屏幕上
       const w = s.win;
       if (w && !w.isDestroyed() && !s.state.visible && s.flags.suppressBySession && w.isVisible()) {
-        try { w.hide(); } catch {}
+        try { w.setOpacity(0); w.hide(); } catch {}
       }
     }
   } finally {
+    // 每轮 attachTick 都做一次全局孤儿窗口清扫（即使上面的快照读取抛错也要扫）
+    try { sweepOrphanWindows('attachTick'); } catch (error) { console.error('[overlay] 窗口清扫失败：' + ((error && error.message) || error)); }
     attachBusy = false;
     lastAttachAt = Date.now();
   }
@@ -932,6 +1134,15 @@ function showOverlay(s, reason) {
     s.state.visible = false;
     // 标记 suppress：attach 循环在宿主快照恢复后，会按「有活动/pinned」决定是否补显示
     s.flags.suppressBySession = true;
+    // task-86 根因修复：这里以前只改状态不关窗，窗口会继续留在屏幕上（状态 hidden 但可见）。
+    // 现在立即 hide + opacity 0，并取消正在跑的淡入/淡出，避免下一拍再被 setOpacity 顶回来。
+    if (s.timers.fade) { clearInterval(s.timers.fade); s.timers.fade = null; }
+    if (win.isVisible()) {
+      try { win.setOpacity(0); } catch {}
+      try { win.hide(); } catch {}
+    } else {
+      try { win.setOpacity(0); } catch {}
+    }
     // 宿主快照还没就绪/已过期：补一次轮询，等 attach 循环拿到真实值后再决定是否显示
     if (ATTACH_TO_DSH) requestAttachRefresh();
     return;
@@ -1653,6 +1864,7 @@ async function listWindows() {
 }
 
 function initialWindowPosition(s) {
+  if (OFFSCREEN_TEST) return { x: -10000, y: -10000 };
   const workArea = screen.getPrimaryDisplay().workArea;
   const col = s.index % 3;
   const row = Math.floor(s.index / 3);
@@ -1843,6 +2055,9 @@ function sessionHealth(s) {
     status: s.state.status,
     activity: s.state.activity,
     visible: s.state.visible,
+    // task-86 调试字段：state.visible 是「我们认为它该不该显示」，windowsVisible 是窗口实际可见性。
+    windowsVisible: safeWindowVisible(s.win),
+    windowAllowed: isSessionWindowAllowed(s),
     idleMs: config.idleHideMs,
     pinned: s.state.pinned,
     expanded: s.flags.expanded,
@@ -1884,6 +2099,8 @@ function missingSessionHealth(id) {
     status: '待命',
     activity: 'idle',
     visible: false,
+    windowsVisible: false,
+    windowAllowed: false,
     idleMs: config.idleHideMs,
     pinned: false,
     expanded: false,
@@ -1994,6 +2211,8 @@ async function startServer() {
         const s = sessions.get(session);
         return Object.assign(s ? sessionHealth(s) : missingSessionHealth(session), {
           crash: crashLog.get(),
+          // task-86：可见窗口数 vs 允许显示的会话数；mismatch=true 时一眼能看出状态/实际不一致
+          windowAudit: windowAuditSnapshot(),
           supervisor: supervisor.status(),
           // M1/M2：抓图失败的权限原因与「窗口标题全空」分开报，便于排障
           screenRecording: {
@@ -2184,6 +2403,7 @@ function cleanup() {
   if (sessionSweepTimer) { clearInterval(sessionSweepTimer); sessionSweepTimer = null; }
 
   stopAttachLoop();
+  stopWindowGuard();
 
   if (overlayServer) {
     overlayServer.close().catch(() => {});
@@ -2218,6 +2438,7 @@ async function boot() {
   startHideGuard();
   startCursorWatch();
   startSessionSweep();
+  startWindowGuard();
 
   // 启动时先扫一遍窗口，填充 selfWindowIds，避免把小窗绑到 DeepSeek Harness 自己身上；
   // 顺便刷新 windowTitles 健康（M2）并静默探测一次屏幕录制权限（M1，不会弹框）。

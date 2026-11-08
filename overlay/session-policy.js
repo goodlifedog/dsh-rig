@@ -61,4 +61,82 @@ function isSessionReallyVisible(stateVisible, windowVisible) {
   return Boolean(stateVisible) && Boolean(windowVisible);
 }
 
-module.exports = { shouldEvictSession, pickEvictionVictim, isSessionReallyVisible };
+
+
+// ---------- 窗口兜底审计（task-86：状态 hidden 但窗口可见） ----------
+
+const DEFAULT_ORPHAN_DESTROY_STREAK = 3;
+
+/**
+ * 这个会话的窗口「现在是否允许可见」（纯函数）。
+ * 归属判定沿用会话门控：不存在 / 窗口不可用 / 状态不可见 / 被 suppress / 门控不允许，任一即 false。
+ *
+ * @param {{sessionExists?:boolean, windowUsable?:boolean, stateVisible?:boolean,
+ *          suppress?:boolean, gateAllowed?:boolean}} [input]
+ * @returns {boolean}
+ */
+function isSessionAllowedToBeVisible(input = {}) {
+  const {
+    sessionExists = false,
+    windowUsable = false,
+    stateVisible = false,
+    suppress = false,
+    gateAllowed = false,
+  } = input || {};
+  if (sessionExists !== true) return false;
+  if (windowUsable !== true) return false;
+  if (stateVisible !== true) return false;
+  if (suppress === true) return false;
+  return gateAllowed === true;
+}
+
+/** 连续异常计数：violated=true 累加，否则归零（纯函数）。 */
+function nextViolationStreak(previous, violated) {
+  const prev = Number(previous);
+  const base = Number.isFinite(prev) && prev > 0 ? Math.floor(prev) : 0;
+  return violated === true ? base + 1 : 0;
+}
+
+/** 连续异常达到阈值才销毁（纯函数）。 */
+function shouldDestroyWindow(streak, threshold = DEFAULT_ORPHAN_DESTROY_STREAK) {
+  const value = Number(streak);
+  const limit = Number(threshold);
+  if (!Number.isFinite(value) || value <= 0) return false;
+  const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : DEFAULT_ORPHAN_DESTROY_STREAK;
+  return value >= safeLimit;
+}
+
+/**
+ * 窗口健康汇总（纯函数）：可见窗口数 vs 允许显示的会话数。
+ * windows: [{visible:boolean, allowed:boolean}]，allowed 表示「这个窗口属于一个当前允许显示的会话」。
+ *
+ * @param {{windows?:Array<{visible?:boolean, allowed?:boolean}>, allowedSessions?:number, stateVisibleSessions?:number}} [input]
+ * @returns {{windowsTotal:number, windowsVisible:number, allowedSessions:number, stateVisibleSessions:number, orphanVisible:number, mismatch:boolean}}
+ */
+function summarizeWindowAudit(input = {}) {
+  const opts = input || {};
+  const windows = (Array.isArray(opts.windows) ? opts.windows : []).filter(Boolean);
+  const visible = windows.filter((w) => w.visible === true);
+  const orphanVisible = visible.filter((w) => w.allowed !== true).length;
+  const allowedSessions = Math.max(0, Math.floor(Number(opts.allowedSessions) || 0));
+  const stateVisibleSessions = Math.max(0, Math.floor(Number(opts.stateVisibleSessions) || 0));
+  return {
+    windowsTotal: windows.length,
+    windowsVisible: visible.length,
+    allowedSessions,
+    stateVisibleSessions,
+    orphanVisible,
+    mismatch: visible.length !== allowedSessions || orphanVisible > 0,
+  };
+}
+
+module.exports = {
+  shouldEvictSession,
+  pickEvictionVictim,
+  isSessionReallyVisible,
+  DEFAULT_ORPHAN_DESTROY_STREAK,
+  isSessionAllowedToBeVisible,
+  nextViolationStreak,
+  shouldDestroyWindow,
+  summarizeWindowAudit,
+};

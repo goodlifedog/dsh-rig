@@ -1,0 +1,3 @@
+[AGENT-TEST] adapter-demo 样例文本
+这一行只用于适配实测，不含任何个人信息。
+可以在这里测试 set_value / 键入后读回。

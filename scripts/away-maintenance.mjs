@@ -83,7 +83,9 @@ export function decideAwayState(input = {}) {
 /** 执行计划（纯函数）。 */
 export function buildPlan() {
   return [
-    { name: '刷新后台服务到当前代码', script: 'core/service.mjs', args: ['restart'], timeoutMs: 90 * 1000 },
+    // 安装/迁移而不是单纯 restart：改名后 launchd 标签变新前缀，install 会先清旧标签再装新的，
+    // 保证升级后只有一套服务在跑（用户离开时做，避免重启服务打断他）。
+    { name: '安装/迁移后台服务到当前版本', script: 'core/service.mjs', args: ['install'], timeoutMs: 120 * 1000 },
     { name: '完整验收 verify:live', script: 'scripts/live-verify.mjs', timeoutMs: 40 * 60 * 1000 },
     { name: '矩阵 reading（预览）', script: 'core/tasks/app-matrix.mjs', env: { MATRIX_PRESET: 'reading' }, timeoutMs: 10 * 60 * 1000 },
     { name: '矩阵 mail（邮件）', script: 'core/tasks/app-matrix.mjs', env: { MATRIX_PRESET: 'mail' }, timeoutMs: 10 * 60 * 1000 },

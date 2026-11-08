@@ -78,7 +78,7 @@ test('buildPlan：顺序固定，先刷新服务、再完整验收、按门类�
   const plan = buildPlan();
   assert.equal(plan.length, 8);
   assert.equal(plan[0].script, 'core/service.mjs');
-  assert.deepEqual(plan[0].args, ['restart']);
+  assert.deepEqual(plan[0].args, ['install']);
   assert.equal(plan[1].script, 'scripts/live-verify.mjs');
   assert.equal(plan[2].env.MATRIX_PRESET, 'reading');
   assert.equal(plan[3].env.MATRIX_PRESET, 'mail');

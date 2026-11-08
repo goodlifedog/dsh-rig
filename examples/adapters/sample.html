@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>[AGENT-TEST] adapter-demo sample</title>
+<style>
+  body { font: 16px -apple-system, sans-serif; padding: 32px; max-width: 640px; }
+  input { font-size: 15px; padding: 6px 8px; min-width: 240px; }
+  button { font-size: 15px; padding: 8px 18px; }
+  #result { margin-top: 16px; font-weight: 600; color: #0a7; }
+</style>
+</head>
+<body>
+  <h1>[AGENT-TEST] adapter-demo sample.html</h1>
+  <p>仅用于适配实测，不含任何个人信息。</p>
+  <label>输入框 <input id="note" type="text" placeholder="[AGENT-TEST] 输入" autocomplete="off"></label>
+  <button id="click" type="button">[AGENT-TEST] 提交</button>
+  <p id="result">[AGENT-TEST] 未点击</p>
+  <script>
+    document.getElementById('click').addEventListener('click', function () {
+      var value = (document.getElementById('note').value || '').trim();
+      document.getElementById('result').textContent = '[AGENT-TEST] 已点击：' + (value || '空输入');
+    });
+  </script>
+</body>
+</html>
