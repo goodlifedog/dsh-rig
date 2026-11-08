@@ -2,6 +2,11 @@
 // 安全边界：注入、端口劫持、pid 复用、预置可执行文件——这四类是真会出事的
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 import {
   isSafeIdentifier,
   isSafeScriptLiteral,
@@ -65,6 +70,12 @@ test('可执行文件信任：他主/任何人可写都不行', () => {
   assert.equal(executableTrust({ fileUid: 0, uid: 501, mode: 0o755 }), 'foreign-owner');
   assert.equal(executableTrust({ fileUid: 501, uid: 501, mode: 0o777 }), 'writable-by-others');
   assert.equal(executableTrust({ exists: false }), 'missing');
+});
+
+test('弹窗探测要同时认 AXDialog 和 AXSheet（保存提示可能是 sheet，漏了会强杀丢内容）', () => {
+  const src = fs.readFileSync(path.join(HERE, '..', 'core', 'background.mjs'), 'utf8');
+  assert.match(src, /AXDialog/);
+  assert.match(src, /AXSheet/, '保存/确认弹窗可能以 AXSheet 出现，退出保护必须识别');
 });
 
 test('windowCount：名字能注入时不执行脚本，直接返回 -1', async () => {

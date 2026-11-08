@@ -837,7 +837,9 @@ export async function dialogs(app, options = {}) {
     'repeat with i from 1 to (count of windows)',
     '  set w to window i',
     '  try',
-    '    if (subrole of w) is "AXDialog" then',
+    // AXSheet：保存/覆盖确认这类"工作表"不是普通窗口，TextEdit 的存储提示就可能是它。
+    // 退出保护必须把它也当成弹窗，否则会以为没有确认框而强杀，丢掉用户没保存的内容。
+    '    if ((subrole of w) is "AXDialog") or ((subrole of w) is "AXSheet") then',
     '      set out to out & "WIN|" & (name of w) & linefeed',
     '      set out to out & "IDX|" & i & linefeed',
     '      -- 弹窗内容经常嵌在 group 里，只看窗口直接子元素会漏掉按钮和正文',

@@ -2,6 +2,7 @@
 
 ## 未发布
 
+- 退出保护补上 AXSheet：`dialogs()` 原来只把 subrole=AXDialog 的窗口算弹窗，而「要存储吗」这类确认可能是 sheet（AXSheet）。漏识别会把用户没保存的内容当"没有弹窗"直接强杀；现在两种都算，有保存/覆盖/删除提示就拒绝强杀（补 1 项结构测试）
 - 验收矩阵样本换成 FastZip + 计算器：原来用 FastZip + iRightMouse，但 iRightMouse 已被前台风险名单收录（历史报告里抢过前台），继续当样本会被矩阵跳过、白白少验一个；换成两个原生应用，读起来稳定不抢前台
 - 驱动类任务也纳入前台风险名单：`drive-agent`（默认 ChatGPT）、`drive-agent-cli`（默认 Ghostty）在目标应用属于名单时默认环境跳过（确需驱动加 `AGENT_DRIVE_ALLOW_FRONT_RISK=1`），避免为了驱动另一个 agent 闪用户屏幕；`drive-agent-cli` 还补上了终端写入闸门（同 terminal-control：不在前台 + 键鼠空闲 ≥60s + 空提示符才敲）；`coverage-probe` 对名单里的应用标「跳过」不再探测。两个跳过分支都实测 exit=0、没有读取目标应用
 - Safari 收进 `system` 预设：原来只在清点里出现（标「不在预设里」），`npm run matrix` 默认不测它；现在默认矩阵会覆盖 Safari（冷启动不留窗口，探测依赖已有窗口），清点里也归到正确门类
