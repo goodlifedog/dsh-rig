@@ -263,6 +263,8 @@ npm run apps:inventory                     # 刷新清点
 - **所有 `readSafe()` / `findSafe()` 默认都受名单保护**：名单里的应用直接跳过界面读取（连抓帧也不做），报告里标「该应用读取会抢前台，已跳过」，不会产出假的"不可读"结论
 - 查看/清除：`npm run front:risk` 看名单；`npm run front:risk -- --clear "Ghostty"` 清一个重新测；`--clear-all` 全清；`--seed` 从历史矩阵报告补种
 - 临时强制全测：`AGENT_FRONT_RISK=off npm run matrix`
+- 驱动类任务也默认受保护：`drive-agent`（默认 ChatGPT）、`drive-agent-cli`（默认 Ghostty）在目标应用属于名单时直接环境跳过，
+  确需驱动加 `AGENT_DRIVE_ALLOW_FRONT_RISK=1`；`coverage-probe` 直接把名单里的应用标成「跳过（读取会抢前台）」
 - 任务里的 `guard()` 检测到目标被激活时，会**先把前台还原给操作前的应用，再报错**，不会把被抢的应用留在前台
 - 还原本身也不会乱抢：`settleFront()` 只还原"抢前台的那个应用"，一旦发现前台换成第三个应用（你自己切走了）立刻停手；Chrome 的后台启动延迟还原同样只在"前台仍是 Chrome"时执行
 

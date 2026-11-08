@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { resolveOcu } from '../platform.mjs';
+import { createRiskGate } from '../front-risk.mjs';
 
 import { isMac } from '../platform.mjs';
 if (!isMac) {
@@ -224,8 +225,24 @@ async function main() {
     extra += 1;
   }
 
+  // 前台风险名单：读这些应用会让它自己跳到前台，探测工具不该为了覆盖率去闪用户屏幕
+  const risk = createRiskGate();
   const results = [];
   for (const item of plan) {
+    const display = nameByBundle.get(item.bundle) || item.name;
+    if (risk.shouldSkip(item.name) || risk.shouldSkip(display)) {
+      results.push({
+        name: item.name,
+        bundle: item.bundle,
+        status: 'front-risk',
+        tier: '未测',
+        reason: '读取会抢前台，已跳过（前台风险名单；确认修好后 npm run front:risk -- --clear "' + item.name + '"）',
+        nodes: 0,
+        interactive: 0,
+      });
+      console.log(item.name + ' → 跳过（读取会抢前台，见前台风险名单）');
+      continue;
+    }
     if (!item.running) {
       results.push({
         name: item.name,

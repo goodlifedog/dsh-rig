@@ -15,6 +15,9 @@ import { isScreenLocked } from '../platform.mjs';
 import { localHeaders } from '../local-token.mjs';
 
 const APP = process.env.AGENT_APP || 'ChatGPT';
+// 读这些应用可能让它自己跳到前台；这个任务是"主动驱动另一个 agent"，
+// 允许用户显式放开，但默认不闪屏（前台风险名单见 npm run front:risk）
+const ALLOW_FRONT_RISK = process.env.AGENT_DRIVE_ALLOW_FRONT_RISK === '1';
 const PROMPT = process.env.AGENT_PROMPT || '只回复两个字：收到';
 const SESSION = 'agent-drive';
 const OVERLAY = overlayBase();
@@ -53,6 +56,12 @@ async function main() {
     return;
   }
 
+  const { frontRiskGate } = await import('../background.mjs');
+  if (!ALLOW_FRONT_RISK && frontRiskGate().shouldSkip(APP)) {
+    console.log('环境跳过：' + APP + ' 读取会抢前台（前台风险名单），默认不闪屏。');
+    console.log('确认要驱动它：AGENT_DRIVE_ALLOW_FRONT_RISK=1 重跑；或先 npm run front:risk -- --clear "' + APP + '"');
+    return;
+  }
   const before = front();
   const titleHint = (await getJson(OVERLAY + '/health?session=__none__'))?.dshTitle || '';
   console.log('目标 agent:', APP, '| 提示词:', PROMPT, '| 起点前台:', before);

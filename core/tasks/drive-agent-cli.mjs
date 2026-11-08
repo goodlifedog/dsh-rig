@@ -20,6 +20,7 @@ import { isScreenLocked } from '../platform.mjs';
 import { localHeaders } from '../local-token.mjs';
 
 const APP = process.env.CLI_TERM_APP || 'Ghostty';
+const ALLOW_FRONT_RISK = process.env.AGENT_DRIVE_ALLOW_FRONT_RISK === '1';
 const PROMPT = process.env.CLI_PROMPT || '只回复两个字：收到';
 const CUSTOM_CMD = process.env.CLI_CMD || '';
 const TIMEOUT_MS = Math.max(10000, Number(process.env.CLI_TIMEOUT_MS) || 240000);
@@ -59,6 +60,31 @@ async function main() {
   }
 
   const before = front();
+
+  // 往用户终端里敲命令并回车，必须先确认没有把用户没写完的命令拼上去（同 terminal-control）
+  const { frontRiskGate, readSafe } = await import('../background.mjs');
+  const { decideTerminalType, lastNonEmptyLine } = await import('../terminal-guard.mjs');
+  const { hidIdleMs } = await import('../front-watch.mjs');
+  const risk = frontRiskGate();
+  const riskSkip = !ALLOW_FRONT_RISK && risk.shouldSkip(APP);
+  let lastLine = '';
+  if (!riskSkip) {
+    const rd = await readSafe(APP, { timeoutMs: 5000 });
+    lastLine = lastNonEmptyLine(rd.text);
+  }
+  const decision = decideTerminalType({
+    app: APP,
+    frontApp: before,
+    hidIdleMs: await hidIdleMs(),
+    riskSkip,
+    lastLine,
+  });
+  if (!decision.ok) {
+    console.log('环境跳过：' + decision.reason + (riskSkip ? '（要强行驱动：AGENT_DRIVE_ALLOW_FRONT_RISK=1）' : ''));
+    await closeOcuMcp().catch(() => {});
+    return;
+  }
+
   const titleHint = (await getJson(OVERLAY + '/health?session=__none__'))?.dshTitle || '';
   const outFile = path.join(os.tmpdir(), 'dsh-agent-' + Date.now().toString(36) + '.txt');
   const doneFile = outFile + '.done';
