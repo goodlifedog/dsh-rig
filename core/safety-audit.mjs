@@ -127,6 +127,156 @@ export function auditOcuAppCalls(input) {
   return out;
 }
 
+
+// ---------- 规则 6：发 AppleEvent 之前必须有「自动化预检」 ----------
+//
+// 背景（flow/PERMISSIONS-AUDIT.md H2）：未授权「自动化」时直接 osascript 控制别的应用会弹系统
+// 授权框，无人值守的验收/清理会被卡住。core/appleevent-preflight.mjs 提供了静默预检
+// （askUserIfNeeded=false）。规则要求：凡是「对别的应用发 AppleEvent」的位置，同文件里必须有
+// checkAutomationPermission / createAppleEventPreflight / preflightAppleEvent / runAppleEventGuarded /
+// decideAutomationAllow 之一；或该行（紧邻上一行）写 // audit-ok: <理由>；或文件级白名单（每条写理由）。
+//
+// 识别方式（刻意做窄，避免误报）：
+//   1) exec*/spawn* 调用里出现 osascript，且同一调用窗口（本行 + 后续 6 行）出现 tell application；
+//   2) 源码里的 AppleScript 常量：非纯注释行出现 tell application。
+//   ObjC/JXA（osascript -l JavaScript + ObjC.import / CGWindowList，脚本里没有 tell application）
+//   不算——这类调用不经过 Apple Events 授权，也不该被这条规则拦。
+export const APPLEEVENT_SCOPE_RE = /^(?:core|scripts)\//;
+
+/** 只匹配 AppleScript/AppleEvent 的 tell 语义；ObjC/JXA 的 Application('X') 不在内 */
+const APPLE_EVENT_SCRIPT_RE = /tell\s+application\s/i;
+
+/** exec/spawn 调用（Any 分隔符文本里出现即算一个调用点） */
+const OSASCRIPT_CALL_RE = /(?:execFileSync|execFile|execSync|exec|spawnSync|spawn)\s*\(/;
+
+/** osascript 可执行文件（绝对路径或裸命令名） */
+const OSASCRIPT_BIN_RE = /\/usr\/bin\/osascript|['"]osascript['"]/;
+
+/** 纯注释行（行首 // / * / 块注释开头）：里面的 tell application 是说明文字，不是真脚本 */
+const COMMENT_LINE_RE = /^\s*(?:\/\/|\*|\/\*)/;
+
+/** 允许「发 AppleEvent」的前置预检函数（同文件出现任意一个即可） */
+export const AUTOMATION_PREFLIGHT_RE = /checkAutomationPermission|createAppleEventPreflight|preflightAppleEvent|runAppleEventGuarded|decideAutomationAllow/;
+
+/** 规则 6 的扫描窗口：exec 调用可能跨行写参数，向后看 6 行足够覆盖现有写法 */
+const APPLE_EVENT_CALL_WINDOW = 6;
+
+/** 规则 6 要覆盖的目录（与规则 5 一致：CLI 扫 core/tasks+core+scripts） */
+export const APPLEEVENT_PREFLIGHT_DIRS = ['core/tasks', 'core', 'scripts'];
+
+/**
+ * 文件级白名单：这些文件的 AppleEvent 调用点不是「该由本文件预检」的。
+ * 键是仓库相对路径；值必须写清「为什么」——新增条目要慎之又慎。
+ */
+/**
+ * 文件级白名单（结构性豁免）：这些位置不是「该由本文件做预检」的。
+ * 键是仓库相对路径；值必须写清理由。
+ */
+export const AUTOMATION_PREFLIGHT_FILE_ALLOWLIST = Object.freeze({
+  // 预检实现本身
+  'core/appleevent-preflight.mjs': '预检实现本身：这里就是在做自动化授权探测，不应对自己再要一层预检',
+  'core/applescript-driver.mjs': '预检实现本身：checkAutomationPermission / runAppScript 是静默探测与 fail-closed 的权威实现',
+  // 底层 helper：调用方众多，入口统一预检；本层塞预检会改变所有调用方的时序/性能
+  'core/background.mjs': '底层 AX/AppleEvent 动作层（frontName/dialogs/quitApp）：由调用方入口统一预检；H2 已覆盖 acceptance/browser/headless-demo/清理脚本等入口',
+  'core/front-watch.mjs': '前台轮询/还原 helper：任务运行期间每 300ms 调用一次，预检放在这里会把探测放大成每秒数次；由上层入口负责',
+  'core/platform.mjs': 'readFrontmostApp 底层封装（单行 osascript 读前台名）：通用平台层，不控制应用状态，预检由调用方负责',
+  'core/agentd.mjs': 'restoreFrontTo 兜底还原：只在 guard/任务已经决定要还原前台时调用，属于收尾动作，预检由任务入口负责',
+  'core/front-read.mjs': '前台读取策略：优先 ObjC（无 AppleEvent），AppleScript 只是回退路径；回退在预检/回退策略内由上层调用，不在本文件重复探测',
+  'core/dialog-guard.mjs': '弹窗守卫：先用 classifyDialog 判定权限弹窗（绝不代点），dialogs/读取是底层 helper；按钮点击只在 benign 类，由调用方入口预检',
+  'core/text-edit-guard.mjs': '写前安全检查的只读脚本常量（读文稿名/长度）：只读、不改应用状态，调用方入口负责预检',
+  'core/daemon.mjs': 'selfTest 的 automationProbe 本身就是在探测「自动化/System Events 是否可用」，不可能也不应该对自己先预检；daemon 自身不控制别的应用',
+  // 辅助脚本：只读桌面尺寸/标签，不控制应用
+  'scripts/ui-check.mjs': '截图辅助脚本：只读 Finder 桌面 bounds 用于裁剪小窗区域，不控制应用状态；不是任务执行入口',
+  'scripts/ui-gallery.mjs': '截图辅助脚本：只读 Finder 桌面 bounds 用于裁剪截图，不控制应用状态；不是任务执行入口',
+});
+
+/**
+ * 已知缺口（不是「不该查」，而是「当前还没接预检」）：H2 收口只覆盖了
+ * acceptance / browser / headless-demo / note-cleanup / sync-quit / applescript-channel / cold-launch。
+ * 这些任务/脚本仍有裸 AppleEvent；本任务不改业务代码，先显式登记，避免静态检查红着或悄悄漏掉。
+ * 每条都必须在理由里写「已知缺口」，补完预检后从这里删掉。
+ */
+export const AUTOMATION_PREFLIGHT_KNOWN_GAPS = Object.freeze({
+  'core/tasks/app-matrix.mjs': '已知缺口：矩阵任务收尾还原前台的 AppleEvent 未接预检（有锁屏/前台风险门禁）',
+  'core/tasks/boss-scan.mjs': '已知缺口：读 Chrome 标签 URL 的 AppleScript 常量未接预检（有运行门禁，只读浏览器壳）',
+  'core/tasks/browser-background.mjs': '已知缺口：frontName 读前台名的 AppleEvent 未接预检',
+  'core/tasks/drive-agent.mjs': '已知缺口：front() 读前台名的 AppleEvent 未接预检（有 isAppRunning 门禁）',
+  'core/tasks/drive-agent-cli.mjs': '已知缺口：front() 读前台名的 AppleEvent 未接预检（有 isAppRunning 门禁）',
+  'core/tasks/form-fill.mjs': '已知缺口：读/切 Chrome 标签 URL 的 AppleScript 未接预检（只改浏览器壳标签）',
+  'core/tasks/form-fill-local.mjs': '已知缺口：frontName 的 AppleEvent 未接预检（本地 Electron 对照任务）',
+  'core/tasks/parallel-demo.mjs': '已知缺口：front() 读前台名的 AppleEvent 未接预检',
+  'core/tasks/parallel-real-demo.mjs': '已知缺口：front() 读前台名的 AppleEvent 未接预检',
+  'scripts/cleanup-test-data.mjs': '已知缺口：清理脚本的 AppleEvent（读/关测试文稿、读 Chrome 标签）未接预检；目前靠用户空闲门禁 + 测试格式判定兜底',
+});
+
+/**
+ * 找出「对别的应用发 AppleEvent」的位置（行号从 1 开始）。
+ * @param {string} source
+ * @returns {Array<{line:number, why:string, text:string}>}
+ */
+export function findAppleEventSites(source) {
+  const lines = String(source || '').split('\n');
+  const hits = [];
+  const seen = new Set();
+  // exec 调用的脚本参数可能跨行：命中后把这些行标记为已覆盖，避免第 2 步把同一段脚本再报一次
+  const covered = new Set();
+
+  // 1) exec/spawn 里的 osascript 调用：窗口里出现 tell application 才算 AppleEvent
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!OSASCRIPT_CALL_RE.test(lines[i])) continue;
+    const end = Math.min(lines.length, i + APPLE_EVENT_CALL_WINDOW);
+    const windowText = lines.slice(i, end).join('\n');
+    if (!OSASCRIPT_BIN_RE.test(windowText) || !APPLE_EVENT_SCRIPT_RE.test(windowText)) continue;
+    if (seen.has(i + 1)) continue;
+    seen.add(i + 1);
+    for (let j = i; j < end; j += 1) covered.add(j + 1);
+    hits.push({ line: i + 1, why: 'osascript 调用', text: lines[i].trim().slice(0, 140) });
+  }
+
+  // 2) 源码里的 AppleScript 常量（非纯注释行、且不在上面已覆盖的 exec 窗口里）
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (!APPLE_EVENT_SCRIPT_RE.test(line)) continue;
+    if (COMMENT_LINE_RE.test(line)) continue;
+    if (seen.has(i + 1) || covered.has(i + 1)) continue;
+    seen.add(i + 1);
+    hits.push({ line: i + 1, why: 'AppleScript 常量', text: line.trim().slice(0, 140) });
+  }
+
+  return hits.sort((a, b) => a.line - b.line);
+}
+
+/**
+ * 规则 6 的执行体：逐个命中检查「同文件预检 / 文件白名单 / audit-ok 豁免」。
+ * @param {{file:string, source:string}} input
+ * @returns {Array<{rule:string, file:string, detail:string}>}
+ */
+export function auditAppleEventPreflight(input) {
+  const file = String(input && input.file || '');
+  const source = String(input && input.source || '');
+  const hits = findAppleEventSites(source);
+  if (!hits.length) return [];
+  if (AUTOMATION_PREFLIGHT_FILE_ALLOWLIST[file] || AUTOMATION_PREFLIGHT_KNOWN_GAPS[file]) return [];
+  // 预检要真调用：只写在注释里的名字不算（去掉 // 注释后再判）
+  const codeOnly = source.replace(/\/\/[^\n]*/g, '');
+  if (AUTOMATION_PREFLIGHT_RE.test(codeOnly)) return [];
+  const lines = source.split('\n');
+  const out = [];
+  for (const hit of hits) {
+    const current = lines[hit.line - 1] || '';
+    const previous = hit.line >= 2 ? lines[hit.line - 2] : '';
+    if (AUDIT_OK_RE.test(current) || AUDIT_OK_RE.test(previous)) continue;
+    out.push({
+      rule: 'appleevent-without-preflight',
+      file,
+      detail: 'L' + hit.line + ' 对别的应用发 AppleEvent（' + hit.why + '），但同文件没有自动化预检'
+        + '（checkAutomationPermission/createAppleEventPreflight/preflightAppleEvent/runAppleEventGuarded/decideAutomationAllow），'
+        + '也没有 // audit-ok: 豁免：' + hit.text,
+    });
+  }
+  return out;
+}
+
 /**
  * 检查一份源码。
  * @param {{file:string, source:string}} input
@@ -174,6 +324,11 @@ export function auditSource(input, options = {}) {
     out.push(...auditOcuAppCalls({ file: name, source }));
   }
 
+  // 6) 对别的应用发 AppleEvent 之前必须有自动化预检（H2；白名单/audit-ok 见 AUTOMATION_PREFLIGHT_FILE_ALLOWLIST）
+  if (options.appleEventPreflight !== false && APPLEEVENT_SCOPE_RE.test(name)) {
+    out.push(...auditAppleEventPreflight({ file: name, source }));
+  }
+
   return out;
 }
 
@@ -191,7 +346,7 @@ export function auditTree(entries, options = {}) {
 /** 汇总成一行结论（CLI/报告用） */
 export function summarizeViolations(violations) {
   const list = Array.isArray(violations) ? violations : [];
-  if (!list.length) return '安全边界自查通过：没有发现启动不收尾/强杀/前台抢占/绕过风险名单/直接调 ocu 前未确认应用在运行的写法。';
+  if (!list.length) return '安全边界自查通过：没有发现启动不收尾/强杀/前台抢占/绕过风险名单/直接调 ocu 前未确认应用在运行/发 AppleEvent 前没做自动化预检的写法。';
   const byRule = new Map();
   for (const v of list) byRule.set(v.rule, (byRule.get(v.rule) || 0) + 1);
   return '安全边界自查发现 ' + list.length + ' 处问题（' +
