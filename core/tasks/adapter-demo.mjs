@@ -502,7 +502,8 @@ export function extractValue(stateText, index) {
     const m = /^\s*(\d+)\s+.*?Value:\s*(.*)$/.exec(line);
     if (m && (!index || m[1] === String(index))) {
       // Value 后面常跟 ", Secondary Actions: ..." / ", ID: ..." 这类元数据，读回时要裁掉
-      return m[2].split(/,\s*(?:Secondary Actions:|ID:|Help:|Description:)/)[0].trim();
+      // Safari 的地址栏会额外带 ", Placeholder: ..."，不裁掉会导致读回值永远对不上（实测踩过）
+      return m[2].split(/,\s*(?:Secondary Actions:|ID:|Help:|Description:|Placeholder:)/)[0].trim();
     }
   }
   return '';

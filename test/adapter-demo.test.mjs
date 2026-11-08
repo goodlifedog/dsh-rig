@@ -552,3 +552,8 @@ test('本地化显示名能映射到真实进程名（--app 计算器 不应误�
   const pairs = [['计算器', 'Calculator'], ['备忘录', 'Notes'], ['访达', 'Finder'], ['预览', 'Preview'], ['微信', 'WeChat']];
   for (const [name, proc] of pairs) assert.equal(processNameFor(name), proc);
 });
+
+test('extractValue：Safari 地址栏带 Placeholder 元数据时只取值本身', () => {
+  const tree = '	89 文本栏 (settable, string) Description: 智能搜索栏 ID: WEB_BROWSER_ADDRESS_AND_SEARCH_FIELD, Value: hello, Placeholder: 搜索或输入网站名称';
+  assert.equal(extractValue(tree, '89'), 'hello');
+});
