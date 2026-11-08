@@ -452,6 +452,16 @@ let dshTitle = '';
 let hostVisible = false;
 let hostBoundsStale = true;
 let hostCheckedAt = 0;
+// 屏幕录制权限静默预检（CGPreflightScreenCaptureAccess，不会弹授权框）：缓存 15 秒。
+// 未授权时抓帧直接跳过并回 permission-missing，不让 screencapture 触发系统授权框。
+const SCREEN_PERMISSION_TTL_MS = 15000;
+let screenPermission = { status: 'unknown', granted: null, message: '', checkedAt: 0 };
+let screenPermissionProbe = null;
+// CGWindowList 标题健康（M2）：全空/大量为空通常意味着没有屏幕录制权限，而不是窗口真的不存在。
+let windowTitleHealth = {
+  status: 'unknown', total: 0, empty: 0, emptyRatio: 0,
+  allEmpty: false, suspectPermission: false, message: '', checkedAt: 0,
+};
 let hostKind = 'native';   // native=DSH 原生窗口；browser=浏览器里的 DSH Web 界面
 
 // 多会话平铺：优先排满右上角一行，再往下一行；都限制在 DSH 窗口内部
@@ -1038,7 +1048,7 @@ function setStatus(s, text, requestedActivity) {
 
 function signalThumbState(s, force) {
   const payload = {
-    state: s.state.thumbnail.state,
+    state: thumbStateForRenderer(s.state.thumbnail.state),
     windowId: s.state.windowId,
     error: s.state.thumbnail.error,
     updatedAt: s.state.thumbnail.updatedAt,
@@ -1067,6 +1077,8 @@ function execFileAsync(file, args, options) {
 
 // 错误操作：打开系统「屏幕录制」设置，或立刻重试抓帧
 function openScreenRecordingSettings() {
+  // 用户去设置里授权后回来，下一次抓图能立刻重新预检（不用等 TTL）
+  screenPermission.checkedAt = 0;
   const url = 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture';
   shell.openExternal(url).catch(() => {});
 }
@@ -1075,11 +1087,12 @@ function retryThumbnailCapture(s) {
   if (!s || !s.win || s.win.isDestroyed()) return;
   s.externalFrameAt = 0; // 允许本地抓帧，别被外部帧的 3 秒接管窗口挡住
   s.lastCaptureError = null;
+  screenPermission.checkedAt = 0; // 重试时强制重新预检一次权限
   pushLog(s, '手动重试抓取画面', 'system');
   void captureThumbnail(s);
 }
 
-function explainCaptureError(error) {
+function explainCaptureError(error, titleHealth) {
   if (!error) return '未知错误';
   if (error.killed || error.signal === 'SIGTERM') return 'screencapture 超时';
   if (error.code === 'ENOENT') return '找不到 ' + SCREENSHOT_CMD;
@@ -1087,6 +1100,10 @@ function explainCaptureError(error) {
   const stderr = String(error.stderr || '').trim();
   if (/not authorized|permission|denied|screen recording/i.test(stderr)) {
     return '缺少屏幕录制权限';
+  }
+  // M2：没有屏幕录制权限时 CGWindowList 的标题会全空，此时不要把失败误报成「窗口失效」。
+  if (titleHealth && titleHealth.suspectPermission && titleHealth.message) {
+    return '抓图失败：' + titleHealth.message;
   }
   if (/could not create image|invalid window|window .*not found|no such window/i.test(stderr)) {
     return '目标窗口已失效';
@@ -1096,6 +1113,56 @@ function explainCaptureError(error) {
     if (firstLine) return firstLine.slice(0, 160);
   }
   return String(error.message || ('screencapture 退出码 ' + error.code));
+}
+
+// 抓图前的静默预检：缓存结果，拿不到结论（unknown）时放行，避免卡死抓帧。
+async function ensureScreenPermission() {
+  const now = Date.now();
+  if (screenPermission.checkedAt && now - screenPermission.checkedAt < SCREEN_PERMISSION_TTL_MS) {
+    return screenPermission;
+  }
+  if (!screenPermissionProbe) {
+    screenPermissionProbe = platform.checkScreenRecordingPermission()
+      .then((probe) => {
+        const decision = platform.decideCapturePermission({ granted: probe && probe.granted });
+        screenPermission = Object.assign(
+          { status: 'unknown', granted: null, message: '' },
+          probe || {},
+          decision,
+          { checkedAt: Date.now() },
+        );
+        return screenPermission;
+      })
+      .catch(() => {
+        screenPermission = { status: 'unknown', granted: null, message: '', checkedAt: Date.now() };
+        return screenPermission;
+      })
+      .finally(() => { screenPermissionProbe = null; });
+  }
+  return screenPermissionProbe;
+}
+
+// 未授权：不执行 screencapture，直接把会话标成 permission-missing（上层 health 可见）。
+function markScreenPermissionMissing(s, permission) {
+  const message = (permission && permission.message) || '缺少屏幕录制权限';
+  const changed = s.state.thumbnail.state !== 'permission-missing' || s.state.thumbnail.error !== message;
+  s.state.thumbnail = Object.assign({}, s.state.thumbnail, {
+    state: 'permission-missing',
+    error: message,
+    updatedAt: Date.now(),
+  });
+  s.captureFailStreak = 0;
+  if (changed) {
+    pushLog(s, '缩略图抓取已暂停：' + message + '（静默预检，不弹系统授权框）', 'system');
+    signalThumbState(s, true);
+  }
+}
+
+// 渲染层目前只把 state==='error' 当错误态处理（renderer.js 不在本次写作用域）；
+// 对上层 health 保留真实的 permission-missing，对渲染层映射成 error，
+// 从而显示「画面不可用：缺少屏幕录制权限」+「打开设置」。
+function thumbStateForRenderer(state) {
+  return state === 'permission-missing' ? 'error' : state;
 }
 
 // 最近 5 帧的平均帧率（帧时间戳间隔）
@@ -1204,6 +1271,16 @@ async function captureThumbnail(s) {
   if (Date.now() - s.externalFrameAt < 3000) return;
   if (!s.state.windowId || s.flags.capturing || !tempDir) return;
 
+  // M1：抓图前先做静默预检（CGPreflightScreenCaptureAccess 不会弹授权框）。
+  // 未授权就直接回 permission-missing，绝不执行 screencapture（避免首次抓帧弹系统框）。
+  if (platform.isMac) {
+    const permission = await ensureScreenPermission();
+    if (!permission.proceed) {
+      markScreenPermissionMissing(s, permission);
+      return;
+    }
+  }
+
   s.flags.capturing = true;
   const captureStartedAt = Date.now();
   // 记下这次抓的是哪个窗口：抓帧期间可能被解绑/换目标，回来时要把结果丢掉
@@ -1310,7 +1387,7 @@ async function captureThumbnail(s) {
     // 窗口在抓帧途中被解绑/换目标：这是旧目标失败，不该报在当前会话上
     // （否则会出现"已经解绑了，却还挂着目标窗口已失效"的残留）
     if (s.state.windowId !== captureWindowId) return;
-    const message = explainCaptureError(error);
+    const message = explainCaptureError(error, windowTitleHealth);
     // 偶发失败（窗口刚切换、系统瞬时不给出图像）很常见：screencapture 会报
     // "could not create image from window"，但下一次通常就好了。
     // 连续失败到阈值才切错误态，中间保留上一帧，避免"红字闪一下"。
@@ -1519,7 +1596,12 @@ function listWindowsMac() {
       if (error) return resolve(null);
       try {
         const list = JSON.parse(String(stdout));
-        resolve(Array.isArray(list) ? list : null);
+        if (!Array.isArray(list)) return resolve(null);
+        // M2：CGWindowList 的窗口标题是判断屏幕录制权限的旁证；全空/大量为空时单独报权限，
+        // 与「窗口真的不存在/匹配失败」区分开。
+        const titleStats = platform.classifyWindowTitles({ titles: list.map((item) => item && item.title) });
+        windowTitleHealth = Object.assign({ checkedAt: Date.now() }, titleStats);
+        resolve(list);
       } catch { resolve(null); }
     });
   });
@@ -1840,7 +1922,7 @@ function rendererSnapshot(s) {
     logs: s.state.logs,
     windowId: s.state.windowId,
     expanded: s.flags.expanded,
-    thumbnail: s.state.thumbnail,
+    thumbnail: Object.assign({}, s.state.thumbnail, { state: thumbStateForRenderer(s.state.thumbnail.state) }),
     bounds: boundsOf(s),
     server: {
       host: config.host,
@@ -1913,6 +1995,22 @@ async function startServer() {
         return Object.assign(s ? sessionHealth(s) : missingSessionHealth(session), {
           crash: crashLog.get(),
           supervisor: supervisor.status(),
+          // M1/M2：抓图失败的权限原因与「窗口标题全空」分开报，便于排障
+          screenRecording: {
+            status: screenPermission.status,
+            granted: screenPermission.granted,
+            message: screenPermission.message,
+            checkedAt: screenPermission.checkedAt || 0,
+          },
+          windowTitles: {
+            status: windowTitleHealth.status,
+            total: windowTitleHealth.total,
+            empty: windowTitleHealth.empty,
+            emptyRatio: windowTitleHealth.emptyRatio,
+            suspectPermission: windowTitleHealth.suspectPermission,
+            message: windowTitleHealth.message,
+            checkedAt: windowTitleHealth.checkedAt || 0,
+          },
         });
       },
       windows: listWindows,
@@ -2121,8 +2219,10 @@ async function boot() {
   startCursorWatch();
   startSessionSweep();
 
-  // 启动时先扫一遍窗口，填充 selfWindowIds，避免把小窗绑到 DeepSeek Harness 自己身上。
+  // 启动时先扫一遍窗口，填充 selfWindowIds，避免把小窗绑到 DeepSeek Harness 自己身上；
+  // 顺便刷新 windowTitles 健康（M2）并静默探测一次屏幕录制权限（M1，不会弹框）。
   listWindows().catch(() => {});
+  ensureScreenPermission().catch(() => {});
 
   pushLog(
     def,

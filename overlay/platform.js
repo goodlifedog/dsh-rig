@@ -28,6 +28,121 @@ function runPowerShell(script, timeout = 8000) {
   return run('powershell', ['-NoProfile', '-NonInteractive', '-Command', script], timeout);
 }
 
+// ---------- 屏幕录制权限（静默预检 + 纯判定） ----------
+
+const SCREEN_RECORDING_MISSING_MESSAGE = '缺少屏幕录制权限';
+
+/**
+ * 根据静默预检结果决定是否允许抓图（纯函数，便于单测）。
+ *
+ * 约定：
+ *   granted === true  → granted
+ *   granted === false → permission-missing，不抓图（否则 screencapture 可能弹授权框）
+ *   其它（null/undefined）→ unknown，继续尝试抓图（拿不到结论不能卡死抓帧）
+ *   非 macOS → not-needed，Windows 抓图不需要这个权限
+ *
+ * @param {{granted?:boolean|null, platform?:string}} [input]
+ * @returns {{status:'granted'|'permission-missing'|'unknown'|'not-needed', granted:boolean|null, proceed:boolean, message:string}}
+ */
+function decideCapturePermission(input = {}) {
+  const { granted, platform = process.platform } = input || {};
+  if (platform !== 'darwin') {
+    return { status: 'not-needed', granted: true, proceed: true, message: '' };
+  }
+  if (granted === true) {
+    return { status: 'granted', granted: true, proceed: true, message: '' };
+  }
+  if (granted === false) {
+    return { status: 'permission-missing', granted: false, proceed: false, message: SCREEN_RECORDING_MISSING_MESSAGE };
+  }
+  return { status: 'unknown', granted: null, proceed: true, message: '' };
+}
+
+/**
+ * 根据 CGWindowList 的窗口标题空值率判断「可能缺屏幕录制权限」（纯函数，M2）。
+ *
+ * macOS 无屏幕录制权限时 kCGWindowName 会是空串，表现为「找不到窗口/画面失败」。
+ * 全空最可疑；部分为空时按 limitRatio 阈值标记，避免误报。
+ *
+ * @param {{titles?:Array<*>, limitRatio?:number}} [input]
+ * @returns {{status:'no-windows'|'all-empty'|'mostly-empty'|'partial-empty'|'normal',
+ *            total:number, empty:number, emptyRatio:number, allEmpty:boolean,
+ *            suspectPermission:boolean, message:string}}
+ */
+function classifyWindowTitles(input = {}) {
+  const { titles, limitRatio = 0.5 } = input || {};
+  const list = Array.isArray(titles) ? titles.map((t) => String(t == null ? '' : t).trim()) : [];
+  const total = list.length;
+  if (total === 0) {
+    return {
+      status: 'no-windows', total: 0, empty: 0, emptyRatio: 0,
+      allEmpty: false, suspectPermission: false, message: '',
+    };
+  }
+
+  const empty = list.filter((t) => t === '').length;
+  const emptyRatio = empty / total;
+  const limit = Number.isFinite(Number(limitRatio))
+    ? Math.min(1, Math.max(0, Number(limitRatio)))
+    : 0.5;
+  const base = { total, empty, emptyRatio: Math.round(emptyRatio * 1000) / 1000 };
+
+  if (empty === total) {
+    return Object.assign({
+      status: 'all-empty',
+      allEmpty: true,
+      suspectPermission: true,
+      message: '窗口标题全部为空，可能缺少屏幕录制权限',
+    }, base);
+  }
+  if (emptyRatio >= limit) {
+    return Object.assign({
+      status: 'mostly-empty',
+      allEmpty: false,
+      suspectPermission: true,
+      message: empty + '/' + total + ' 个窗口标题为空，可能缺少屏幕录制权限',
+    }, base);
+  }
+  if (empty > 0) {
+    return Object.assign({
+      status: 'partial-empty',
+      allEmpty: false,
+      suspectPermission: false,
+      message: '',
+    }, base);
+  }
+  return Object.assign({
+    status: 'normal',
+    allEmpty: false,
+    suspectPermission: false,
+    message: '',
+  }, base);
+}
+
+/**
+ * 静默预检屏幕录制权限：CGPreflightScreenCaptureAccess 只读、不会弹授权框。
+ * 返回 granted=null 表示拿不到结论（未知），由 decideCapturePermission 放行抓图。
+ *
+ * @param {{timeoutMs?:number}} [options]
+ * @returns {Promise<{granted:boolean|null, detail?:string}>}
+ */
+async function checkScreenRecordingPermission(options = {}) {
+  if (!isMac) return { granted: true, detail: 'not-needed' };
+  const timeoutMs = Number(options && options.timeoutMs) || 2000;
+  const script =
+    'ObjC.import("CoreGraphics");' +
+    'let granted=null;' +
+    'try { granted = Number($.CGPreflightScreenCaptureAccess()) === 1; } catch (e) { granted = null; }' +
+    'JSON.stringify({ granted: granted });';
+  const r = await run('/usr/bin/osascript', ['-l', 'JavaScript', '-e', script], timeoutMs);
+  if (!r.ok) return { granted: null, detail: 'preflight 失败（不阻断抓图）' };
+  try {
+    const data = JSON.parse(String(r.out));
+    if (typeof data.granted === 'boolean') return { granted: data.granted };
+  } catch {}
+  return { granted: null, detail: 'preflight 输出无法解析（不阻断抓图）' };
+}
+
 // ---------- macOS ----------
 
 async function macFrontmostBundle() {
@@ -212,4 +327,8 @@ module.exports = {
   captureWindow,
   isScreenLocked,
   parseScreenLocked,
+  SCREEN_RECORDING_MISSING_MESSAGE,
+  decideCapturePermission,
+  classifyWindowTitles,
+  checkScreenRecordingPermission,
 };
