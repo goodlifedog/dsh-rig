@@ -9,6 +9,7 @@ import { overlayBase } from '../ports.mjs';
  */
 import { ensureAppRunning, frontName, state, find, click, setValue, smartType, smartTypeWithCache, clickByText, quitApp } from '../background.mjs';
 import { checkTextEditWritable } from '../text-edit-guard.mjs';
+import { decideNoteWrite } from '../note-write-guard.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
 import { countNotes, deleteTestNotes } from '../note-cleanup.mjs';
 import { isScreenLocked } from '../platform.mjs';
@@ -114,9 +115,18 @@ async function main() {
   // 4. 后台写入正文并校验
   const areas = await find('备忘录', { role: 'AXTextArea', limit: 5 });
   const area = areas[0];
+  // 写入前必须确认"新建备忘录"真的成功了：如果这一步失败，第一个 AXTextArea 很可能
+  // 就是用户正在编辑的那条笔记，set_value 是覆盖语义，写进去等于把用户内容盖掉。
+  const noteDecision = decideNoteWrite({
+    newNoteOk: newNote.ok,
+    frontUnchanged: newNote.frontUnchanged,
+    hasArea: Boolean(area),
+  });
   // 标题带显式标记：清理时只删带标记的笔记，不靠"删最上面几条"猜
   const text = '[AGENT-TEST] 后台控制验证：' + new Date().toLocaleTimeString('zh-CN');
-  if (area) {
+  if (!noteDecision.ok) {
+    recordSkipped('后台写入正文', noteDecision.reason);
+  } else {
     // 智能输入：先 AX 设值，读回不通过再降级到后台键入
     const w = await smartTypeWithCache('备忘录', { elementIndex: area.index, text });
     const frontOk = (w.attempts || []).every((a) => a.frontUnchanged !== false);
@@ -127,10 +137,6 @@ async function main() {
     await sleep(400);
     const tree = await state('备忘录');
     record('读回正文校验', tree.includes('后台控制验证'), { detail: tree.includes(text) ? '内容一致' : '内容不完全一致' });
-  } else {
-    // 冷启动的备忘录可能停在"无备忘录/首次使用"状态，没有可写文本区；
-    // 这不是能力问题，是环境状态，标环境跳过（别把状态问题算成失败）
-    recordSkipped('后台写入正文', '备忘录没有可写文本区（首次使用或没有笔记库）');
   }
 
   // 5. 计算器：后台点击按钮
