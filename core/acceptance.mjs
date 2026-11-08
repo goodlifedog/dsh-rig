@@ -361,6 +361,8 @@ async function main() {
     { name: 'cdp-channel', timeoutMs: 120000 },
     { name: 'applescript-channel', timeoutMs: 120000 },
     { name: 'background-control', timeoutMs: 150000 },
+    // 并发验证：后台干活的同时，前台一次都不能被抢（安全任务，用户在场也能跑）
+    { name: 'concurrent-demo', timeoutMs: 120000 },
     {
       name: 'app-matrix',
       timeoutMs: 420000,
