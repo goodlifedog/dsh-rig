@@ -32,6 +32,8 @@
 | `CDP_PORT` | 9333 | `core/cdp.mjs` |
 | `CHROME_APP` | Google Chrome | `core/user-chrome.mjs` |
 | `CHROME_BIN` | /Applications/Google Chrome.app/Contents/MacOS/Google Chrome | `core/browser.mjs` |
+| `CLEANUP_ALLOW_LARGE` | （开关，设 1 开启） | `scripts/cleanup-test-data.mjs` |
+| `CLEANUP_MAX_TOP` | — | `scripts/cleanup-test-data.mjs` |
 | `CLICK_TEXT` | — | `core/tasks/user-chrome-demo.mjs` |
 | `CLI_CMD` | — | `core/tasks/drive-agent-cli.mjs` |
 | `CLI_PROMPT` | 只回复两个字：收到 | `core/tasks/drive-agent-cli.mjs` |

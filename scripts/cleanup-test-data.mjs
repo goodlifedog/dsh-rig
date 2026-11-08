@@ -4,6 +4,9 @@
  *
  *   npm run cleanup:test
  *   npm run cleanup:test -- --dry-run
+ *   npm run cleanup:test -- --force-all            # 允许退回「按条数删顶部 N 条」
+ *   CLEANUP_MAX_TOP=3 npm run cleanup:test -- --force-all
+ *   CLEANUP_ALLOW_LARGE=1 npm run cleanup:test -- --force-all   # 显式突破硬上限（默认 5）
  *
  * 只删能确认是测试产生的：备忘录标题/正文匹配 后台控制验证 / 后台写入 / 后台测试；
  * 文本编辑里未命名且为空或含上述标记的文稿。用户自己的内容不碰。
@@ -15,6 +18,7 @@ import { ensureAppRunning, frontName, quitApp } from '../core/background.mjs';
 import { closeOcuMcp } from '../core/ocu-mcp.mjs';
 import { countNotes, deleteTopNotes, deleteMarkedTestNotes, LEGACY_TEST_WORDS } from '../core/note-cleanup.mjs';
 import { shouldQuitApp, shouldRunNoteCleanup } from '../core/cleanup-policy.mjs';
+import { resolveMaxTop, resolveTopDelete } from '../core/cleanup-limits.mjs';
 import { isDisposableTestDocument } from '../core/text-edit-guard.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -22,6 +26,10 @@ const dryRun = process.argv.includes('--dry-run');
 const forceNotes = process.argv.includes('--force') || process.argv.includes('--force-all') || process.env.NOTES_CLEANUP_FORCE === '1';
 // 只有明确加 --force-all 才允许退回「按条数删最上面几条」；普通 --force 只删带测试标记的笔记
 const forceAllNotes = process.argv.includes('--force-all');
+// L4：按条数删的硬上限。默认最多删 5 条；N 超过上限直接拒绝，
+// 只有显式 CLEANUP_ALLOW_LARGE=1 才放行（报告里会写清条数与原因）。
+const CLEANUP_MAX_TOP = resolveMaxTop(process.env.CLEANUP_MAX_TOP);
+const CLEANUP_ALLOW_LARGE = process.env.CLEANUP_ALLOW_LARGE === '1';
 
 function osa(script, timeoutMs = 20000) {
   try {
@@ -75,10 +83,38 @@ async function purgeNotes(report) {
     report.push({ kind: 'note-deleted', removed, readable: marked.readable, legacyRemoved });
     return removed;
   }
-  // 第二层：这个 Notes 版本列表完全读不到标题。按条数删有可能误伤，必须显式 --force-all
+  // 第二层：这个 Notes 版本列表完全读不到标题。按条数删有可能误伤，必须显式 --force-all；
+  // 而且要先过 L4 硬上限：删之前把「将删条数 / 触发原因 / 当前笔记总数」打进报告。
   if (forceAllNotes) {
-    const removed = await deleteTopNotes(count);
-    report.push({ kind: 'note-deleted-fallback', removed, note: '列表标题读不到，按 --force-all 删了最上面 ' + removed + ' 条' });
+    const plan = resolveTopDelete({
+      requested: count,
+      noteTotal: count,
+      maxTop: CLEANUP_MAX_TOP,
+      allowLarge: CLEANUP_ALLOW_LARGE,
+    });
+    report.push({
+      kind: 'note-delete-plan',
+      mode: 'top-fallback',
+      trigger: '列表标题读不到 + --force-all',
+      requested: plan.requested,
+      willDelete: plan.count,
+      noteTotal: plan.noteTotal,
+      limit: plan.limit,
+      allowLarge: CLEANUP_ALLOW_LARGE,
+      reason: plan.reason,
+    });
+    if (!plan.allowed) {
+      report.push({ kind: 'note-delete-refused', requested: plan.requested, limit: plan.limit, reason: plan.reason });
+      return 0;
+    }
+    const removed = await deleteTopNotes(plan.count);
+    report.push({
+      kind: 'note-deleted-fallback',
+      requested: plan.requested,
+      removed,
+      limit: plan.limit,
+      note: '列表标题读不到，按 --force-all 删了最上面 ' + removed + ' 条（' + plan.reason + '）',
+    });
     return removed;
   }
   report.push({ kind: 'note-unreadable', note: '列表标题读不到，无法确认哪条是测试笔记；未删除。确需按条数删请加 --force-all' });
@@ -92,7 +128,8 @@ async function cleanupNotes(report) {
   const launch = await ensureAppRunning({ bundleId: 'com.apple.Notes', appName: 'Notes', processName: 'Notes' }, { waitMs: 6000 });
   if (launch.launched) launchedByUs.add('com.apple.Notes');
   await sleep(1000);
-  if (dryRun) { report.push({ kind: 'note-dry-run' }); return; }
+  // dry-run 永远不删：连 purgeNotes 都不调用，只报告会做什么。
+  if (dryRun) { report.push({ kind: 'note-dry-run', note: 'dry-run：只报告，不删除任何笔记' }); return; }
   await purgeNotes(report);
   // 「最近删除」没法安全自动化：Notes 辅助功能读不到标题、侧边栏行也无法脚本选中，
   // 只能提示用户手动清（或等 30 天系统自动清）
@@ -145,8 +182,19 @@ async function quitTestApps(report) {
       report.push({ kind: 'app-keep', app: app.appName, note: decision.reason });
       continue;
     }
+    // quitApp 内部自带 pid 复核：先 isAppRunning(bundleId)，退不掉时再 pgrep + ps comm 校验
+    // 目标进程才 kill（core/background.mjs:947 / 972-984），pid 被复用会返回 pid-mismatch 不杀。
     const q = await quitApp(app);
-    if (q.mode !== 'already-stopped') report.push({ kind: 'quit', app: app.appName, mode: q.mode, note: decision.reason });
+    if (q.mode !== 'already-stopped') {
+      report.push({
+        kind: 'quit',
+        app: app.appName,
+        mode: q.mode,
+        launchedByUs: launchedByUs.has(app.bundleId),
+        pidRecheck: q.mode === 'pid-mismatch' ? 'mismatch-refused' : 'quitApp-isRunning+ps-comm',
+        note: decision.reason,
+      });
+    }
   }
 }
 
