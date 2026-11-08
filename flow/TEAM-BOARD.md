@@ -43,7 +43,13 @@
 | task-46 | boss-researcher | P6 文档硬约束（docs/SECURITY.md、docs/MAC-APPS.md 第 9 条） | `repo:check` 全绿后提交 `d9ea159` |
 | task-47 | headless-engineer | P4 常驻静态检查（规则 5 + 14 条白名单 + fixture 单测） | `safety:audit` / 全量测试后提交 `ec6053d`；Lead 另把扫描范围扩到 `core/*.mjs` 并修 open 规则误判 |
 | task-48 | cdp-bridge | P1 根因层可选运行门禁（background 读写入口 opt-in） | 9 条单测 + 默认路径回归，提交 `b573cc6` |
-| task-49 | human-input | 权限安全审计（TCC 权限矩阵与 fail-closed 审查） | 见 flow/PERMISSIONS-AUDIT.md |
+| task-49 | human-input | 权限安全审计（TCC 权限矩阵与 fail-closed 审查） | 见 flow/PERMISSIONS-AUDIT.md，Lead 抽样核验 H1/H4/H5 后提交 `6ba0ed6` |
+| task-50 | headless-engineer | H1 任务前权限闸门（runner/daemon 接线 + 纯函数 + 17 条单测） | 核验后提交 `9202961` |
+| task-51 | ocu-recipe | H4 权限文案归类 + H5 自检三项分开 | 核验后提交 `9202961` |
+| task-52 | cdp-bridge | H3 Safari 探针先运行/授权预检 | 核验后提交 `d81dd6b` |
+| task-53 | human-input | H2 最小批次：三个脚本发 AppleEvent 前预检（sync-quit 300ms 不阻塞） | 核验后提交 `d81dd6b` |
+| task-54 | overlay-dev | M1/M2 屏幕录制静默预检 + 窗口标题全空权限提示 | 核验后提交 `2bd5f8a` |
+| task-55 | greet-engineer | H2 核心：前台读取改 ObjC（不发 AppleEvent）+ 回退开关 | 核验后提交 `8bf2ba1`；实测两种实现 20 次采样 100% 一致 |
 
 ## 当前状态
 
@@ -51,4 +57,5 @@
 - 小窗显示路径 R1–R6 修复完成，冷启动实测无窗口弹出。
 - 完整验收 2026-11-08 抓出并修复 3 个前台污染问题（multi-app 拉起应用、矩阵还原漏别名、验收残留应用）。
 - ocu 调用审计 11 处高危调用点全部加运行门禁并提交（`50ebe5a`）；补 4 个测试文件，全量 923 项 / 922 过 / 1 跳过 / 0 失败。
-- 待办：等用户离开足够久时跑一次 `verify:live` 完整验收（含会动屏幕的步骤），确认修复后 app-matrix 不再被抢前台。
+- 权限安全审计的 H1/H3/H4/H5 + M1/M2 已修复并提交（全量 1012 项 / 1010 过 / 2 跳过 / 0 失败）；H2 核心（前台读取不发 AppleEvent）已落地，剩余 acceptance/browser/headless-demo 的裸 AppleEvent 入口记为待办。
+- 待办：等用户离开足够久时跑一次 `verify:live` 完整验收（含会动屏幕的步骤），确认修复后 app-matrix 不再被抢前台、权限闸门不会把正常步骤误跳过。

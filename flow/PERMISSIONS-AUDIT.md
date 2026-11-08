@@ -5,6 +5,8 @@
 > 纪律：**本审计没有执行任何会触发 TCC 弹窗的命令**——没有用 osascript 控制新应用、没有 screencapture、没有 tccutil、
 > 没有跑 acceptance / matrix / 任何任务本体；所有结论来自读代码、只读的 `strings`/`nm` 与纯函数调用（`core/run-classify.mjs`）。
 > 相关文档：`docs/SECURITY.md`（安全边界）、`docs/USAGE.md` 4.4 节（用户视角的权限说明）、`flow/OCU-CALL-AUDIT.md`（拉起未运行应用的审计）。
+> **修复状态（2026-11-08 收尾）**：H1/H3/H4/H5 + M1/M2 已修复并提交；H2 做了核心项（前台读取不再发 AppleEvent）
+> 与三个清理脚本的预检，剩余少量裸 AppleEvent 入口记为待办。逐项证据见文末第 7 节。
 
 ## 0. 结论摘要
 
@@ -260,3 +262,27 @@ TCC 服务名：`kTCCServiceAccessibility`（辅助功能）、`kTCCServiceApple
 ---
 
 **本审计只读：没有触发任何权限弹窗，没有启动/激活任何应用，没有跑 acceptance / matrix / 任何任务本体，没有执行 screencapture / tccutil / 控制第三方应用的 osascript。**
+
+## 7. 修复状态（Lead 收尾 2026-11-08）
+
+| 项 | 状态 | 做法 | 提交 / 证据 |
+| --- | --- | --- | --- |
+| H1 任务前没有权限闸门 | ✅ 已修 | 新增 `core/permission-gate.mjs`：spawn 前静态推断任务需不需要辅助功能/录屏，需要且明确未授权 → 环境跳过（exit 0、`logs/runs` 写 `code=0 envSkip=true`、不进重试/失败统计、提示带设置页深链）；探测不出来只 warning 放行；`AGENT_ALLOW_MISSING_PERMISSION=1` 强制继续 | `9202961`；`test/permission-gate.test.mjs` 17 条 |
+| H2 裸 osascript 可能弹自动化授权框 | 🟡 核心已修，剩余待办 | `frontName()` 默认改走 `osascript -l JavaScript` + ObjC（`NSWorkspace`，不发 AppleEvent），400ms 超时回退老实现（`AGENT_FRONT_READ` 可切换）；note-cleanup / sync-quit / cold-launch 发事件前静默预检（sync-quit 300ms 硬超时、绝不阻塞退出）。**剩余**：acceptance / browser / headless-demo 里少量直接 AppleEvent 入口还没接预检 | `8bf2ba1`（前台读取）、`d81dd6b`（三个脚本）；`test/front-read.test.mjs` 23 条 + `test/automation-preflight.test.mjs` 18 条 |
+| H3 Safari JS 探针会拉起 Safari | ✅ 已修 | 先 `isAppRunning` 再 `checkAutomationPermission`（askUserIfNeeded=false）；未运行/未授权绝不执行 `tell Safari`，按环境跳过 | `d81dd6b`；`applescriptChannelPlan` 六种组合 + 任务侧顺序回归 |
+| H4 权限缺失被判成真失败 | ✅ 已修 | `core/run-classify.mjs` 新增权限文案归类（中英文 + `-1743/-1744/errAEEventNotPermitted`），真失败优先不变，「均已授权」健康行不被误判 | `9202961`；`test/run-classify.test.mjs` 26 条 |
+| H5 daemon 自检把自动化误报成辅助功能 | ✅ 已修 | `selfTest` 拆成 accessibility / automation / screenCapture 三项，hint 各自指向正确设置页；旧 `checks.systemEvents`/`ok` 兼容 | `9202961` |
+| M1 屏幕录制零预检 | ✅ 已修 | 抓图前 `CGPreflightScreenCaptureAccess` 静默预检（15s 缓存、unknown 不阻断）；未授权不跑 screencapture，回 `permission-missing` +「打开设置」 | `2bd5f8a`；11 条单测 |
+| M2 无录屏时窗口标题静默为空 | ✅ 已修 | `classifyWindowTitles` 判「全空/大量为空」，`/health.windowTitles` 暴露；抓图失败文案与「目标窗口已失效」区分 | `2bd5f8a` |
+| M3 授权主体说法不统一 | ⬜ 待办 | 文档层统一（node / 打包 App / ocu 三种主体在不同启动方式下各自成立，需要写清对照表） | — |
+| M4 ocu 首次截图是否弹授权框 | ⬜ 待办 | 需要干净 TCC 环境实测，不能靠静态推断 | — |
+| M5 openPermissionSettings 死代码 | ⬜ 待办 | 删掉或让 overlay 复用；属小重构 | — |
+
+### 7.1 修复边界（不能修成新的问题）
+
+- 闸门只「跳过」，不启动、不授权、不改系统设置：所有提示只打印设置页路径与深链命令，不替用户点。
+- 探测不出来（ocu doctor 失败/超时/没装）按「未知」放行 + warning，绝不因为查不到权限把所有任务卡死。
+- 环境跳过必须是 exit 0 且不算失败：真失败优先原则不变（有 `❌`/`FAIL`/「未送达」就不许被权限文案豁免）。
+- 退出路径（sync-quit）预检有 300ms 硬上限，超时继续原有逻辑：清理可以少做一次授权查询，但绝不能卡住退出。
+- 前台读取改造保留回退与开关（`AGENT_FRONT_READ=applescript`）：任何不确定都回到旧实现，绝不返回错的前台应用名。
+

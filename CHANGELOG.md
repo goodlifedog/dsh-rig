@@ -4,6 +4,14 @@
 
 - ocu 调用审计（`flow/OCU-CALL-AUDIT.md`）的 11 处高危调用点全部加上运行门禁并补单测：以前这些任务对**没在运行**的应用直接调 ocu 读取/输入（`snapshot/get_app_state/state/find/readSafe/typeText`），ocu 会把应用启动并可能顶到前台——等于「验证不打扰」的任务自己先打扰了用户。现在统一走 `core/app-presence.mjs`（纯函数 `decideAppPresence` + 注入 `isAppRunning` 的 `requireAppRunning`/`reportAppPresence`，判错一律按没运行处理），未运行即环境跳过（exit 0、不算失败、不启动/不关闭/不改用户应用）；覆盖 user-active-demo / terminal-control / drive-agent / drive-agent-cli / boss-scan / form-fill / boss-greet / mcp-demo / platform-demo / background-control（文本编辑步骤）/ parallel-real-demo，脚本层 `bench-ocu` 也门禁（要测冷读必须显式 `--allow-launch`）。新增 4 个测试文件，全量 903 项 / 902 过 / 1 跳过 / 0 失败。
 - 把「对具体应用调 ocu 前必须有运行门禁」做成常驻静态检查（P4）：`npm run safety:audit` 新增规则 5，同一文件里没有 `isAppRunning/ensureAppRunning/ensureAppWindow/requireAppRunning` 又直接 `ocu.snapshot/readSafe/state/find/typeText/cua.getApp` 等就报错，逐点可用 `// audit-ok: <理由>` 豁免；根因封装层、CDP/AppleScript 通道、内嵌 JXA 脚本共 14 条文件级白名单（每条写理由，另有「白名单防腐烂」单测）。扫描范围扩到 `core/*.mjs`：120 个文件 / 103 处调用点 / 0 违规；同时修掉 open 规则把 CDP 状态字符串 `'open'` 误判成启动应用的问题，并把「打开系统设置隐私面板」列为必须可见的显式例外。
+- 权限安全按审计（`flow/PERMISSIONS-AUDIT.md`）收口（子 agent 执行、Lead 核验提交）：
+  ① **任务前权限闸门**：新增 `core/permission-gate.mjs`，runner/daemon 在 spawn 前静态判断任务要不要辅助功能/屏幕录制，明确没授权就**环境跳过**（exit 0、`code=0 envSkip=true`、不进重试/失败统计、提示直接给设置页深链），探测不出来只 warning 放行，`AGENT_ALLOW_MISSING_PERMISSION=1` 可强制继续；
+  ② **前台读取不再发 AppleEvent**：`frontName()` 改成 `osascript -l JavaScript` + ObjC（`NSWorkspace`）读进程名，400ms 超时回退老实现（`AGENT_FRONT_READ=objc|applescript|auto`），新机器不再弹「自动化」授权框、耗时 120ms→49ms；名字语义保持进程名（`Finder` 而不是 `访达`），否则前台保护会悄悄失效；
+  ③ **Safari JS 探针**先 `isAppRunning` + 静默自动化预检，未运行/未授权绝不 `tell Safari`（不再为了探针把 Safari 拉起来）；
+  ④ **note-cleanup / sync-quit / cold-launch** 发 AppleEvent 前预检自动化授权，sync-quit 预检 300ms 硬超时、绝不阻塞退出；
+  ⑤ **自检与归类**：`/selftest` 拆成辅助功能/自动化/屏幕录制三项分开报（hint 不再指错设置页），`run-classify` 认得权限缺失文案（中英文 + -1743/-1744）并归环境跳过，真失败优先不变；
+  ⑥ **小窗抓图前静默屏幕录制预检**（`CGPreflightScreenCaptureAccess`，不弹框），未授权不截图、小窗显示「缺少屏幕录制权限」+ 打开设置；窗口标题全空时单独报「可能缺少屏幕录制权限」而不是窗口失效。
+  新增/补充 8 个测试文件，全量 1012 项 / 1010 过 / 2 跳过 / 0 失败。
 - 根因层留统一收口点（P1）：`core/background.mjs` 的 `state/find/click/setValue/typeText/readSafe/findSafe` 末尾支持 `{ requireRunning: true }`，开启后先判 `isAppRunning`（复用 `core/app-presence.mjs`），未运行返回结构化 `skipped:'not-running'` 且不进入底层 MCP——避免 ocu 把没运行的应用拉起来。默认 `false` 保持历史行为（9 条单测证明默认路径逐字节不变 + 开启后拦截，全部用假 mcp/假探测，不碰真实应用）。
 
 - 完整验收抓出并修复两个「前台污染」真 bug（子 agent 执行、Lead 核验提交）：
