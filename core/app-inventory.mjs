@@ -180,6 +180,8 @@ export function mergeInventory({ installed = [], presetApps = [], tested = [], s
     if (ascInfo) notes.push('AppleScript 实测 ' + applescriptStatus + (ascInfo.detail ? '：' + ascInfo.detail : ''));
     rows.push({
       name: installedApp?.name || presetApp.name,
+      // 预设里的显示名（可能是本地化的「邮件/日历」）：补测命令要用它，否则矩阵按英文名匹配不到窗口 owner
+      presetName: presetApp.name || '',
       bundle: installedApp?.bundle || bundle,
       process: installedApp?.process || presetApp.process,
       preset: presetApp.preset || '',
@@ -368,7 +370,8 @@ export function nextProbeCommands(rows) {
   // 「部分验证」也需要补跑矩阵：通道测过不代表读过界面
   const pending = (rows || []).filter((r) => (r.status === '未测' || r.status === '部分验证') && r.installed !== false && r.bundle && r.process);
   if (!pending.length) return [];
-  const apps = pending.map((r) => ({ name: r.name, bundle: r.bundle, process: r.process }));
+  // 优先用预设显示名：矩阵的窗口匹配按 owner（中文系统里是本地化名）找窗口，用安装清单里的英文名会扑空
+  const apps = pending.map((r) => ({ name: r.presetName || r.name, bundle: r.bundle, process: r.process }));
   const json = JSON.stringify(apps);
   return ["MATRIX_APPS_JSON=" + "'" + json + "'" + " npm run matrix"];
 }

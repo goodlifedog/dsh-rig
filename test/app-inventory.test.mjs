@@ -222,6 +222,19 @@ test('给未测应用生成补测命令，跳过没装/不动的', () => {
   assert.ok(cmds[0].endsWith('npm run matrix'));
 });
 
+test('补测命令优先用预设显示名（中文系统窗口 owner 是本地化名）', () => {
+  const cmds = nextProbeCommands([
+    { name: 'Mail', presetName: '邮件', bundle: 'com.apple.mail', process: 'Mail', installed: true, status: '未测' },
+    { name: 'Telegram', bundle: 'ru.keepcoder.Telegram', process: 'Telegram', installed: true, status: '未测' },
+  ]);
+  assert.equal(cmds.length, 1);
+  const parsed = JSON.parse(cmds[0].slice(cmds[0].indexOf("'") + 1, cmds[0].lastIndexOf("'")));
+  assert.deepEqual(parsed, [
+    { name: '邮件', bundle: 'com.apple.mail', process: 'Mail' },
+    { name: 'Telegram', bundle: 'ru.keepcoder.Telegram', process: 'Telegram' },
+  ]);
+});
+
 test('没有未测应用：不生成命令', () => {
   assert.deepEqual(nextProbeCommands([{ name: 'A', status: '已适配', installed: true }]), []);
   assert.deepEqual(nextProbeCommands([]), []);
