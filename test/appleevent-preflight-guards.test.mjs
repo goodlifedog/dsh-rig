@@ -8,7 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { switchTabByAppleScript as bossSwitchTab } from '../core/tasks/boss-scan.mjs';
 import { switchTabByAppleScript as fillSwitchTab } from '../core/tasks/form-fill.mjs';
-import { restoreFront } from '../core/tasks/app-matrix.mjs';
+import { restoreFront, applyRestoreToRow } from '../core/tasks/app-matrix.mjs';
 import { SYSTEM_EVENTS_BUNDLE_ID } from '../core/appleevent-preflight.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -52,7 +52,7 @@ for (const [label, switchTab] of [['boss-scan', bossSwitchTab], ['form-fill', fi
     const { calls, run } = chromeRun();
     const preflightSeen = [];
     const preflight = async (input) => { preflightSeen.push(input); return { allowed: true, status: 'granted' }; };
-    const r = await switchTab({ run, preflight, fragment: FRAGMENT });
+    const r = await switchTab({ run, preflight, isAppRunning: async () => true, fragment: FRAGMENT });
     assert.equal(r.ok, true);
     assert.equal(r.tabIndex, 2);
     assert.equal(calls.length, 3, 'granted 时必须保持原来的 3 次 osascript');
@@ -70,6 +70,7 @@ for (const [label, switchTab] of [['boss-scan', bossSwitchTab], ['form-fill', fi
     const r = await switchTab({
       run: async () => { runCalls += 1; throw new Error('未授权时不该执行 osascript'); },
       preflight,
+      isAppRunning: async () => true,
       fragment: FRAGMENT,
       onWarning: (message) => warnings.push(message),
     });
@@ -86,6 +87,7 @@ for (const [label, switchTab] of [['boss-scan', bossSwitchTab], ['form-fill', fi
     const r = await switchTab({
       run,
       preflight: async () => ({ allowed: true, status: 'unknown' }),
+      isAppRunning: async () => true,
       fragment: FRAGMENT,
     });
     assert.equal(r.ok, true);
@@ -97,10 +99,66 @@ for (const [label, switchTab] of [['boss-scan', bossSwitchTab], ['form-fill', fi
     const r = await switchTab({
       run,
       preflight: async () => { throw new Error('preflight boom'); },
+      isAppRunning: async () => true,
       fragment: FRAGMENT,
     });
     assert.equal(r.ok, true, '预检抛错按 unknown 放行');
     assert.equal(calls.length, 3);
+  });
+}
+
+
+// ---------- M3：Chrome 没在运行 → 连预检/AppleEvent 都不该有 ----------
+
+for (const [label, switchTab] of [['boss-scan', bossSwitchTab], ['form-fill', fillSwitchTab]]) {
+  test(label + ' Chrome 切标签：Chrome 没在运行 → 0 次 osascript，skipped:app-not-running（M3）', async () => {
+    let runCalls = 0;
+    let preflightCalls = 0;
+    const r = await switchTab({
+      run: async () => { runCalls += 1; throw new Error('不该执行 osascript'); },
+      preflight: async () => { preflightCalls += 1; return { allowed: true, status: 'granted' }; },
+      isAppRunning: async () => false,
+      fragment: FRAGMENT,
+    });
+    assert.equal(runCalls, 0, 'Chrome 没在运行绝不能发 AppleEvent（tell 会启动它）');
+    assert.equal(preflightCalls, 0, '应用没运行就不必浪费一次授权探测');
+    assert.equal(r.ok, false);
+    assert.equal(r.skipped, 'app-not-running');
+    assert.match(r.warning, /没在运行/);
+  });
+
+  test(label + ' Chrome 切标签：osascript 返回 -1743 → skipped:not-authorized，不 throw 成 FAIL（M4）', async () => {
+    const r = await switchTab({
+      run: async () => ({ code: 1, stdout: '', stderr: 'execution error: 不允许发送 Apple 事件 (-1743)' }),
+      preflight: async () => ({ allowed: true, status: 'unknown' }),
+      isAppRunning: async () => true,
+      fragment: FRAGMENT,
+    });
+    assert.equal(r.ok, false);
+    assert.equal(r.skipped, 'not-authorized', '未授权错误要归环境跳过，而不是 FAIL');
+    assert.match(r.warning, /未授权/);
+  });
+
+  test(label + ' Chrome 切标签：osascript 返回 -1744（需要用户同意）→ skipped:not-authorized', async () => {
+    const r = await switchTab({
+      run: async () => ({ code: 1, stdout: '', stderr: 'execution error: AppleEvent timed out, would require user consent (-1744)' }),
+      preflight: async () => ({ allowed: true, status: 'unknown' }),
+      isAppRunning: async () => true,
+      fragment: FRAGMENT,
+    });
+    assert.equal(r.skipped, 'not-authorized');
+  });
+
+  test(label + ' Chrome 切标签：其它 osascript 错误保持原样（不伪装成 skipped）', async () => {
+    const r = await switchTab({
+      run: async () => ({ code: 1, stdout: '', stderr: 'weird failure' }),
+      preflight: async () => ({ allowed: true, status: 'granted' }),
+      isAppRunning: async () => true,
+      fragment: FRAGMENT,
+    });
+    assert.equal(r.ok, false);
+    assert.equal(r.skipped, undefined);
+    assert.match(r.error, /weird failure/);
   });
 }
 
@@ -156,6 +214,61 @@ test('app-matrix 前台还原：预检抛错 → 仍然尝试', async () => {
   assert.equal(calls.length, 1);
 });
 
+
+// ---------- L4：app-matrix restoreFront 的 execFile error 不能再被吞 ----------
+
+test('app-matrix 前台还原：execFile 返回 -1743 → skipped:not-authorized（不记 ok）', async () => {
+  const calls = [];
+  const warnings = [];
+  const execFile = (bin, args, callback) => {
+    calls.push({ bin, args });
+    callback(Object.assign(new Error('osascript failed'), { code: 1 }), '', 'execution error: 不允许发送 Apple 事件 (-1743)');
+  };
+  const r = await restoreFront('Safari', {
+    execFile,
+    preflight: async () => ({ allowed: true, status: 'granted' }),
+    onWarning: (message) => warnings.push(message),
+  });
+  assert.equal(calls.length, 1, '要真的执行并拿到错误');
+  assert.equal(r.ok, false, 'execFile 失败不能当还原成功');
+  assert.equal(r.skipped, 'not-authorized');
+  assert.match(r.error, /-1743/);
+  assert.equal(warnings.length, 0, '这种归类走调用方环境跳过，不额外打警告');
+});
+
+test('app-matrix 前台还原：其它 execFile 错误 → ok:false 且不带 skipped', async () => {
+  const execFile = (bin, args, callback) => {
+    callback(Object.assign(new Error('boom'), { code: 1 }), '', 'weird failure');
+  };
+  const r = await restoreFront('Safari', { execFile, preflight: async () => ({ allowed: true, status: 'granted' }) });
+  assert.equal(r.ok, false);
+  assert.equal(r.skipped, '');
+  assert.match(r.error, /weird failure/);
+});
+
+test('applyRestoreToRow：未授权/应用没在运行 → frontRestored 绝不记 true', () => {
+  const row = { frontRestored: true };
+  applyRestoreToRow(row, { ok: false, skipped: 'not-authorized', warning: 'w' });
+  assert.equal(row.frontRestored, false);
+  assert.equal(row.frontRestoreSkipped, 'not-authorized');
+  assert.equal(row.frontRestoreWarning, 'w');
+
+  const row2 = {};
+  applyRestoreToRow(row2, { ok: false, skipped: 'app-not-running', warning: 'x' });
+  assert.equal(row2.frontRestored, false);
+  assert.equal(row2.frontRestoreSkipped, 'app-not-running');
+
+  const row3 = { frontRestored: true };
+  applyRestoreToRow(row3, { ok: false, skipped: 'not-authorized' }, { afterQuit: true });
+  assert.equal(row3.frontRestoredAfterQuit, false);
+  assert.equal(row3.frontRestored, false, '内存里之前的 true 也要清掉');
+
+  const okRow = { frontRestored: false };
+  applyRestoreToRow(okRow, { ok: true, attempts: 2 });
+  assert.equal(okRow.frontRestored, true);
+  assert.equal(okRow.frontRestoreAttempts, 2);
+});
+
 test('静态回归：三个任务的 AppleEvent 都走统一预检，未授权有环境跳过兜底', () => {
   const read = (file) => fs.readFileSync(path.join(HERE, '..', file), 'utf8');
   const boss = read('core/tasks/boss-scan.mjs');
@@ -168,8 +281,19 @@ test('静态回归：三个任务的 AppleEvent 都走统一预检，未授权�
   }
   assert.match(boss, /CHROME_BUNDLE_ID = 'com\.google\.Chrome'/, 'Chrome bundle id 要对');
   assert.match(fill, /CHROME_BUNDLE_ID = 'com\.google\.Chrome'/, 'Chrome bundle id 要对');
-  assert.match(boss, /环境跳过：Chrome 自动化未授权/, '未授权要按环境跳过，不判失败');
-  assert.match(fill, /环境跳过：Chrome 自动化未授权/, '未授权要按环境跳过，不判失败');
+  assert.match(boss, /环境跳过/, '未授权/没在运行要按环境跳过，不判失败');
+  assert.match(fill, /环境跳过/, '未授权/没在运行要按环境跳过，不判失败');
+  assert.match(boss, /chrome-not-running/, 'boss-scan 要能报 chrome-not-running');
+  assert.match(fill, /chrome-not-running/, 'form-fill 要能报 chrome-not-running');
+  assert.match(boss, /classifyOsascriptError/, 'M4：osascript 失败要用分类器判未授权');
+  assert.match(fill, /classifyOsascriptError/, 'M4：osascript 失败要用分类器判未授权');
+  assert.match(boss, /isAppRunning/, 'M3：发事件前要先确认 Chrome 在运行');
+  assert.match(fill, /isAppRunning/, 'M3：发事件前要先确认 Chrome 在运行');
   assert.match(matrix, /SYSTEM_EVENTS_BUNDLE_ID/, 'System Events bundle id 要用常量');
+  assert.match(matrix, /classifyOsascriptError/, 'L4：restoreFront 要检查 execFile error 并分类');
+  assert.match(matrix, /applyRestoreToRow/, 'L4：还原结果要统一写进行里');
   assert.match(matrix, /restoreSkipped/, '矩阵要把还原跳过计入环境跳过，而不是前台被抢占');
+  // L6：form-fill 也要有机器可消费的结构化 skipped JSON
+  assert.match(fill, /JSON\.stringify\(\{ ok: true, skipped: true, reason/, 'form-fill 要有结构化 skipped JSON');
+  assert.match(boss, /JSON\.stringify\(\{ ok: true, skipped: true, reason/, 'boss-scan 要有结构化 skipped JSON');
 });

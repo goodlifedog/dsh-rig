@@ -19,6 +19,7 @@ const APPLEEVENT_BLOCKED = Object.freeze({ code: -1, stdout: '', stderr: 'automa
 const TARGET_FRAGMENT = 'zhipin.com/web/geek/jobs';
 import { resolveOcu, isScreenLocked, lockedSkipNotice } from '../platform.mjs';
 import { createAppleEventPreflight, runAppleEventGuarded } from '../appleevent-preflight.mjs';
+import { classifyOsascriptError } from '../applescript-driver.mjs';
 
 import { isMac } from '../platform.mjs';
 // 只有直接运行时才按平台退出：单测会 import 本模块，不能在 import 时 process.exit
@@ -149,10 +150,37 @@ nodeRepl.write('BOSS_TAB_JSON=' + JSON.stringify(out));
 // H2：每个 AppleEvent 都先过 core/appleevent-preflight.mjs 的静默预检——
 //   granted/unknown → 照旧执行（参数逐字不变）；denied/needs-consent → 不发事件，返回 skipped。
 // options 仅供单测注入（run/preflight/onWarning），生产调用不传。
+function classifyAppleEventFailure(stderrText) {
+  const kind = classifyOsascriptError(stderrText);
+  if (kind === 'denied' || kind === 'needs-consent') {
+    return { skipped: 'not-authorized', warning: '自动化未授权（' + kind + '），已停止 AppleEvent（不弹授权框）' };
+  }
+  if (kind === 'app-not-running') {
+    return { skipped: 'app-not-running', warning: 'Chrome 没在运行，AppleEvent 未执行（不为了测试启动它）' };
+  }
+  return null;
+}
+
 export async function switchTabByAppleScript(options = {}) {
   const opts = options || {};
   const call = typeof opts.run === 'function' ? opts.run : run;
   const preflight = typeof opts.preflight === 'function' ? opts.preflight : chromeAppleEventPreflight;
+  const checkRunning = typeof opts.isAppRunning === 'function' ? opts.isAppRunning : isAppRunning;
+  // M3：Chrome 没在运行时绝不发 AppleEvent——预检把「应用没运行」归 unknown 放行，
+  // 而 tell application 会把 Chrome 拉起来（从未授权时还可能弹授权框）。
+  let chromeRunning = false;
+  try {
+    chromeRunning = Boolean(await checkRunning({ bundleId: CHROME_BUNDLE_ID, appName: APP, processName: APP }));
+  } catch {
+    chromeRunning = false;
+  }
+  if (!chromeRunning) {
+    return {
+      ok: false,
+      skipped: 'app-not-running',
+      warning: 'Chrome 没在运行，不为了测试去启动它（AppleEvent 会把未运行的应用拉起来）',
+    };
+  }
   const onWarning = typeof opts.onWarning === 'function'
     ? opts.onWarning
     : ((message) => console.warn('⚠️ ' + message));
@@ -171,7 +199,11 @@ export async function switchTabByAppleScript(options = {}) {
     'tell application "Google Chrome" to get URL of every tab of window 1',
   ]);
   if (urls.allowed === false) return { ok: false, skipped: 'not-authorized', warning: urls.warning, error: urls.warning };
-  if (urls.value.code !== 0) return { ok: false, error: urls.value.stderr.trim() };
+  if (urls.value.code !== 0) {
+    const classified = classifyAppleEventFailure(urls.value.stderr);
+    if (classified) return { ok: false, ...classified, error: classified.warning };
+    return { ok: false, error: urls.value.stderr.trim() };
+  }
   const list = urls.value.stdout.split(', ').map((s) => s.trim());
   const index = list.findIndex((u) => u.includes(fragment));
   if (index < 0) return { ok: false, error: 'tabs 里没有 BOSS 职位页', tabs: list };
@@ -180,13 +212,22 @@ export async function switchTabByAppleScript(options = {}) {
     'tell application "Google Chrome" to set active tab index of window 1 to ' + (index + 1),
   ]);
   if (set.allowed === false) return { ok: false, skipped: 'not-authorized', warning: set.warning, error: set.warning };
-  if (set.value.code !== 0) return { ok: false, error: set.value.stderr.trim() };
+  if (set.value.code !== 0) {
+    const classified = classifyAppleEventFailure(set.value.stderr);
+    if (classified) return { ok: false, ...classified, error: classified.warning };
+    return { ok: false, error: set.value.stderr.trim() };
+  }
   await new Promise((r) => setTimeout(r, 800));
   const check = await guarded('读取 Chrome 当前标签页（AppleEvent）', [
     '-e',
     'tell application "Google Chrome" to get URL of active tab of window 1',
   ]);
   if (check.allowed === false) return { ok: false, skipped: 'not-authorized', warning: check.warning, error: check.warning };
+  if (check.value.code !== 0) {
+    const classified = classifyAppleEventFailure(check.value.stderr);
+    if (classified) return { ok: false, ...classified, error: classified.warning };
+    return { ok: false, error: check.value.stderr.trim() };
+  }
   const url = check.value.stdout.trim();
   return { ok: url.includes(fragment), url, tabIndex: index + 1 };
 }
@@ -271,13 +312,14 @@ async function main() {
     const asResult = await switchTabByAppleScript();
     tabResult = { ...(tabResult || {}), appleScript: asResult };
     if (asResult.ok) tabResult.ok = true;
-    else if (asResult.skipped === 'not-authorized') {
-      // 未授权不是失败：按环境跳过退出 0，等到系统设置 → 隐私与安全性 → 自动化授权后再跑
-      console.log('环境跳过：Chrome 自动化未授权，不发送 AppleEvent 切标签（' + (asResult.warning || '') + '）');
-      await overlay.status('环境跳过：Chrome 自动化未授权');
-      await overlay.log('跳过扫描：Chrome 自动化未授权（不弹授权框）');
-      evidence.skipped = { reason: 'automation-not-authorized', detail: asResult.warning || '' };
-      console.log(JSON.stringify({ ok: true, skipped: true, reason: 'automation-not-authorized' }, null, 2));
+    else if (asResult.skipped) {
+      // 未授权 / Chrome 没在运行都不是失败：按环境跳过退出 0
+      const reason = asResult.skipped === 'not-authorized' ? 'automation-not-authorized' : 'chrome-not-running';
+      console.log('环境跳过：' + (asResult.warning || reason));
+      await overlay.status('环境跳过：' + (asResult.warning || reason));
+      await overlay.log('跳过扫描：' + (asResult.warning || reason));
+      evidence.skipped = { reason, detail: asResult.warning || '' };
+      console.log(JSON.stringify({ ok: true, skipped: true, reason, detail: asResult.warning || '' }, null, 2));
       return;
     }
   }

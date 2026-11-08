@@ -25,6 +25,7 @@ import { closeOcuMcp } from '../ocu-mcp.mjs';
 import { tokenHeadersFor } from '../local-token.mjs';
 import { decideRestore } from '../front-restore.mjs';
 import { createAppleEventPreflight, runAppleEventGuarded, SYSTEM_EVENTS_BUNDLE_ID } from '../appleevent-preflight.mjs';
+import { classifyOsascriptError } from '../applescript-driver.mjs';
 import { createRiskGate } from '../front-risk.mjs';
 import { installEmergencyAppCleanup } from '../task-emergency-cleanup.mjs';
 import { quitAppSync } from '../sync-quit.mjs';
@@ -93,17 +94,62 @@ export async function restoreFront(target, options = {}) {
     preflight: typeof opts.preflight === 'function' ? opts.preflight : systemEventsPreflight,
     fallback: { skipped: true },
     onWarning: typeof opts.onWarning === 'function' ? opts.onWarning : warnRestoreBlocked,
+    // L4：必须把 execFile 的 error 收下来——之前直接 resolve({ok:true})，脚本失败也会被当成还原成功
     run: () => new Promise((resolve) => {
-      execFileImpl('/usr/bin/osascript', ['-e', 'tell application "System Events" to set frontmost of process ' + JSON.stringify(target) + ' to true'], () => resolve({ ok: true }));
+      execFileImpl('/usr/bin/osascript', ['-e', 'tell application "System Events" to set frontmost of process ' + JSON.stringify(target) + ' to true'], (error, stdout, stderr) => {
+        resolve({
+          ok: !error,
+          code: error ? (Number.isFinite(error.code) ? error.code : 1) : 0,
+          stderr: String(stderr || (error && (error.stderr || error.message)) || ''),
+        });
+      });
     }),
   });
-  return {
-    ok: result.ran === true,
-    allowed: result.allowed !== false,
-    skipped: result.allowed === false ? 'not-authorized' : '',
-    warning: result.warning || '',
-    error: result.error || '',
-  };
+  if (result.allowed === false) {
+    return { ok: false, allowed: false, skipped: 'not-authorized', warning: result.warning || '', error: '' };
+  }
+  if (result.error) {
+    return { ok: false, allowed: true, skipped: '', warning: '', error: String(result.error).slice(0, 160) };
+  }
+  const value = result.value || {};
+  if (value.code !== 0) {
+    const kind = classifyOsascriptError(value.stderr);
+    const detail = String(value.stderr || '').trim().slice(0, 160);
+    if (kind === 'denied' || kind === 'needs-consent') {
+      return { ok: false, allowed: true, skipped: 'not-authorized', warning: '自动化未授权（' + kind + '），已跳过前台还原 AppleEvent（不弹授权框）', error: detail };
+    }
+    if (kind === 'app-not-running') {
+      return { ok: false, allowed: true, skipped: 'app-not-running', warning: 'System Events 没在运行，前台还原未执行', error: detail };
+    }
+    return { ok: false, allowed: true, skipped: '', warning: '', error: detail || 'osascript 前台还原失败' };
+  }
+  return { ok: true, allowed: true, skipped: '', warning: '', error: '' };
+}
+
+/**
+ * 把一次还原结果写进行里（纯函数，便于单测）：未授权/应用没在运行时绝不记 frontRestored=true。
+ * @param {object} row
+ * @param {{ok?:boolean, leftUser?:boolean, attempts?:number, skipped?:string, warning?:string}} restored
+ * @param {{afterQuit?:boolean}} [options]
+ */
+export function applyRestoreToRow(row, restored, options = {}) {
+  const r = restored || {};
+  const opts = options || {};
+  if (opts.afterQuit) {
+    row.frontRestoredAfterQuit = Boolean(r.ok);
+    if (r.ok) row.frontRestored = true;
+    else if (r.leftUser) row.frontLeftToUser = true;
+  } else {
+    row.frontRestored = Boolean(r.ok);
+    row.frontLeftToUser = Boolean(r.leftUser);
+    if (typeof r.attempts === 'number') row.frontRestoreAttempts = r.attempts;
+  }
+  if (r.skipped) {
+    row.frontRestored = false;
+    row.frontRestoreSkipped = r.skipped;
+    row.frontRestoreWarning = r.warning || '';
+  }
+  return row;
 }
 
 /** 还原前台并复查：有些应用会在还原之后又异步把自己顶上来，所以多试几次、以最终状态为准 */
@@ -115,9 +161,9 @@ async function restoreFrontChecked(target, touched = [], attempts = 3) {
     // 用户自己切到了别的应用：别再抢，如实记下来
     if (decision === 'leave-user') return { ok: false, leftUser: true, attempts: i, final: now };
     const restored = await restoreFront(target);
-    if (restored.skipped === 'not-authorized') {
-      // 未授权：还原是 no-op，不发事件；调用方按环境跳过处理，不判任务失败
-      return { ok: false, skipped: 'not-authorized', warning: restored.warning, attempts: i + 1, final: now };
+    if (restored.skipped) {
+      // 未授权 / System Events 没在运行：还原是 no-op、不发事件；调用方按环境跳过处理，不判任务失败
+      return { ok: false, skipped: restored.skipped, warning: restored.warning, attempts: i + 1, final: now };
     }
     await sleep(350);
   }
@@ -398,13 +444,7 @@ async function main() {
     row.frontRestored = null;
     if (after !== before) {
       const restored = await restoreFrontChecked(before, [app.name, app.process, localName]);
-      row.frontRestored = restored.ok;
-      row.frontLeftToUser = Boolean(restored.leftUser);
-      row.frontRestoreAttempts = restored.attempts;
-      if (restored.skipped === 'not-authorized') {
-        row.frontRestoreSkipped = 'not-authorized';
-        row.frontRestoreWarning = restored.warning || '';
-      }
+      applyRestoreToRow(row, restored);
     }
     // 启动"成功"但现在已经没进程了：应用自己退出的，要如实标出来（抖音/Antigravity 实测这样）
     if (launch.launched) {
@@ -429,13 +469,7 @@ async function main() {
           2,
         );
         row.frontAfterQuit = afterQuitFront;
-        row.frontRestoredAfterQuit = restored.ok;
-        if (restored.ok) row.frontRestored = true;
-        else if (restored.leftUser) row.frontLeftToUser = true;
-        if (restored.skipped === 'not-authorized') {
-          row.frontRestoreSkipped = 'not-authorized';
-          row.frontRestoreWarning = restored.warning || '';
-        }
+        applyRestoreToRow(row, restored, { afterQuit: true });
       }
     }
     rows.push(row);
@@ -449,8 +483,8 @@ async function main() {
   // 判定口径：以"最终前台是否回到起点"为准；单步被抢但已还原的，如实留在行里当证据
   const allFrontOk = frontEnd === frontStart;
   // 未授权导致还原 no-op：不能判成任务失败，按环境跳过（exit 0）处理
-  const restoreSkipped = finalRestore.skipped === 'not-authorized'
-    || rows.some((r) => r.frontRestoreSkipped === 'not-authorized');
+  const restoreSkipped = Boolean(finalRestore.skipped)
+    || rows.some((r) => Boolean(r.frontRestoreSkipped));
   const skippedRows = rows.filter((r) => r.skipped);
   const verdict = summarizeMatrixVerdict(rows, allFrontOk);
   if (restoreSkipped && !allFrontOk) {

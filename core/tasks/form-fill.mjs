@@ -17,6 +17,7 @@ const APPLEEVENT_BLOCKED = Object.freeze({ code: -1, stdout: '', stderr: 'automa
 const FRAG = 'zhipin.com/web/geek/jobs';
 import { resolveOcu, isScreenLocked, lockedSkipNotice } from '../platform.mjs';
 import { createAppleEventPreflight, runAppleEventGuarded } from '../appleevent-preflight.mjs';
+import { classifyOsascriptError } from '../applescript-driver.mjs';
 import { hidIdleMs } from '../front-watch.mjs';
 import { shouldDeferForActiveUser } from '../user-activity.mjs';
 import { isAppRunning } from '../background.mjs';
@@ -123,10 +124,36 @@ nodeRepl.write("SWITCH_TAB_JSON=" + JSON.stringify(out));
 // H2：每个 AppleEvent 都先过 core/appleevent-preflight.mjs 的静默预检——
 //   granted/unknown → 照旧执行（参数逐字不变）；denied/needs-consent → 不发事件，返回 skipped。
 // options 仅供单测注入（run/preflight/onWarning），生产调用不传。
+function classifyAppleEventFailure(stderrText) {
+  const kind = classifyOsascriptError(stderrText);
+  if (kind === 'denied' || kind === 'needs-consent') {
+    return { skipped: 'not-authorized', warning: '自动化未授权（' + kind + '），已停止 AppleEvent（不弹授权框）' };
+  }
+  if (kind === 'app-not-running') {
+    return { skipped: 'app-not-running', warning: 'Chrome 没在运行，AppleEvent 未执行（不为了测试启动它）' };
+  }
+  return null;
+}
+
 export async function switchTabByAppleScript(options = {}) {
   const opts = options || {};
   const call = typeof opts.run === 'function' ? opts.run : run;
   const preflight = typeof opts.preflight === 'function' ? opts.preflight : chromeAppleEventPreflight;
+  const checkRunning = typeof opts.isAppRunning === 'function' ? opts.isAppRunning : isAppRunning;
+  // M3：Chrome 没在运行时绝不发 AppleEvent（否则 tell 会把它拉起来，未授权时还可能弹框）
+  let chromeRunning = false;
+  try {
+    chromeRunning = Boolean(await checkRunning({ bundleId: CHROME_BUNDLE_ID, appName: APP, processName: APP }));
+  } catch {
+    chromeRunning = false;
+  }
+  if (!chromeRunning) {
+    return {
+      ok: false,
+      skipped: 'app-not-running',
+      warning: 'Chrome 没在运行，不为了测试去启动它（AppleEvent 会把未运行的应用拉起来）',
+    };
+  }
   const onWarning = typeof opts.onWarning === 'function'
     ? opts.onWarning
     : ((message) => console.warn('⚠️ ' + message));
@@ -142,15 +169,29 @@ export async function switchTabByAppleScript(options = {}) {
 
   const tabs = await guarded('读取 Chrome 标签页（AppleEvent）', ['-e', 'tell application "Google Chrome" to get URL of every tab of window 1']);
   if (tabs.allowed === false) return { ok: false, skipped: 'not-authorized', warning: tabs.warning, error: tabs.warning };
-  if (tabs.value.code !== 0) return { ok: false, error: tabs.value.stderr.trim() };
+  if (tabs.value.code !== 0) {
+    const classified = classifyAppleEventFailure(tabs.value.stderr);
+    if (classified) return { ok: false, ...classified, error: classified.warning };
+    return { ok: false, error: tabs.value.stderr.trim() };
+  }
   const list = tabs.value.stdout.split(', ').map((s) => s.trim());
   const index = list.findIndex((u) => u.includes(fragment));
   if (index < 0) return { ok: false, error: '没有 BOSS 职位页标签' };
   const set = await guarded('切换 Chrome 标签页（AppleEvent）', ['-e', 'tell application "Google Chrome" to set active tab index of window 1 to ' + (index + 1)]);
   if (set.allowed === false) return { ok: false, skipped: 'not-authorized', warning: set.warning, error: set.warning };
+  if (set.value.code !== 0) {
+    const classified = classifyAppleEventFailure(set.value.stderr);
+    if (classified) return { ok: false, ...classified, error: classified.warning };
+    // 其它失败保持原逻辑：不提前返回，交给后面读当前标签再判定
+  }
   await new Promise((r) => setTimeout(r, 900));
   const check = await guarded('读取 Chrome 当前标签页（AppleEvent）', ['-e', 'tell application "Google Chrome" to get URL of active tab of window 1']);
   if (check.allowed === false) return { ok: false, skipped: 'not-authorized', warning: check.warning, error: check.warning };
+  if (check.value.code !== 0) {
+    const classified = classifyAppleEventFailure(check.value.stderr);
+    if (classified) return { ok: false, ...classified, error: classified.warning };
+    return { ok: false, error: check.value.stderr.trim() };
+  }
   const url = check.value.stdout.trim();
   return { ok: url.includes(fragment), url, tabIndex: index + 1 };
 }
@@ -304,9 +345,11 @@ async function main() {
   if (!tab || !tab.ok) {
     const as = await switchTabByAppleScript();
     tab = Object.assign({}, tab || {}, { appleScript: as, ok: as.ok, after: as.url });
-    if (as.skipped === 'not-authorized') {
-      // 未授权不是失败：按环境跳过退出 0（等用户到 系统设置 → 隐私与安全性 → 自动化 授权）
-      console.log('环境跳过：Chrome 自动化未授权，不发送 AppleEvent 切标签（' + (as.warning || '') + '）');
+    if (as.skipped) {
+      // 未授权 / Chrome 没在运行都不是失败：按环境跳过退出 0（L6 补结构化 JSON，和 boss-scan 一致）
+      const reason = as.skipped === 'not-authorized' ? 'automation-not-authorized' : 'chrome-not-running';
+      console.log('环境跳过：' + (as.warning || reason));
+      console.log(JSON.stringify({ ok: true, skipped: true, reason, detail: as.warning || '' }, null, 2));
       return;
     }
   }
