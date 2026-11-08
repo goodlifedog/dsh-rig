@@ -15,6 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { overlay } from './agentd.mjs';
 import { signalProcessTree } from './orphan-cleanup.mjs';
+import { evaluateTaskPermissionGate, overrideFromEnv, permissionSkipLines } from './permission-gate.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TASKS_DIR = path.join(__dirname, 'tasks');
@@ -147,10 +148,52 @@ process.on('SIGTERM', () => {
   }, 6000).unref();
 });
 
+/** 读任务源码 → 推断 need → 按需探测权限 → 判定；任务不需要 AX/录屏时返回 null（不探测） */
+async function taskPermissionGate(task) {
+  let source = '';
+  try { source = fs.readFileSync(task.file, 'utf8'); } catch { return null; }
+  try { return await evaluateTaskPermissionGate({ source, allowOverride: overrideFromEnv() }); } catch { return null; }
+}
+
+/**
+ * 环境跳过也要在 logs/runs 里留一条 code=0 的记录：
+ * 健康面板/巡检按 {"event":"end","code":...} 统计，缺了会被当成「运行中」，写成非 0 又会被当失败。
+ */
+function writeEnvSkipLog(name, reason) {
+  try {
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+    const logFile = path.join(LOG_DIR, stamp() + '-' + name + '.jsonl');
+    const ts = new Date().toISOString();
+    const lines = [
+      { ts, task: name, event: 'start', pid: process.pid },
+      { ts, task: name, event: 'env-skip', reason },
+      { ts, task: name, event: 'end', code: 0, envSkip: true, durationMs: 0 },
+    ];
+    fs.writeFileSync(logFile, lines.map((line) => JSON.stringify(line)).join('\n') + '\n');
+    return logFile;
+  } catch { return null; }
+}
+
 async function runTask(name, { retries = 1, timeoutMs = 300000 } = {}) {
   const tasks = listTasks();
   const task = tasks.find((t) => t.name === name);
   if (!task) throw new Error('未知任务：' + name + '（可用：' + tasks.map((t) => t.name).join(', ') + '）');
+
+  // H1 权限闸门：任务需要 AX/录屏但系统没授权时按「环境跳过」（exit 0）处理，绝不记 FAIL。
+  // 放在 spawn 之前：缺权限时任务进程根本不起，避免每条通道各报一遍错、最后被当成 11 项真失败。
+  const gate = await taskPermissionGate(task);
+  if (gate && gate.warning) {
+    console.warn('[runner] ' + gate.warning);
+    await overlay.log(gate.warning).catch(() => {});
+  }
+  if (gate && !gate.proceed) {
+    for (const line of permissionSkipLines(gate)) console.log('[runner] ' + line);
+    console.log('[runner] 任务未启动（环境跳过，不算失败）；授权后重跑即可。');
+    await overlay.status('环境跳过：' + name);
+    await overlay.log(gate.skipReason).catch(() => {});
+    const logFile = writeEnvSkipLog(name, gate.skipReason);
+    return { ok: true, envSkip: true, skipReason: gate.skipReason, attempts: [], logFile };
+  }
 
   let attempt = 0;
   const attempts = [];

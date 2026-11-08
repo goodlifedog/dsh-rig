@@ -1,0 +1,183 @@
+'use strict';
+// H1 权限闸门：任务执行前先看权限，缺权限按「环境跳过」（exit 0/不是 FAIL），探测不出来不卡任务。
+// 全部纯函数 / 注入探测，绝不真的跑 ocu doctor，也不碰屏幕。
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  decidePermissionGate, permissionParamsFromCheckPermissions, probePermissions,
+  inferTaskPermissionNeed, evaluateTaskPermissionGate, permissionSkipLines,
+  overrideFromEnv, PERMISSION_SETTINGS, OVERRIDE_ENV, PERMISSION_KEYS,
+} from '../core/permission-gate.mjs';
+
+const AX = { accessibility: true, screenCapture: false };
+const SC = { accessibility: false, screenCapture: true };
+
+// ---------- decidePermissionGate：need 有/无 × perms true/false/undefined × override ----------
+
+test('need 为空（任务不需要 AX/录屏）→ 放行，且不因 perms=false 拦（组合 1）', () => {
+  for (const perms of [true, false, undefined, { accessibility: false, screenCapture: false }]) {
+    const d = decidePermissionGate({ need: {}, perms });
+    assert.equal(d.proceed, true, JSON.stringify(perms));
+    assert.equal(d.skipped, false);
+    assert.equal(d.warning, '');
+    assert.deepEqual(d.missing, []);
+  }
+});
+
+test('need AX + perms 已授权 → 放行且无 warning（组合 2）', () => {
+  const d = decidePermissionGate({ need: AX, perms: { accessibility: true } });
+  assert.equal(d.proceed, true);
+  assert.equal(d.skipped, false);
+  assert.equal(d.forced, false);
+  assert.equal(d.warning, '');
+  assert.equal(d.skipReason, '');
+});
+
+test('need AX + perms 明确缺失 → 环境跳过，提示指到辅助功能设置页（组合 3）', () => {
+  const d = decidePermissionGate({ need: AX, perms: { accessibility: false }, allowOverride: false });
+  assert.equal(d.proceed, false);
+  assert.equal(d.skipped, true);
+  assert.match(d.skipReason, /^环境跳过：/);
+  assert.match(d.skipReason, /缺少辅助功能/);
+  assert.match(d.skipReason, /隐私与安全性 → 辅助功能/);
+  assert.ok(d.skipReason.includes(OVERRIDE_ENV), '要告诉用户临时忽略的开关');
+  assert.deepEqual(d.missing, ['accessibility']);
+  assert.equal(d.settings.length, 1);
+  assert.match(d.settings[0].url, /Privacy_Accessibility/);
+});
+
+test('need AX + perms 缺失 + allowOverride → 放行但标 forced 且带 warning（组合 4）', () => {
+  const d = decidePermissionGate({ need: AX, perms: { accessibility: false }, allowOverride: true });
+  assert.equal(d.proceed, true);
+  assert.equal(d.skipped, false);
+  assert.equal(d.forced, true);
+  assert.match(d.warning, /强制继续/);
+  assert.match(d.warning, new RegExp(OVERRIDE_ENV));
+});
+
+test('need AX+录屏 + 只缺录屏 → 跳过原因只点名屏幕录制（组合 5）', () => {
+  const d = decidePermissionGate({ need: { accessibility: true, screenCapture: true }, perms: { accessibility: true, screenCapture: false } });
+  assert.equal(d.proceed, false);
+  assert.match(d.skipReason, /屏幕录制/);
+  assert.doesNotMatch(d.skipReason, /缺少辅助功能/);
+  assert.match(d.skipReason, /隐私与安全性 → 屏幕录制/);
+  assert.deepEqual(d.missing, ['screenCapture']);
+  assert.match(d.settings[0].url, /Privacy_ScreenCapture/);
+});
+
+test('need AX+录屏 + 一个缺失一个探测不出来 → 缺的优先（仍然跳过）（组合 6）', () => {
+  const d = decidePermissionGate({ need: { accessibility: true, screenCapture: true }, perms: { accessibility: undefined, screenCapture: false } });
+  assert.equal(d.proceed, false);
+  assert.equal(d.skipped, true);
+  assert.deepEqual(d.missing, ['screenCapture']);
+  assert.deepEqual(d.unknown, ['accessibility']);
+});
+
+test('need AX + perms 探测不出来（undefined）→ 放行 + warning，不卡任务（组合 7）', () => {
+  const d = decidePermissionGate({ need: AX, perms: { accessibility: undefined } });
+  assert.equal(d.proceed, true, '探测不出来绝不能卡任务');
+  assert.equal(d.skipped, false);
+  assert.match(d.warning, /探测不出来/);
+  assert.match(d.warning, /ocu doctor/);
+  assert.match(d.warning, /隐私与安全性 → 辅助功能/);
+  assert.deepEqual(d.unknown, ['accessibility']);
+});
+
+test('perms 形状不对（null/字符串/缺键）按探测不出来处理（组合 8）', () => {
+  for (const perms of [null, {}, { accessibility: null }, { accessibility: 'yes' }]) {
+    const d = decidePermissionGate({ need: AX, perms });
+    assert.equal(d.proceed, true, JSON.stringify(perms));
+    assert.match(d.warning, /探测不出来/);
+  }
+});
+
+test('override 不会把「探测不出来」变成 missing：仍然只给 warning', () => {
+  const d = decidePermissionGate({ need: AX, perms: { accessibility: undefined }, allowOverride: true });
+  assert.equal(d.proceed, true);
+  assert.equal(d.forced, false);
+  assert.match(d.warning, /探测不出来/);
+});
+
+// ---------- checkPermissions 结果 → perms 形状 ----------
+
+test('permissionParamsFromCheckPermissions：授权/缺项/unknown/Windows/空结果', () => {
+  assert.deepEqual(permissionParamsFromCheckPermissions({ ok: true, missing: [], platform: 'darwin' }), { accessibility: true, screenCapture: true });
+  assert.deepEqual(permissionParamsFromCheckPermissions({ ok: false, missing: ['screenCapture'], platform: 'darwin' }), { accessibility: true, screenCapture: false });
+  assert.deepEqual(permissionParamsFromCheckPermissions({ ok: false, missing: ['accessibility'], platform: 'darwin' }), { accessibility: false, screenCapture: true });
+  assert.deepEqual(permissionParamsFromCheckPermissions({ ok: false, missing: ['unknown'], platform: 'darwin' }), { accessibility: undefined, screenCapture: undefined });
+  assert.deepEqual(permissionParamsFromCheckPermissions(null), { accessibility: undefined, screenCapture: undefined });
+  assert.deepEqual(permissionParamsFromCheckPermissions({ platform: 'windows' }), { accessibility: true, screenCapture: true }, 'Windows 无 TCC，不挡任务');
+  assert.deepEqual(permissionParamsFromCheckPermissions({ platform: 'win32' }), { accessibility: true, screenCapture: true });
+});
+
+test('probePermissions：注入的探测抛错/超时按 undefined，不抛给调用方', async () => {
+  const got = await probePermissions(async () => { throw new Error('ocu doctor 超时'); });
+  assert.deepEqual(got, { accessibility: undefined, screenCapture: undefined });
+
+  const ok = await probePermissions(async () => ({ ok: false, missing: ['accessibility'], platform: 'darwin' }));
+  assert.deepEqual(ok, { accessibility: false, screenCapture: true });
+});
+
+// ---------- 任务需求静态推断 ----------
+
+test('inferTaskPermissionNeed：AX 操作要辅助功能；ocu 截图/系统 screencapture 才要录屏', () => {
+  assert.deepEqual(inferTaskPermissionNeed("await state('Calculator');"), { accessibility: true, screenCapture: false });
+  assert.deepEqual(inferTaskPermissionNeed("await readSafe(APP); await click(APP, 1);"), { accessibility: true, screenCapture: false });
+  assert.deepEqual(inferTaskPermissionNeed("const s = await ocu.call('get_app_state', { include_screenshot: true });"), { accessibility: true, screenCapture: true });
+  assert.deepEqual(inferTaskPermissionNeed("exec('/usr/sbin/screencapture', ['-x']);"), { accessibility: false, screenCapture: true });
+  // 纯 CDP 演示：Page.captureScreenshot 不是系统录屏权限，不需要挡
+  assert.deepEqual(inferTaskPermissionNeed("await page.send('Page.captureScreenshot', { format: 'jpeg' });"), { accessibility: false, screenCapture: false });
+  assert.deepEqual(inferTaskPermissionNeed('console.log(1);'), { accessibility: false, screenCapture: false });
+});
+
+// ---------- 编排：不需要就不探测；探测失败不卡 ----------
+
+test('evaluateTaskPermissionGate：任务不需要权限时返回 null，且不调用探测', async () => {
+  let probes = 0;
+  const result = await evaluateTaskPermissionGate({
+    source: "await page.send('Page.navigate', { url: 'about:blank' });",
+    probe: async () => { probes += 1; return { accessibility: true, screenCapture: true }; },
+  });
+  assert.equal(result, null);
+  assert.equal(probes, 0, '不需要权限的任务不该跑 ocu doctor');
+});
+
+test('evaluateTaskPermissionGate：需要权限且探测失败 → 放行 + warning（不卡任务）', async () => {
+  const result = await evaluateTaskPermissionGate({
+    source: "await state('Calculator');",
+    probe: async () => { throw new Error('ocu 没装'); },
+  });
+  assert.ok(result, '有 need 就应返回判定');
+  assert.equal(result.proceed, true);
+  assert.match(result.warning, /探测不出来/);
+});
+
+test('evaluateTaskPermissionGate：需要权限且明确缺失 → skip 判定（调用方按 exit 0）', async () => {
+  const result = await evaluateTaskPermissionGate({
+    source: "await state('Calculator');",
+    probe: async () => ({ accessibility: false, screenCapture: true }),
+    allowOverride: false,
+  });
+  assert.equal(result.proceed, false);
+  assert.equal(result.skipped, true);
+  assert.match(result.skipReason, /环境跳过/);
+});
+
+// ---------- 展示/开关辅助 ----------
+
+test('permissionSkipLines：原因一行 + 每个缺失权限一行设置页深链', () => {
+  const d = decidePermissionGate({ need: { accessibility: true, screenCapture: true }, perms: { accessibility: false, screenCapture: false } });
+  const lines = permissionSkipLines(d);
+  assert.equal(lines.length, 3);
+  assert.match(lines[0], /环境跳过/);
+  assert.ok(lines.some((l) => l.includes(PERMISSION_SETTINGS.accessibility.path) && l.includes(PERMISSION_SETTINGS.accessibility.url)));
+  assert.ok(lines.some((l) => l.includes(PERMISSION_SETTINGS.screenCapture.path) && l.includes(PERMISSION_SETTINGS.screenCapture.url)));
+  assert.deepEqual(PERMISSION_KEYS, ['accessibility', 'screenCapture']);
+});
+
+test('overrideFromEnv：只有 AGENT_ALLOW_MISSING_PERMISSION=1 才算强制', () => {
+  assert.equal(overrideFromEnv({ [OVERRIDE_ENV]: '1' }), true);
+  assert.equal(overrideFromEnv({ [OVERRIDE_ENV]: '0' }), false);
+  assert.equal(overrideFromEnv({}), false);
+});

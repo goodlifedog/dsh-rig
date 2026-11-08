@@ -15,12 +15,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { overlay } from './agentd.mjs';
-import { envSkipReason } from './run-classify.mjs';
+import { classifySelfTest, envSkipReason } from './run-classify.mjs';
+import { checkPermissions } from './permissions.mjs';
 import { isLoopbackHost } from './safety.mjs';
 import { decideRetry } from './retry-policy.mjs';
 import { frontAppFast, startFrontWatch } from './front-watch.mjs';
 import { ensureToken, isAuthorized } from './local-token.mjs';
 import { parseProcessTable, findOrphans, signalProcessTree, isProcessAlive, killTaskTree } from './orphan-cleanup.mjs';
+import { evaluateTaskPermissionGate, overrideFromEnv, permissionSkipLines } from './permission-gate.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -63,7 +65,10 @@ function probe(cmd, args, timeout = 6000) {
 
 async function selfTest() {
   const checks = {};
-  checks.systemEvents = await probe('/usr/bin/osascript', ['-e', 'tell application "System Events" to count processes']);
+  // 兼容字段：老消费者（scripts/health.mjs）读 checks.systemEvents 判断系统事件。
+  // 它实际探的是「自动化」权限（让 System Events 别的应用），所以同时作为 automation 项。
+  const automationProbe = await probe('/usr/bin/osascript', ['-e', 'tell application "System Events" to count processes']);
+  checks.systemEvents = automationProbe;
   const ocuPath = [process.env.OCU_BIN, path.join(ROOT, 'third_party', 'open-computer-use', 'bin', 'ocu')]
     .filter(Boolean).find((p) => { try { return fs.existsSync(p); } catch { return false; } });
   if (ocuPath) {
@@ -71,11 +76,32 @@ async function selfTest() {
   } else {
     checks.ocu = { ok: false, out: '', error: '找不到 ocu（可设 OCU_BIN）' };
   }
-  const axOk = checks.systemEvents.ok;
+  // 辅助功能 / 屏幕录制：用 ocu doctor 的结论（只读，不会弹 TCC 授权窗口）
+  let permissions = null;
+  try { permissions = await checkPermissions(); } catch {}
+  const permKnown = Boolean(permissions && Array.isArray(permissions.missing) && permissions.missing.indexOf('unknown') === -1);
+  const accessibilityOk = permKnown ? permissions.missing.indexOf('accessibility') === -1 : false;
+  const screenCaptureOk = permKnown ? permissions.missing.indexOf('screenCapture') === -1 : false;
+
+  // H5：三项分开报，各自 hint 指向正确设置页（辅助功能 / 自动化 / 屏幕录制）
+  const classified = classifySelfTest({
+    accessibility: accessibilityOk,
+    automation: automationProbe.ok,
+    screenCapture: screenCaptureOk,
+    executable: process.execPath,
+  });
+  checks.accessibility = Object.assign({ source: 'ocu doctor', trusted: accessibilityOk }, classified.checks.accessibility);
+  checks.automation = Object.assign({}, automationProbe, classified.checks.automation);
+  checks.screenCapture = Object.assign({ source: 'ocu doctor', granted: screenCaptureOk }, classified.checks.screenCapture);
   return {
-    ok: axOk,
+    // 向后兼容：老消费者只看 ok（旧语义=系统事件/自动化可用）
+    ok: automationProbe.ok,
+    allOk: classified.ok,
     checks,
-    hint: axOk ? '' : '后台服务缺少辅助功能权限：系统设置 → 隐私与安全性 → 辅助功能，把 ' + process.execPath + ' 加进去',
+    names: classified.names,
+    hints: classified.hints,
+    hint: classified.hint,
+    missing: classified.missing,
   };
 }
 
@@ -213,16 +239,58 @@ function stopActiveFrontWatch() {
   }
 }
 
-function runTask(name, attempt = 0) {
-  return new Promise((resolve) => {
-    // 任务名必须是任务目录里真实存在的名字：不做校验会被 ../ 跳出目录执行任意脚本
-    const available = listTasks();
-    if (!available.includes(name)) {
-      return resolve({ ok: false, error: '未知任务：' + name, available: available });
-    }
-    const file = path.join(TASKS_DIR, name + '.mjs');
-    if (!fs.existsSync(file)) return resolve({ ok: false, error: '未知任务：' + name, available: available });
+/** 读任务源码 → 推断 need → 按需探测权限 → 判定；任务不需要 AX/录屏时返回 null（不探测） */
+async function taskPermissionGate(file) {
+  let source = '';
+  try { source = fs.readFileSync(file, 'utf8'); } catch { return null; }
+  try { return await evaluateTaskPermissionGate({ source, allowOverride: overrideFromEnv() }); } catch { return null; }
+}
 
+/**
+ * 环境跳过（缺权限）：不 spawn 任务，写一条 code=0 的日志 + history（envSkip=true）。
+ * 这样健康统计/巡检不会把它记成 FAIL，也不会当成「运行中」。
+ */
+function envSkipEntry(name, attempt, gate) {
+  fs.mkdirSync(LOGS, { recursive: true });
+  const logFile = path.join(LOGS, name + '-' + new Date().toISOString().replace(/[:.]/g, '-') + '.log');
+  const reason = gate.skipReason || '环境跳过：权限不足';
+  try {
+    fs.writeFileSync(logFile, [reason].concat(permissionSkipLines(gate)).join('\n') + '\n');
+  } catch {}
+  const entry = {
+    name, attempt, ok: true, code: 0, cancelled: false,
+    envSkip: true, skipReason: reason, frontSteals: 0,
+    startedAt: new Date().toISOString(), durationMs: 0, logFile,
+  };
+  state.current = null;
+  state.history.unshift(entry);
+  state.history = state.history.slice(0, 200);
+  console.log('[daemon] ' + reason);
+  overlay.status('环境跳过：' + name + '（缺权限）', 'idle').catch(() => {});
+  overlay.log(reason).catch(() => {});
+  overlay.window(null).catch(() => {});
+  return entry;
+}
+
+async function runTask(name, attempt = 0) {
+  // 任务名必须是任务目录里真实存在的名字：不做校验会被 ../ 跳出目录执行任意脚本
+  const available = listTasks();
+  if (!available.includes(name)) {
+    return { ok: false, error: '未知任务：' + name, available: available };
+  }
+  const file = path.join(TASKS_DIR, name + '.mjs');
+  if (!fs.existsSync(file)) return { ok: false, error: '未知任务：' + name, available: available };
+
+  // H1 权限闸门：需要 AX/录屏但系统没授权时按「环境跳过」处理（不 spawn、不记 FAIL）。
+  // 探测失败（ocu doctor 读不到）时 evaluateTaskPermissionGate 会 proceed=true + warning，不会卡死队列。
+  const gate = await taskPermissionGate(file);
+  if (gate && gate.warning) {
+    console.warn('[daemon] ' + gate.warning);
+    overlay.log(gate.warning).catch(() => {});
+  }
+  if (gate && !gate.proceed) return envSkipEntry(name, attempt, gate);
+
+  return await new Promise((resolve) => {
     fs.mkdirSync(LOGS, { recursive: true });
     const logFile = path.join(LOGS, name + '-' + new Date().toISOString().replace(/[:.]/g, '-') + '.log');
     const out = fs.createWriteStream(logFile);

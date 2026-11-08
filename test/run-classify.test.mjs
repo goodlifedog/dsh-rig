@@ -1,7 +1,7 @@
 'use strict';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyRun, isFailedRun, envSkipReason } from '../core/run-classify.mjs';
+import { classifyRun, isFailedRun, envSkipReason, classifyPermissionText, classifySelfTest } from '../core/run-classify.mjs';
 
 const end = (code) => '{"event":"end","code":' + code + ',"durationMs":1200}';
 
@@ -140,4 +140,121 @@ test('健康检查里的「锁屏状态 未锁屏」不能判成环境跳过（�
 test('「屏幕已锁」这类结论仍然算环境跳过', () => {
   assert.equal(envSkipReason('屏幕已锁，AX 不可用'), '锁屏');
   assert.equal(envSkipReason('环境跳过：屏幕已锁，稍后再跑'), '任务自报环境跳过');
+});
+
+// ---------- H4：权限类环境跳过 ----------
+
+test('H4 权限文案（英文）：辅助功能 / 屏幕录制 / 自动化分别归类', () => {
+  const cases = [
+    ['Accessibility permission is required for this operation', '缺少辅助功能权限'],
+    ['Screen Recording permission is required to capture windows', '缺少屏幕录制权限'],
+    ['Not authorized to send Apple events to System Events.', '缺少自动化（Apple 事件）权限'],
+    ['CGRequestScreenCaptureAccess() returned false', '缺少屏幕录制权限'],
+    ['could not create image from window', '缺少屏幕录制权限'],
+    ['unable to capture screen', '缺少屏幕录制权限'],
+  ];
+  for (const [text, expected] of cases) {
+    assert.equal(classifyPermissionText(text), expected, text);
+  }
+});
+
+test('H4 权限文案（中文 + AppleScript 状态码）：分别归类', () => {
+  const cases = [
+    ['没有辅助功能权限，无法读取界面树', '缺少辅助功能权限'],
+    ['系统未授予屏幕录制权限', '缺少屏幕录制权限'],
+    ['自动化权限缺失：不允许控制 System Events', '缺少自动化（Apple 事件）权限'],
+    ['execution error: 不允许发送 Apple 事件 (-1743)', '缺少自动化（Apple 事件）权限'],
+    ['System Events got an error: -1744', '缺少自动化（Apple 事件）权限'],
+    ['errAEEventNotPermitted', '缺少自动化（Apple 事件）权限'],
+    // 中文里「辅助功能」和否定词之间常有空格/冒号，不能只认连写「辅助功能权限」
+    ['权限检查：辅助功能 未授权', '缺少辅助功能权限'],
+    ['辅助功能未开启，先授权再来', '缺少辅助功能权限'],
+  ];
+  for (const [text, expected] of cases) {
+    assert.equal(classifyPermissionText(text), expected, text);
+  }
+});
+
+test('H4 健康状态行（已授权）不能被判成缺权限', () => {
+  const granted = [
+    '辅助功能 + 屏幕录制均已授权',
+    '系统权限 辅助功能 + 屏幕录制均已授权',
+    'accessibility granted, screen recording granted',
+  ];
+  for (const text of granted) assert.equal(classifyPermissionText(text), '', text);
+});
+
+test('H4 非权限文本必须仍返回空（不能吞掉真失败）', () => {
+  const cases = [
+    'AssertionError: expected 3 to equal 2',
+    'FAIL: 改成了指定关键词',
+    '参数错误：--count 必须是正数',
+    "Cannot find module './core/missing.mjs'",
+    'spawn /wrong/path/ocu ENOENT',
+    'spawn /usr/bin/osascript ENOENT',
+    'FAIL: 投递未送达 3 条',
+    '结果: 存在失败项',
+    '',
+  ];
+  for (const text of cases) {
+    assert.equal(classifyPermissionText(text), '', JSON.stringify(text));
+  }
+});
+
+test('H4 同一份日志里既有权限字样又有真实失败：权限聚合也要让位给真失败', () => {
+  const mixed = 'Accessibility permission is required\n  FAIL  搜索框定位成功';
+  assert.equal(classifyPermissionText(mixed), '', '有 FAIL 时不能判成权限环境跳过');
+  assert.equal(envSkipReason(mixed), '', 'envSkipReason 同样保持真失败优先');
+});
+
+test('H4 envSkipReason 吃权限类失败：纯权限失败的运行算环境跳过', () => {
+  const text = '{"event":"end","code":1,"durationMs":800}\n错误：Screen Recording permission is required';
+  const v = classifyRun(text);
+  assert.equal(v.failed, true);
+  assert.equal(v.envSkip, true);
+  assert.equal(v.reason, '缺少屏幕录制权限');
+});
+
+test('H4 任务自报「环境跳过」仍然优先于按文案推断的权限原因', () => {
+  const text = '环境跳过：缺少屏幕录制权限，稍后重试';
+  assert.equal(envSkipReason(text), '任务自报环境跳过');
+});
+
+// ---------- H5：daemon 自检三项分开 ----------
+
+test('H5 classifySelfTest：三项全可用', () => {
+  const r = classifySelfTest({ accessibility: true, automation: true, screenCapture: true, executable: '/opt/app/bin/node' });
+  assert.equal(r.ok, true);
+  assert.equal(r.allOk, true);
+  assert.deepEqual(r.missing, []);
+  assert.equal(r.hint, '');
+  assert.deepEqual(r.names, { accessibility: '辅助功能', automation: '自动化', screenCapture: '屏幕录制' });
+  for (const key of ['accessibility', 'automation', 'screenCapture']) {
+    assert.equal(r.checks[key].ok, true);
+    assert.equal(r.hints[key], '');
+  }
+});
+
+test('H5 classifySelfTest：只有自动化缺失 → 提示指向自动化设置页，不指向辅助功能', () => {
+  const r = classifySelfTest({ accessibility: true, automation: false, screenCapture: true, executable: '/opt/app/bin/node' });
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.missing, ['automation']);
+  assert.match(r.hint, /自动化/);
+  assert.match(r.hint, /隐私与安全性 → 自动化/);
+  assert.match(r.hint, /\/opt\/app\/bin\/node/);
+  assert.doesNotMatch(r.hint, /辅助功能/);
+  assert.equal(r.checks.accessibility.hint, '');
+  assert.equal(r.checks.screenCapture.hint, '');
+});
+
+test('H5 classifySelfTest：三项都缺失 → 三条 hint 各自指向正确设置页', () => {
+  const r = classifySelfTest({ accessibility: false, automation: false, screenCapture: false, executable: '/x/node' });
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.missing, ['accessibility', 'automation', 'screenCapture']);
+  assert.match(r.hints.accessibility, /隐私与安全性 → 辅助功能/);
+  assert.match(r.hints.automation, /隐私与安全性 → 自动化/);
+  assert.match(r.hints.screenCapture, /隐私与安全性 → 屏幕录制/);
+  assert.match(r.hint, /辅助功能/);
+  assert.match(r.hint, /自动化/);
+  assert.match(r.hint, /屏幕录制/);
 });

@@ -12,6 +12,7 @@
 | `AGENTD_PORT` | 7789 | `core/cli.mjs`<br>`core/daemon.mjs`<br>`core/ports.mjs`<br>`core/service.mjs`<br>`overlay/main.js` |
 | `AGENTD_TASKS_DIR` | — | `core/daemon.mjs` |
 | `AGENTD_URL` | — | `core/ports.mjs`<br>`overlay/main.js` |
+| `AGENT_ALLOW_MISSING_PERMISSION` | （开关，设 1 开启） | `core/permission-gate.mjs` |
 | `AGENT_ALLOW_QUERY_TOKEN` | （开关，设 1 开启） | `core/daemon.mjs`<br>`overlay/server.js` |
 | `AGENT_ALLOW_REMOTE_TOKEN` | （开关，设 1 开启） | `core/local-token.cjs` |
 | `AGENT_APP` | ChatGPT | `core/tasks/drive-agent.mjs` |
