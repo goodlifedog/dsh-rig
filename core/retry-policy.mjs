@@ -6,7 +6,7 @@
  */
 
 // 值得重试的特征：换一次时机大概率就好了
-import { ENV_RULES } from './run-classify.mjs';
+import { ENV_RULES, classifyPermissionText } from './run-classify.mjs';
 
 const TRANSIENT = [
   /等待 Chrome 调试端口超时/,
@@ -26,6 +26,10 @@ const NO_RETRY = [
 
 function isTransient(text) {
   const raw = String(text || '');
+  // 权限缺失也算「环境不具备」：走 classifyPermissionText（和验收/健康面板共用同一份 H4 规则，
+  // 含「屏幕录制均已授权」这类健康行豁免）。只 import ENV_RULES 会漏掉权限文案，
+  // 于是「缺辅助功能权限 / 未授权发送 Apple 事件」会被当临时失败反复重试——重试只会再打扰一次用户。
+  if (classifyPermissionText(raw)) return false;
   if (NO_RETRY.some((re) => re.test(raw))) return false;
   return TRANSIENT.some((re) => re.test(raw));
 }

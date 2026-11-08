@@ -56,3 +56,42 @@ test('被超时杀掉值得再给一次机会', () => {
   assert.equal(d.retry, true);
   assert.equal(d.reason, '被超时终止');
 });
+test('权限缺失不重试（和验收/健康面板共用同一份 H4 规则）', () => {
+  const cases = [
+    'not trusted for accessibility: Accessibility permission is required',
+    'Unable to capture the screen: Screen Recording permission is not granted',
+    'ocu call failed: not authorized to send Apple events to System Events (-1743)',
+    'osascript error -1744: errAEEventNotPermitted',
+    '辅助功能权限未授权，读不到窗口界面树',
+    '缺少屏幕录制权限：CGRequestScreenCaptureAccess 返回 false',
+  ];
+  for (const text of cases) {
+    const d = decideRetry({ ok: false, code: 1, text, attempt: 0, maxAttempts: 3 });
+    assert.equal(d.retry, false, text);
+    assert.equal(d.reason, '不是临时性失败', text);
+    assert.equal(isTransient(text), false, text);
+  }
+});
+
+test('权限文本里的临时失败信号也照样不重试（权限优先，别反复打扰用户）', () => {
+  const text = 'ECONNREFUSED 127.0.0.1:9222；原因是 not trusted for accessibility';
+  assert.equal(isTransient(text), false);
+});
+
+test('真正的临时失败仍然重试（未被权限规则误伤）', () => {
+  const cases = ['ECONNREFUSED 127.0.0.1:9222', 'EAGAIN: 系统忙', 'CDP 连接超时'];
+  for (const text of cases) {
+    const d = decideRetry({ ok: false, code: 1, text, attempt: 0, maxAttempts: 3 });
+    assert.equal(d.retry, true, text);
+    assert.equal(d.delayMs, 3000, text);
+  }
+  // 「均已授权」的健康行不算缺权限，里面的临时失败信号照常重试
+  const health = '辅助功能 + 屏幕录制均已授权；等待 Chrome 调试端口超时';
+  assert.equal(isTransient(health), true);
+});
+
+test('环境类文本（锁屏/前台）和权限文本都不重试', () => {
+  for (const text of ['屏幕已锁，跳过前台校验', '目标应用当前就是前台，不打扰用户']) {
+    assert.equal(isTransient(text), false, text);
+  }
+});
