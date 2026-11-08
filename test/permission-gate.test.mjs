@@ -181,3 +181,79 @@ test('overrideFromEnv：只有 AGENT_ALLOW_MISSING_PERMISSION=1 才算强制', (
   assert.equal(overrideFromEnv({ [OVERRIDE_ENV]: '0' }), false);
   assert.equal(overrideFromEnv({}), false);
 });
+
+// ---------- 覆盖补齐：MCP callTool / ocu js 内层 cua.getApp / 外层 execFile(OCU,['js']) ----------
+
+test('覆盖：mcp.callTool 的 AX 工具要辅助功能（get_app_state/query/click/type_text/set_value）', () => {
+  for (const tool of ['get_app_state', 'query', 'click', 'type_text', 'set_value']) {
+    const src = "const s = await mcp.callTool('" + tool + "', { app: 'Calculator' });";
+    const need = inferTaskPermissionNeed(src);
+    assert.equal(need.accessibility, true, tool);
+    assert.equal(need.screenCapture, false, tool + ' 不该顺带要录屏');
+  }
+  // 只列应用（list_apps）不读界面，不该误判
+  assert.equal(inferTaskPermissionNeed("await mcp.callTool('list_apps', {});").accessibility, false);
+});
+
+test('覆盖：ocu js 内层脚本里的 cua.getApp( 要辅助功能', () => {
+  const src = [
+    "execFile(OCU, ['js', '--file', innerPath]);",
+    '// 内层 greet-inner.mjs:',
+    "var app = await cua.getApp('Google Chrome', { initialState: false });",
+    'var s = await app.getAXState({ emit: false });',
+  ].join('\n');
+  assert.deepEqual(inferTaskPermissionNeed(src), { accessibility: true, screenCapture: false });
+});
+
+test('覆盖：外层 execFile(OCU, [\'js\', …]) 要辅助功能（内层代码在单独文件时也拦得住）', () => {
+  const src = [
+    'await new Promise((resolve) => {',
+    '  execFile(',
+    '    OCU,',
+    "    ['js', '--timeout', '60000', '--file', innerPath],",
+    '    { timeout: 70000 },',
+    '    () => resolve(),',
+    '  );',
+    '});',
+  ].join('\n');
+  assert.deepEqual(inferTaskPermissionNeed(src), { accessibility: true, screenCapture: false });
+  // execFileSync / spawn 同类写法
+  assert.equal(inferTaskPermissionNeed("execFileSync(OCU, ['js', '--file', p]);").accessibility, true);
+  assert.equal(inferTaskPermissionNeed("spawn(resolveOcu(), ['js', '--file', p]);").accessibility, true);
+  // 普通 js 文件名 / --js-flags 不能误判
+  assert.equal(inferTaskPermissionNeed("execFile(node, ['script.js']);").accessibility, false);
+  assert.equal(inferTaskPermissionNeed("spawn(CHROME_BIN, ['--js-flags=--expose-gc']);").accessibility, false);
+});
+
+test('覆盖：CDP / headless 写法不能被误判成需要 AX/录屏', () => {
+  const cases = [
+    "await page.send('Page.captureScreenshot', { format: 'jpeg' });",
+    "await page.send('Page.navigate', { url: 'https://example.com' });",
+    "const b = await launch({ userDataDir: PROFILE, headless: true });",
+    "spawn(CHROME_BIN, ['--headless=new', '--remote-debugging-port=0']);",
+    "const t = await cdp.listTargets();",
+  ];
+  for (const src of cases) {
+    assert.deepEqual(inferTaskPermissionNeed(src), { accessibility: false, screenCapture: false }, src);
+  }
+});
+
+test('dry-run 覆盖清单：真实任务里 mcp-demo / boss-greet 判需要 AX；CDP/headless 任务不误判', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const HERE = path.dirname(fileURLToPath(import.meta.url));
+  const TASKS = path.join(HERE, '..', 'core', 'tasks');
+  const readTask = (name) => fs.readFileSync(path.join(TASKS, name + '.mjs'), 'utf8');
+
+  const need = (name) => inferTaskPermissionNeed(readTask(name)).accessibility;
+  assert.equal(need('mcp-demo'), true, 'mcp.callTool(get_app_state) 必须判需要 AX');
+  assert.equal(need('boss-greet'), true, "execFile(OCU, ['js', …]) 必须判需要 AX");
+  for (const name of ['browser-demo', 'cdp-channel', 'parallel-demo', 'headless-demo']) {
+    assert.equal(need(name), false, name + ' 是 CDP/headless，不能误判需要 AX');
+  }
+  // 统计：当前仓库至少 17 个任务需要 AX（旧口径 16 + 本次补齐的 mcp-demo/boss-greet 等）
+  const names = fs.readdirSync(TASKS).filter((f) => f.endsWith('.mjs')).map((f) => f.replace(/\.mjs$/, ''));
+  const needAX = names.filter((name) => inferTaskPermissionNeed(readTask(name)).accessibility);
+  assert.ok(needAX.length >= 17, '需要 AX 的任务数 = ' + needAX.length);
+});
