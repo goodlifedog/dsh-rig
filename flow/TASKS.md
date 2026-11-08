@@ -31,7 +31,7 @@
 | `headless-demo` | 当前前台：应用名（读 ocu list_apps 的 [frontmost] 行）+ 前台进程 pid |
 | `human-demo` | 拟人操作演示：贝塞尔鼠标轨迹 + 随机节奏输入 |
 | `mcp-demo` | 通过 MCP 接口演示 ocu 工具调用 |
-| `multi-app` | 并行结果判定（纯函数）：fulfilled 不等于成功——快照可能是空树（节点 0）， |
+| `multi-app` | 环境跳过原因：没在运行的应用绝不去"探测" |
 | `parallel-demo` | 并行演示：同时驱动两个独立后台浏览器，各自把画面推到自己那一路小窗 |
 | `parallel-real-demo` | 双应用并行回显：同时操作两个真实软件，并把它们各自的窗口实时回显到两个小窗 |
 | `platform-demo` | 跨平台控制层演示：macOS 走 ocu、Windows 走 UIA |
