@@ -30,14 +30,16 @@ test('decideAwayState：锁屏/读不到空闲/用户在场/没离开够久/满�
 
 test('buildPlan：顺序固定，先完整验收、再按门类矩阵、最后清点', () => {
   const plan = buildPlan();
-  assert.equal(plan.length, 7);
-  assert.equal(plan[0].script, 'scripts/live-verify.mjs');
-  assert.equal(plan[1].env.MATRIX_PRESET, 'reading');
-  assert.equal(plan[2].env.MATRIX_PRESET, 'mail');
-  assert.equal(plan[3].env.MATRIX_PRESET, 'calendar');
-  assert.equal(plan[4].env.MATRIX_PRESET, 'photos');
-  assert.equal(plan[5].env.MATRIX_PRESET, 'media');
-  assert.equal(plan[6].script, 'scripts/app-inventory.mjs');
+  assert.equal(plan.length, 8);
+  assert.equal(plan[0].script, 'core/service.mjs');
+  assert.deepEqual(plan[0].args, ['restart']);
+  assert.equal(plan[1].script, 'scripts/live-verify.mjs');
+  assert.equal(plan[2].env.MATRIX_PRESET, 'reading');
+  assert.equal(plan[3].env.MATRIX_PRESET, 'mail');
+  assert.equal(plan[4].env.MATRIX_PRESET, 'calendar');
+  assert.equal(plan[5].env.MATRIX_PRESET, 'photos');
+  assert.equal(plan[6].env.MATRIX_PRESET, 'media');
+  assert.equal(plan[7].script, 'scripts/app-inventory.mjs');
   for (const step of plan) assert.ok(step.timeoutMs > 0, step.name + ' 必须带超时');
 });
 

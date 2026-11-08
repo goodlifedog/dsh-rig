@@ -57,6 +57,8 @@ export function decideAwayState(input = {}) {
 /** 执行计划（纯函数，便于单测顺序/参数）。 */
 export function buildPlan() {
   return [
+    // 0) 先把 daemon/overlay 刷到当前代码：否则验收/健康面板测的是旧进程（service:status 会报「落后」）
+    { name: '刷新后台服务到当前代码', script: 'core/service.mjs', args: ['restart'], timeoutMs: 90 * 1000 },
     { name: '完整验收 verify:live', script: 'scripts/live-verify.mjs', timeoutMs: 40 * 60 * 1000 },
     { name: '矩阵 reading（预览）', script: 'core/tasks/app-matrix.mjs', env: { MATRIX_PRESET: 'reading' }, timeoutMs: 10 * 60 * 1000 },
     { name: '矩阵 mail（邮件）', script: 'core/tasks/app-matrix.mjs', env: { MATRIX_PRESET: 'mail' }, timeoutMs: 10 * 60 * 1000 },
@@ -114,7 +116,7 @@ export function runStep(step, deps = {}) {
 
   return new Promise((resolve) => {
     const script = path.join(ROOT, step.script);
-    const child = spawnFn(process.execPath, [script], {
+    const child = spawnFn(process.execPath, [script].concat(Array.isArray(step.args) ? step.args : []), {
       cwd: ROOT,
       detached: true,
       env: Object.assign({}, process.env, step.env || {}),
