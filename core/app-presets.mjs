@@ -40,6 +40,9 @@ export const PRESETS = Object.freeze({
     { name: '计算器', bundle: 'com.apple.calculator', process: 'Calculator' },
     { name: '访达', bundle: 'com.apple.finder', process: 'Finder' },
     { name: '系统设置', bundle: 'com.apple.systempreferences', process: 'System Settings' },
+    // Safari 实测可读（窗口里的页内容不在 AX 树里，但浏览器壳 105 个节点可读可点）；
+    // 冷启动不留窗口，所以探测结果依赖"用户已经有 Safari 窗口"
+    { name: 'Safari', bundle: 'com.apple.Safari', process: 'Safari' },
     { name: 'Clash Verge', bundle: 'io.github.clash-verge-rev.clash-verge-rev', process: 'clash-verge' },
   ],
   // 音视频

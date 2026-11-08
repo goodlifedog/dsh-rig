@@ -194,7 +194,7 @@ overlay 的系统窗口列表（CGWindowList）。只信 AX 会把菜单栏工�
 | --- | --- | --- |
 | 备忘录 / 文本编辑 / 计算器 / 访达 / 系统设置 / FastZip / State / GarageBand / OrbStack / Pages Creator Studio / 腾讯会议 / UURemote / iRightMouse | 已适配 | AX 完整，可读可点可设值 |
 | QQ / 微信 / Gemini / ChatGPT | 已适配 | chromium/electron 系；操作后异步抢前台，已自动还原；**在风险名单里**（读取会抢，默认跳过） |
-| Safari | 已适配 | 不在预设里但实测可读（105 节点）；冷启动不留窗口，需要已有窗口 |
+| Safari | 已适配 | 已收进 system 预设，实测可读（105 节点 / 47 按钮）；冷启动不留窗口，需要已有窗口 |
 | Ghostty / Telegram / Steam / WPS Office | 已适配 | Ghostty 读会抢前台；Telegram 只读（0 按钮）；Steam 只读；WPS 在 qt 族——**都在风险名单里**，默认跳过读取 |
 | iMovie | 已适配 | 读取瞬间抢前台，已还原（不在名单时仍会读一次） |
 | Keynote / Numbers Creator Studio | 可只用画面 | 首次启动是许可/新功能引导，**不代点「继续」**；用户过完引导并打开文稿后 AX 可读 |
