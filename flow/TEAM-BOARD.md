@@ -50,6 +50,9 @@
 | task-53 | human-input | H2 最小批次：三个脚本发 AppleEvent 前预检（sync-quit 300ms 不阻塞） | 核验后提交 `d81dd6b` |
 | task-54 | overlay-dev | M1/M2 屏幕录制静默预检 + 窗口标题全空权限提示 | 核验后提交 `2bd5f8a` |
 | task-55 | greet-engineer | H2 核心：前台读取改 ObjC（不发 AppleEvent）+ 回退开关 | 核验后提交 `8bf2ba1`；实测两种实现 20 次采样 100% 一致 |
+| task-56 | boss-researcher | （作废）H2 剩余入口只读计划：子 agent 失败未产出，Lead 改为直接派实现单 | 已删除 |
+| task-57 | overlay-multi | H2：acceptance 五处 AppleEvent 入口接静默预检 + 新增公共 helper | 核验后提交 `0a52f69` |
+| task-58 | ocu-recipe | H2：browser / headless-demo 的 AppleEvent 入口补预检 | 核验后提交 `32cd7a8` |
 
 ## 当前状态
 
