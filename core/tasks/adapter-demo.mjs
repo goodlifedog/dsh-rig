@@ -47,6 +47,12 @@ export const APP_HINTS = {
   Ghostty: { processName: 'Ghostty' },
   WPS: { processName: 'wpsoffice' },
   'WPS Office': { processName: 'wpsoffice' },
+  // 本地化显示名：中文名也要能定位到真实进程名，否则 --app 计算器 会误报「没在运行」
+  预览: { processName: 'Preview' },
+  计算器: { processName: 'Calculator' },
+  备忘录: { processName: 'Notes' },
+  访达: { processName: 'Finder' },
+  微信: { processName: 'WeChat' },
 };
 
 /** 默认等待/超时（都可被 options 覆盖，便于单测不真等） */
@@ -102,6 +108,16 @@ export const APP_ALIASES = {
   'Google Chrome': ['Chrome'],
   WPS: ['WPS Office', 'wpsoffice'],
   'WPS Office': ['WPS', 'wpsoffice'],
+  预览: ['Preview'],
+  Preview: ['预览'],
+  计算器: ['Calculator'],
+  Calculator: ['计算器'],
+  备忘录: ['Notes'],
+  Notes: ['备忘录'],
+  访达: ['Finder'],
+  Finder: ['访达'],
+  微信: ['WeChat'],
+  WeChat: ['微信'],
 };
 
 /** 查 front-risk 名单时要用到的所有名字（显示名 + 进程名 + 别名，纯函数） */
@@ -244,7 +260,10 @@ export function summarizeTree(stateText) {
         kind: role,
         hasValue: parsed.hasValue,
         value: parsed.value,
-        empty: parsed.hasValue ? parsed.value === '' : false,
+        // AX 快照对「空的正文区」可能完全不输出 Value（例如备忘录新建的空笔记），
+        // 因此 textArea 缺 Value 视为空；textField/searchField 仍按「读不到=不确定」处理。
+        empty: parsed.hasValue ? parsed.value === '' : role === 'textArea',
+        emptyByAbsentValue: !parsed.hasValue && role === 'textArea',
       });
       continue;
     }
@@ -334,7 +353,15 @@ export function pickTypeTarget(summary, options = {}) {
         reason: '可写的 AXTextArea 里已有内容，拒绝覆盖（避免写坏用户正文）',
       };
     }
-    return { found: true, index: safeArea.index, label: safeArea.label, kind: 'textArea', role: 'textArea', value: safeArea.value };
+    return {
+      found: true,
+      index: safeArea.index,
+      label: safeArea.label,
+      kind: 'textArea',
+      role: 'textArea',
+      value: safeArea.value,
+      emptyByAbsentValue: Boolean(safeArea.emptyByAbsentValue),
+    };
   }
   return { found: false, guard: 'no-input', reason: '界面树里找不到可写输入区（文本栏/搜索框/空正文区）' };
 }
@@ -472,8 +499,11 @@ export function extractValue(stateText, index) {
   const text = String(stateText || '');
   const lines = text.split('\n');
   for (const line of lines) {
-    const m = /^\s*(\d+)\s+.*?Value: (.*)$/.exec(line);
-    if (m && (!index || m[1] === String(index))) return m[2];
+    const m = /^\s*(\d+)\s+.*?Value:\s*(.*)$/.exec(line);
+    if (m && (!index || m[1] === String(index))) {
+      // Value 后面常跟 ", Secondary Actions: ..." / ", ID: ..." 这类元数据，读回时要裁掉
+      return m[2].split(/,\s*(?:Secondary Actions:|ID:|Help:|Description:)/)[0].trim();
+    }
   }
   return '';
 }
@@ -716,6 +746,18 @@ export async function runAdapterDemo(options = {}, depsInput = {}) {
         report.reason = '环境跳过：' + (target.reason || '找不到安全可写目标');
         addStep('type-text', true, report.reason, { skipped: true, guard: target.guard || 'no-safe-input' });
         return finish(0);
+      }
+      // textArea 若靠「快照没有 Value」判空，写前再读一次确认仍然为空（二次确认，防快照抖动误覆盖）
+      if (target.kind === 'textArea' && target.emptyByAbsentValue) {
+        const confirmState = await deps.readState(app).catch(() => '');
+        const confirm = summarizeTree(confirmState).inputs.find((i) => i.index === target.index);
+        if (!confirm || (confirm.hasValue && String(confirm.value || '') !== '')) {
+          report.envSkip = true;
+          report.reason = '环境跳过：正文区在二次确认时不是空（拒绝覆盖用户正文）';
+          addStep('type-guard', true, report.reason, { skipped: true, guard: 'text-area-recheck' });
+          return finish(0);
+        }
+        addStep('type-guard', true, '正文区二次确认仍为空（快照无 Value），允许写入', { emptyByAbsentValue: true });
       }
       // 写前先看目标里有没有内容：有内容默认拒绝，避免覆盖用户数据（--allow-write 才强制）
       const currentValue = extractValue(latestState, target.index);

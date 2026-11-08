@@ -547,3 +547,8 @@ test('流程：默认键鼠空闲阈值 180s 会传给守卫（--min-idle 可配
   await runAdapterDemo({ app: 'Finder', minIdleMs: 5000 }, deps);
   assert.equal(seen[0], 5000, '--min-idle 可覆盖');
 });
+
+test('本地化显示名能映射到真实进程名（--app 计算器 不应误报没运行）', () => {
+  const pairs = [['计算器', 'Calculator'], ['备忘录', 'Notes'], ['访达', 'Finder'], ['预览', 'Preview'], ['微信', 'WeChat']];
+  for (const [name, proc] of pairs) assert.equal(processNameFor(name), proc);
+});
