@@ -111,7 +111,7 @@ test('按标记删除：解析 removed/readable；条数为 0 不执行', async 
   assert.ok(seen.includes('后台控制验证'), '显式放宽词必须进脚本');
 });
 
-test('deleteTestNotes 优先按标记删；标题读不到才退回 count-delta', async () => {
+test('deleteTestNotes 优先按标记删；标题读不到时默认不退回（H-1 闸门）', async () => {
   const calls = [];
   const byMarker = await deleteTestNotes({
     count: 2,
@@ -125,6 +125,7 @@ test('deleteTestNotes 优先按标记删；标题读不到才退回 count-delta'
   assert.equal(byMarker, 2);
   assert.equal(calls.length, 1, '标题可读时不该再走按条数删');
 
+  // H-1：readable=0 时默认 fail-closed，只执行标记删除，绝不回退到 deleteTopNotes
   const fallbackCalls = [];
   const fallback = await deleteTestNotes({
     count: 1,
@@ -136,7 +137,23 @@ test('deleteTestNotes 优先按标记删；标题读不到才退回 count-delta'
       sleep: async () => {},
     },
   });
-  assert.equal(fallback, 1, '标题读不到要退回旧策略，别一条都删不掉');
-  assert.equal(fallbackCalls.length, 2);
-  assert.ok(fallbackCalls[1].includes('repeat with kk from 1 to 1'));
+  assert.equal(fallback, 0, '标题读不到时默认不许退回 count-delta');
+  assert.equal(fallbackCalls.length, 1, '默认路径只允许执行一次标记删除');
+
+  // 显式 allowTopFallback:true 才允许退回旧策略（清理脚本 --force-all 的语义）
+  const forcedCalls = [];
+  const forced = await deleteTestNotes({
+    count: 1,
+    allowTopFallback: true,
+    deps: {
+      exec: async (bin, args) => {
+        forcedCalls.push(args.join(' '));
+        return { stdout: forcedCalls.length === 1 ? 'removed=0 readable=0' : '1' };
+      },
+      sleep: async () => {},
+    },
+  });
+  assert.equal(forced, 1, '显式放开后仍要能退回 count-delta');
+  assert.equal(forcedCalls.length, 2);
+  assert.ok(forcedCalls[1].includes('repeat with kk from 1 to 1'));
 });

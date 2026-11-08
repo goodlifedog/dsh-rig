@@ -267,7 +267,11 @@ export async function deleteMarkedTestNotes(limit, options = {}) {
 
 /**
  * 兼容旧名：显式给条数，禁止"能删多少删多少"。
- * 优先按标记删；列表标题完全读不到时退回「只删顶部 N 条」的 count-delta 策略。
+ * 优先按标题标记删；列表标题完全读不到（readable===0）时**默认不删**，
+ * 只有调用方显式传 allowTopFallback===true 才允许退回「只删顶部 N 条」的 count-delta 策略。
+ * 原因：标题读不到时无法区分测试笔记和用户新建的笔记，退回到删顶部 N 条会误删用户数据。
+ * 任务路径（core/tasks/background-control.mjs）永远不传这个开关，即永不回退；
+ * 只有带 --force-all 的清理脚本才显式允许。
  */
 export async function deleteTestNotes(options = {}) {
   const opts = options || {};
@@ -275,5 +279,10 @@ export async function deleteTestNotes(options = {}) {
   if (!count) return 0;
   const marked = await deleteMarkedTestNotes(count, opts);
   if (marked.readable > 0) return marked.removed;
-  return deleteTopNotes(count, opts);
+  // 标题一条都读不到：默认 fail-closed，宁可留下测试笔记，也不能按条数删掉用户的笔记。
+  if (opts.allowTopFallback === true) {
+    return deleteTopNotes(count, opts);
+  }
+  console.warn('无法识别测试笔记，未删除（需要显式 --force-all/allowTopFallback）');
+  return 0;
 }

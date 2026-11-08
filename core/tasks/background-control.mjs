@@ -226,7 +226,9 @@ async function main() {
   } else {
     const notesAfter = await countNotes();
     const delta = notesBefore >= 0 && notesAfter >= 0 ? Math.max(0, notesAfter - notesBefore) : 0;
-    // 按标记删（只删自己写的那条），不再直接删顶部 N 条
+    // 按标记删（只删自己写的那条），不再直接删顶部 N 条。
+    // H-1：这里刻意不传 allowTopFallback —— 标题读不到时 deleteTestNotes 返回 0，
+    // 任务路径永不走 top-fallback，避免把用户测试期间新建的笔记当成测试笔记删掉。
     const cleaned = await deleteTestNotes({ count: delta });
     console.log('已清理测试笔记：' + cleaned + ' 条（测试前 ' + notesBefore + ' 条 → 测试后 ' + notesAfter + ' 条）');
   }
