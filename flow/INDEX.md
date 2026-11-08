@@ -51,6 +51,8 @@ npm run app:resolve -- Finder   # 某个应用现在能用哪条通道
 npm run cleanup:test  # 清测试数据（默认只报告；--force 只删 [AGENT-TEST] 标记的笔记；--force-all 才放开历史测试词与按条数删）
 npm run prune         # 日志/报告轮转（默认演练，--apply 真删）
 npm run service:status   # 服务是否由 launchd 管理、有没有游离进程占端口
+npm run verify:safe      # 不碰屏幕的验收（用户在场也能跑）
+npm run away:maintain    # 用户离开时一条龙：verify:live → 新门类矩阵 → 重清点（自带离开/回来守卫，--dry-run 只打印）
 ```
 
 ## 其它资料（上面表格放不下，但有用）

@@ -270,6 +270,10 @@ Mail / Calendar / Reminders / Music / Photos / Preview 首次打开可能弹：
 
 ### 8.2 命令（按门类逐个跑，每跑完一个看报告）
 
+> 一条龙替代：`npm run away:maintain` 会按顺序跑 verify:live → 五个门类矩阵（reading/mail/calendar/photos/media）→ 重清点；
+> 每一步开始前与运行中都会查「未锁屏 + 空闲 ≥15 分钟」，你一回来就立刻收掉进程组并停止后续步骤。
+> 只想看会跑什么：`npm run away:maintain -- --dry-run`（用户在场也能跑）。
+
 ~~~bash
 # 0) 环境门槛自检（锁屏/空闲不对就别跑）
 npm run health | grep -E "锁屏|系统权限"
