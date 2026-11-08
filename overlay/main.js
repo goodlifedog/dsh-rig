@@ -23,9 +23,18 @@ const path = require('node:path');
 
 const platform = require('./platform.js');
 const supervisor = require('./supervisor.js');
-const { normalizeDshTitle, matchesTitle, shouldShowOnReady } = require('./session-gate.js');
+const {
+  normalizeDshTitle,
+  matchesTitle,
+  shouldShowOnReady,
+  shouldShowNow,
+  isHostSnapshotFresh,
+  isFrontTrusted,
+  shouldCountStatusActivity,
+  shouldIgnoreExpand,
+} = require('./session-gate.js');
 const { createOverlayServer, DEFAULT_SESSION, SESSION_PATTERN } = require('./server.js');
-const { ensureTokenSync } = require('../core/local-token.cjs');
+const { ensureTokenSync, tokenHeadersFor } = require('../core/local-token.cjs');
 const { pickReplacementWindow } = require('./recover.js');
 const { selectHostWindow } = require('./host-select.js');
 const { normalizeWindowId, resolveWindowId } = require('./window-id.js');
@@ -45,6 +54,10 @@ const HOST_PROCESS = process.env.OVERLAY_HOST_PROCESS || process.env.OVERLAY_DSH
 const HOST_BUNDLES = (process.env.OVERLAY_HOST_BUNDLES || 'com.deepseek.dsh')
   .split(',').map((x) => x.trim()).filter(Boolean);
 const HOST_TITLE_SUFFIX = process.env.OVERLAY_HOST_TITLE_SUFFIX || 'DeepSeek Harness';
+// overlay 自身 bundle（开发态 Electron 的 bundle id）
+const SELF_BUNDLE = 'com.github.Electron';
+// 宿主快照最大可信年龄：超过这个时间没拿到新快照，显示门控一律 fail-closed
+const HOST_SNAPSHOT_MAX_AGE_MS = 5000;
 // 兼容旧变量名
 const DSH_PROCESS = HOST_PROCESS;
 const DSH_MARGIN = 16;
@@ -435,8 +448,9 @@ async function readFrontmostBundle() {
 let dshBounds = null;
 let dshTitle = '';
 // 宿主（DSH 窗口）是否真实可见：CGWindowList 里没有窗口时立刻隐藏全部小窗。
-let hostVisible = true;
-let hostBoundsStale = false;
+// task-27 R2：初值改为 fail-closed，第一次 attachTick 拿到真实快照前一律不显示。
+let hostVisible = false;
+let hostBoundsStale = true;
 let hostCheckedAt = 0;
 let hostKind = 'native';   // native=DSH 原生窗口；browser=浏览器里的 DSH Web 界面
 
@@ -518,12 +532,19 @@ async function attachToDsh(s, front, bounds) {
 
   if (!ATTACH_TO_DSH || !win || win.isDestroyed()) return;
 
-  // 只在「召唤它的 DSH 会话」里显示：DSH 不在前台、或当前前台会话标题对不上，就隐藏。
-  // 标题门控对放大态同样生效，避免别的会话的小窗一直挂着。
-  // 宿主可以是任意应用：由 HOST_BUNDLES 配置
-  const self = 'com.github.Electron';
-  const frontOk = !front || HOST_BUNDLES.includes(front) || front === self;
-  const shouldHide = !hostVisible || !frontOk || !s.matched;
+  // 只在「召唤它的 DSH 会话」里显示：宿主快照不新鲜、DSH 不在前台、或当前前台会话标题对不上，就隐藏。
+  // task-27 R1/R2：宿主可见 + 快照新鲜 + 前台可信 + 标题匹配，缺一即隐藏（fail-closed）。
+  const hostFresh = isHostSnapshotFresh({
+    hostVisible,
+    hostStale: hostBoundsStale,
+    hostCheckedAt,
+    now: Date.now(),
+    maxHostAgeMs: HOST_SNAPSHOT_MAX_AGE_MS,
+  });
+  const frontOk = isFrontTrusted(front, HOST_BUNDLES, SELF_BUNDLE);
+  // 标题未知（dshTitle 还没读到）同样按 fail-closed 处理，和 ready-to-show/showOverlay 保持一致
+  const titleKnown = Boolean(dshTitle);
+  const shouldHide = !hostFresh || !frontOk || !titleKnown || !s.matched;
   if (shouldHide) {
     if (win.isVisible()) {
       s.flags.suppressBySession = true;
@@ -537,7 +558,13 @@ async function attachToDsh(s, front, bounds) {
     // 固定显示（/visible true）的窗口不依赖空闲窗口期，条件恢复就必须重新出现
     const withinIdle = s.state.lastActivityAt && Date.now() - s.state.lastActivityAt < (config.idleHideMs || 5000);
     if (s.state.pinned || withinIdle) {
+      // task-27 R3：ready-to-show 被门控隐藏时可能执行过 setOpacity(0)，
+      // 这里补完整显示序列，避免 re-show 后窗口「显示但透明」。
+      win.setOpacity(0);
       win.showInactive();
+      s.flags.rendererInteractive = false;
+      applyClickThrough(s);
+      fadeWindow(s, 1);
       s.state.visible = true;
     }
   }
@@ -673,6 +700,18 @@ async function attachTick() {
     attachBusy = false;
     lastAttachAt = Date.now();
   }
+}
+
+// task-27：门控因为「宿主快照还没到手/已过期」而拦下显示时，立刻补一次轮询，
+// 让 attach 循环尽快拿到真实值决定是否显示，不用等慢轮询（全隐藏时 1.5s）。
+let attachRefreshQueued = false;
+function requestAttachRefresh() {
+  if (!ATTACH_TO_DSH || attachRefreshQueued) return;
+  attachRefreshQueued = true;
+  setTimeout(() => {
+    attachRefreshQueued = false;
+    attachTick().catch(() => {});
+  }, 0);
 }
 
 // 快慢自适应：有小窗露着头就快轮（切会话要立刻消失），全藏着就慢轮省电
@@ -857,28 +896,39 @@ function scheduleIdleHide(s) {
   }, config.idleHideMs);
 }
 
-// 宿主是否在前台：不在前台就不显示，避免"闪一下又被藏"的观感
-function hostFrontmostOk() {
-  if (!ATTACH_TO_DSH) return true;
-  if (!frontmostBundle) return true; // 还没探测到时不拦，交给轮询兜底
-  const self = 'com.github.Electron';
-  return HOST_BUNDLES.includes(frontmostBundle) || frontmostBundle === self;
-}
-
 function showOverlay(s, reason) {
   const win = s.win;
   if (!win || win.isDestroyed()) return;
-  // 标题门控：当前前台 DSH 会话不是它的时候，活动也不让窗口冒出来
-  if (s.titleHint && !titleMatches(s)) {
-    s.matched = false;
-    return;
-  }
-  // 宿主不在前台（用户在别的应用里）时同样不露头
-  if (!hostFrontmostOk()) {
+
+  // 活动驱动显示走和 ready-to-show 同一套 fail-closed 门控（task-27 R1/R2）：
+  // 宿主可见且快照新鲜、前台可信、标题已知且匹配，任何一项未知都不显示。
+  maybeAutoBindTitle(s);
+  const titleMatched = !s.titleHint || titleMatches(s);
+  if (!titleMatched) s.matched = false;
+  // 独立使用模式（OVERLAY_ATTACH_DSH=0）没有宿主可门控，维持旧的「有活动就显示」行为
+  const allow = !ATTACH_TO_DSH || shouldShowNow({
+    hostVisible,
+    hostStale: hostBoundsStale,
+    hostCheckedAt,
+    now: Date.now(),
+    maxHostAgeMs: HOST_SNAPSHOT_MAX_AGE_MS,
+    front: frontmostBundle || '',
+    hostBundles: HOST_BUNDLES,
+    self: SELF_BUNDLE,
+    titleKnown: Boolean(dshTitle),
+    titleMatched: titleMatched,
+  });
+  if (!allow) {
     s.state.visible = false;
+    // 标记 suppress：attach 循环在宿主快照恢复后，会按「有活动/pinned」决定是否补显示
+    s.flags.suppressBySession = true;
+    // 宿主快照还没就绪/已过期：补一次轮询，等 attach 循环拿到真实值后再决定是否显示
+    if (ATTACH_TO_DSH) requestAttachRefresh();
     return;
   }
+
   s.state.visible = true;
+  s.flags.suppressBySession = false;
   // 还没 ready-to-show 的窗口交给 ready-to-show 首次显示
   if (!s.flags.ready) return;
 
@@ -970,7 +1020,10 @@ function pushLog(s, text, kind) {
 const ACTIVITY_STATES = ['idle', 'running', 'error'];
 
 function setStatus(s, text, requestedActivity) {
-  const next = String(text == null ? '' : text).replace(/\s+/g, ' ').trim().slice(0, 300) || '待命';
+  const raw = text == null ? '' : String(text);
+  // server 把 /status 的 clear:true 转成空字符串写入；普通状态写入不允许空（server 已校验）。
+  const isClear = raw === '';
+  const next = raw.replace(/\s+/g, ' ').trim().slice(0, 300) || '待命';
   const activity = ACTIVITY_STATES.indexOf(requestedActivity) !== -1
     ? requestedActivity
     : (next === '待命' ? 'idle' : 'running');
@@ -978,7 +1031,8 @@ function setStatus(s, text, requestedActivity) {
   s.state.status = next;
   s.state.activity = activity;
   send(s, 'overlay:status', { text: next, activity: activity });
-  markActivity(s, 'status');
+  // task-27 R4：clear 是复位/收尾，不算活动、不刷新 idle、也不触发显示。
+  if (shouldCountStatusActivity({ clear: isClear })) markActivity(s, 'status');
   return { text: next, activity: activity };
 }
 
@@ -1599,26 +1653,39 @@ function createWindowForSession(s) {
     if (!s.win || s.win.isDestroyed() || s.win !== win) return;
     s.flags.ready = true;
     // 不能无条件 showInactive：新建会话窗口的那一刻，用户可能正在别的应用/别的 Space，
-    // 一冒出来就看得见。只有「宿主在前台 + 宿主可见 + 标题匹配 + 这个会话真的有活动」才显示。
-    const allow = shouldShowOnReady({
-      hostVisible,
-      front: frontmostBundle || '',
-      hostBundles: HOST_BUNDLES,
-      self: 'com.github.Electron',
-      titleMatched: !s.titleHint || titleMatches(s),
-      hasActivity: Boolean(s.state.lastActivityAt || s.state.pinned),
-    });
+    // 一冒出来就看得见。只有「宿主可见 + 快照新鲜 + 前台匹配 + 标题匹配 + 这个会话真的有活动」才显示。
+    // task-27 R2：未知前台/未知标题一律 fail-closed（原来 front 为空、dshTitle 为空会放行）。
+    maybeAutoBindTitle(s);
+    const hasActivity = Boolean(s.state.lastActivityAt || s.state.pinned);
+    // 独立使用模式（OVERLAY_ATTACH_DSH=0）没有宿主可门控，只保留「有活动才显示」
+    const allow = !ATTACH_TO_DSH
+      ? hasActivity
+      : shouldShowOnReady({
+        hostVisible,
+        hostStale: hostBoundsStale,
+        hostCheckedAt,
+        now: Date.now(),
+        maxHostAgeMs: HOST_SNAPSHOT_MAX_AGE_MS,
+        front: frontmostBundle || '',
+        hostBundles: HOST_BUNDLES,
+        self: SELF_BUNDLE,
+        titleKnown: Boolean(dshTitle),
+        titleMatched: !s.titleHint || titleMatches(s),
+        hasActivity: hasActivity,
+      });
     if (!allow) {
       win.setOpacity(0);
       win.hide();
       s.state.visible = false;
       s.flags.suppressBySession = true;  // 条件恢复时由 attach 循环依据 pinned/空闲窗口决定是否重新出现
+      requestAttachRefresh();
       return;
     }
     win.setOpacity(0);
     win.showInactive(); // 不 activate、不抢焦点
     applyClickThrough(s); // 默认整窗穿透
     s.state.visible = true;
+    s.flags.suppressBySession = false;
     s.state.lastActivityAt = Date.now();
     fadeWindow(s, 1);
     scheduleIdleHide(s);
@@ -1808,6 +1875,8 @@ async function startServer() {
       },
       onWindow: async (session, raw, title) => {
         const s = ensureSession(session, 'HTTP /window');
+        // task-27 R5：/window 也是首活动的常见入口，先用当前宿主标题自动绑定会话标题，避免绕过标题门控
+        maybeAutoBindTitle(s);
         await refreshSelfWindows();
         const id = normalizeWindowId(raw);
         const result = setWindowId(s, raw, 'HTTP /window', title);
@@ -1818,8 +1887,18 @@ async function startServer() {
         }
         return result;
       },
-      onVisible: (session, visible) => setVisibleManual(ensureSession(session, 'HTTP /visible'), visible),
-      onFrame: (session, dataUrl, note, cursor, width, height) => pushExternalFrame(ensureSession(session, 'HTTP /frame'), dataUrl, note, cursor, width, height),
+      onVisible: (session, visible) => {
+        const s = ensureSession(session, 'HTTP /visible');
+        // task-27 R5：/visible 是首活动入口之一，先自动绑定标题
+        maybeAutoBindTitle(s);
+        return setVisibleManual(s, visible);
+      },
+      onFrame: (session, dataUrl, note, cursor, width, height) => {
+        const s = ensureSession(session, 'HTTP /frame');
+        // task-27 R5：/frame 是首活动入口之一，先自动绑定标题
+        maybeAutoBindTitle(s);
+        return pushExternalFrame(s, dataUrl, note, cursor, width, height);
+      },
       onExpand: (session) => toggleExpand(ensureSession(session, 'HTTP /expand')),
       stopTask: (session) => stopBackgroundTask(sessions.get(session) || null),
       close: (session) => closeSession(session),
@@ -1862,6 +1941,11 @@ async function startServer() {
 function toggleExpand(s) {
   const win = s.win;
   if (!win || win.isDestroyed()) return { expanded: false };
+  // task-27 R6：窗口不可见时忽略展开，避免隐藏态先落盘 expanded、下次合法显示直接变成大窗。
+  // 折叠（expanded=true → false）始终允许，避免窗口卡在放大态。
+  if (shouldIgnoreExpand({ visible: s.state.visible, expanded: s.flags.expanded })) {
+    return { expanded: false, ignored: true };
+  }
   if (!s.flags.expanded) {
     const bounds = win.getBounds();
     s.flags.smallBounds = { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height };
@@ -1895,7 +1979,9 @@ function toggleExpand(s) {
     // 折叠回小窗时也要用「真实前台」，不能写死宿主 bundle：
     // 写死会让 frontOk 恒为 true，用户切走了小窗还以为宿主在前台。
     setTimeout(() => {
-      readFrontmostBundle().then((frontNow) => attachToDsh(s, frontNow, dshBounds)).catch(() => {});
+      readFrontmostBundle()
+        .then((frontNow) => attachToDsh(s, frontNow || frontmostBundle, dshBounds))
+        .catch(() => {});
     }, 100);
     scheduleIdleHide(s);
   }
@@ -1909,11 +1995,11 @@ async function stopBackgroundTask(s) {
     || ('http://127.0.0.1:' + (Number(process.env.AGENTD_PORT) || 7789));
   const url = daemonBase + '/stop';
   try {
-    // daemon 的写接口要票据 + JSON Content-Type；之前这里两样都没带，点「■」其实一直 401
-    const token = ensureTokenSync();
+    // daemon 的写接口要票据 + JSON Content-Type；之前这里两样都没带，点「■」其实一直 401。
+    // AGENTD_URL 可自定义：token 只跟回环地址走，非回环默认不发（M-5）。
     const res = await fetch(url, {
       method: 'POST',
-      headers: Object.assign({ 'Content-Type': 'application/json' }, token ? { 'X-Agent-Token': token } : {}),
+      headers: tokenHeadersFor(url, { 'Content-Type': 'application/json' }),
       body: '{}',
       signal: AbortSignal.timeout(2000),
     });

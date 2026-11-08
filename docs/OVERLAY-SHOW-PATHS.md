@@ -6,6 +6,8 @@
 - 相关背景：CHANGELOG.md:5 记录的「ready-to-show 无条件 showInactive」修复；会话标题门控见 overlay/README.md:66、验收记录见 overlay/README.md:387
 - 本文只写审查结论与建议，不改业务代码
 
+> 2026-11-08 task-27 更新：R1–R6 已修复落盘（见第 9 节）。第 3–5 节保留修复前的路径快照，行号以修复前代码为准；修复后的位置与验证点见第 9 节。
+
 ## 0. 结论（先看这里）
 
 1. 代码里能让窗口真正可见的调用只有 3 处，全部是 win.showInactive()，没有任何 win.show() / focus() / moveTop() / restore()：
@@ -190,3 +192,62 @@
 审查人：overlay-dev
 审查时间：2026-11-08
 说明：本次只读审查与写本文档，未修改 overlay 业务代码；未运行 overlay 或任何 GUI 程序。
+
+## 9. 修复记录（task-27，2026-11-08）
+
+状态：R1–R6 已按第 5 节的最小修复建议落盘；目标单测 26 条 + 既有 session-gate 回归 7 条全过。
+**尚未重启 overlay 做真机验证**（按约束由 Lead 统一重启验证）。R7–R10 未修，仍在。
+
+### 9.1 改动清单
+
+| 编号 | 修复内容 | 新位置 | 行为 |
+| --- | --- | --- | --- |
+| R1 | showOverlay（活动驱动主漏斗）改走 shouldShowNow：宿主可见 + 快照新鲜 + 前台可信 + 标题已知且匹配，任一未知都不显示 | overlay/main.js:899-926（门控在 main.js:909-918）；纯函数 overlay/session-gate.js:98-123 | 不满足时保持隐藏、标记 suppress、并 requestAttachRefresh 立刻补一次宿主轮询，等真实快照再决定 |
+| R2 | 初值 fail-closed：hostVisible 初值 false、hostBoundsStale 初值 true；前台未知用 isFrontTrusted 返回 false；标题未知（dshTitle 空）视为不可显示；attach 循环隐藏判断同步收紧 | overlay/main.js:452-453（初值）、main.js:529-550（attach 门控，含 titleKnown）、main.js:909-918、main.js:1660-1673；纯函数 overlay/session-gate.js:46-89、133-140 | 冷启动第一次 attachTick 拿到真实快照前不显示；读失败期间不会 fail-open 冒窗；独立模式 OVERLAY_ATTACH_DSH=0 保留「活动即显示」（main.js:909、main.js:1658-1659） |
+| R3 | attach re-show 补完整显示序列：setOpacity(0) → showInactive → applyClickThrough → fadeWindow(1) | overlay/main.js:559-569 | ready-to-show 被门控隐藏（曾把 opacity 置 0）后，pinned/近期活动窗口条件恢复时能真正出现，不再「显示但透明」 |
+| R4 | setStatus 识别 clear（server 把 clear:true 转为空 text），clear 不调用 markActivity：不刷新 lastActivityAt、不触发显示；状态本身仍复位为「待命」 | overlay/main.js:1022-1036；纯函数 overlay/session-gate.js:146-150 | 任务收尾 clear:true 不再闪一帧；若调用方只 clear 不发 /visible false，也不会因 clear 而显示 |
+| R5 | /window、/frame、/visible 三个首活动入口在 ensureSession 之后调用 maybeAutoBindTitle；showOverlay 与 ready-to-show 在判定前也补一次自动绑定 | overlay/main.js:1872-1898（三个 handler）、main.js:905（showOverlay）、main.js:1656（ready-to-show）；绑定逻辑 overlay/main.js:485-493 | dshTitle 可用时首活动即绑定会话标题，不再依赖第一个 /log 或 /status；避免首活动绕过标题门控 |
+| R6 | 隐藏态 /expand 忽略（返回 ignored:true），不落盘 expanded；折叠始终允许 | overlay/main.js:1941-1948；纯函数 overlay/session-gate.js:159-165 | 隐藏会话先 /expand 不会让下次显示直接变成大窗；已展开窗口仍可折叠 |
+| 辅助 | 门控因宿主快照未就绪/过期而拦下显示时，立刻补一次 attachTick（避免等全隐藏时 1.5s 慢轮询）；SELF_BUNDLE / HOST_SNAPSHOT_MAX_AGE_MS 抽成常量 | overlay/main.js:58-60、705-715 | 门控恢复后更快出现；self bundle 与快照年龄集中管理（R7 仍未解决，见 9.5） |
+
+### 9.2 修复后的显示判定（活动驱动与 ready-to-show 共用）
+
+窗口允许显示必须同时满足：
+
+1. hostVisible === true（宿主窗口在屏幕上，不是最小化/隐藏/别的 Space）；
+2. hostBoundsStale === false；
+3. hostCheckedAt > 0 且 now - hostCheckedAt <= 5000ms；
+4. front 非空，且 front ∈ HOST_BUNDLES 或 front === SELF_BUNDLE（未知前台 fail-closed）；
+5. dshTitle 非空（标题未知时 fail-closed）；
+6. titleHint 为空或与 dshTitle 匹配；
+7. ready-to-show 额外要求有活动（lastActivityAt 或 pinned）；活动驱动路径本身即活动；
+8. 独立模式 OVERLAY_ATTACH_DSH=0 例外：只保留「有活动」这一条。
+
+不满足时：保持/置为隐藏、标记 suppressBySession，并由 requestAttachRefresh + attach 循环在条件恢复后按「pinned 或活动仍在 idle 窗口内」决定补显示。
+
+### 9.3 单测
+
+- 目标文件：test/overlay-session-gate.test.mjs，26 条，覆盖：宿主可见/不可见、hostStale、快照超过 5s、正好 5s 边界、hostCheckedAt=0、前台为空/null/非宿主、self bundle、标题未知/不匹配、hasActivity、clear 不算活动、隐藏态 expand 忽略、折叠允许、时钟倒退、标题匹配回归。
+- 回归：test/session-gate.test.mjs 7 条（标题归一/匹配/近似会话不互相点亮）。
+- 结果：33 pass / 0 fail；node --check overlay/main.js、overlay/session-gate.js 通过。
+- 未跑（按约束）：overlay 启动、verify:live、acceptance、monitor、ui-regression、session-scope-check、fps-check；未截图、未启动/退出任何应用、未 commit。
+
+### 9.4 Lead 重启后的验证点（建议顺序）
+
+1. 冷启动无活动：窗口不应出现（CGWindowList/onscreen 为空），/health hostVisible 在第一次轮询后应为 true、hostBoundsStale=false。
+2. 正常任务链路：/status（带 titleHint）→ /window → /visible true，窗口应正常显示，不能被 fail-closed 永久挡住；若显示有约一次轮询的延迟，属于预期。
+3. 宿主最小化/隐藏（Cmd+M）后推 /log：不应出现；恢复宿主后，pinned 或近期活动窗口应重新出现（R1/R2）。
+4. 切到别的 DSH 会话：带 titleHint 的会话应隐藏；切回后按 pinned/活动恢复。
+5. 任务收尾 /status clear:true：不应再闪（R4）；随后 /visible false 应正常隐藏。
+6. 隐藏态 POST /expand：应返回 ignored:true、expanded 仍为 false；窗口显示后 /expand 应正常放大（R6）。
+7. pinned 流程：宿主不在前台时 /visible true → 保持隐藏；切回匹配会话后应出现且 opacity 为 1（R3，不再透明）。
+8. 独立模式（可选）：OVERLAY_ATTACH_DSH=0 启动，有活动仍能显示（不受宿主门控）。
+9. 老回归：切换 Space 不跟随、多会话标题隔离、/visible false、会话 TTL、崩溃重载日志。
+
+### 9.5 未修 / 剩余风险
+
+- R7：self bundle 仍写死为 com.github.Electron（现已集中为 SELF_BUNDLE 常量 overlay/main.js:58）；打包版 appId 为 com.goodlifedog.dsh-desktop-agent，点击小窗交互区触发自身前台时仍可能被判定 frontOk=false 而隐藏（是「该显示时消失」，不是乱弹）。
+- R8：OVERLAY_CAPTURE_WHILE_HIDDEN=1 时 recoverTarget 仍可从隐藏态触发 setWindowId → markActivity（有前台/标题/宿主门控兜底，但自检模式下仍可能显示）。
+- R9：多显示器仍固定建在主屏。
+- R10：OVERLAY_ATTACH_DSH=0 或 OVERLAY_HOST_BUNDLES 配错会整体关闭/放宽门控，属于显式配置模式。
+- 结论：本轮修复覆盖了「宿主最小化/隐藏 + 有活动」「冷启动前 2 秒」「前台/标题未知」「clear 收尾」「首活动未绑标题」「隐藏态 expand」6 类路径；剩余风险集中在打包 self bundle、自检开关、多显示器与显式关闭门控的配置模式。
