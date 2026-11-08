@@ -10,8 +10,11 @@
  *   - 只清 ppid=1 的孤儿（父进程还活着的，是有人在用，不动）
  *   - 只清命令里明确是本项目依赖/本项目 Chrome profile 的进程
  *   - 只清当前用户自己的进程
+ *   - 清 Chrome 前再看一眼 SingletonLock：profile 正被活着的进程占用就跳过
+ *     （open -g 拉起的 Chrome ppid 天然是 1，光看 ppid 分不清「残留」和「别的会话在用」）
  */
 
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -133,12 +136,62 @@ export function findOrphanedAgents(rows, options = {}) {
 }
 
 /**
+ * 读 Chrome 的 SingletonLock，解析出「当前占用这个 profile 的 pid」（可注入 readlink）。
+ *
+ * 为什么要这一步：open -g 拉起的 Chrome ppid 天然是 1，光看 ppid 分不清「残留」和
+ * 「另一个会话正在用的离屏 Chrome」。Chrome 自己会在 user-data-dir 下写 SingletonLock
+ * （符号链接，目标形如 "<hostname>-<pid>"），用它判断 profile 是否真的有人在用。
+ *
+ * 读不到 / 解析不出 pid（Windows 上不是符号链接、文件被删、内容异常）→ 返回 0，
+ * 调用方按「没有活跃实例」处理。保留清理能力很重要：否则未鉴权的 CDP 端口会一直开着。
+ *
+ * @param {string} userDataDir
+ * @param {{readlink?:Function}} [options]
+ * @returns {number} 锁里记的 pid；没有/解析失败返回 0
+ */
+export function readSingletonLockPid(userDataDir, options = {}) {
+  const dir = String(userDataDir || '');
+  if (!dir) return 0;
+  const opts = options || {};
+  const readlink = opts.readlink || ((p) => fs.readlinkSync(p));
+  let target = '';
+  try { target = String(readlink(path.join(dir, 'SingletonLock')) || ''); } catch { return 0; }
+  // 目标形如 "<hostname>-<pid>"，主机名自己可能带 "-"，所以只认末尾那段数字
+  const m = /-(\d+)$/.exec(target.trim());
+  if (!m) return 0;
+  const pid = Number(m[1]);
+  return Number.isInteger(pid) && pid > 0 ? pid : 0;
+}
+
+/**
+ * 这个 Chrome profile 是否正被一个**活着的**进程占用（可注入 readlink / isAlive）。
+ * @returns {number} 占用者的 pid；没人用返回 0
+ */
+export function chromeProfileInUse(userDataDir, options = {}) {
+  const opts = options || {};
+  const pid = readSingletonLockPid(userDataDir, opts);
+  if (!pid) return 0;
+  const isAlive = opts.isAlive || ((p) => isProcessAlive(p));
+  return isAlive(pid) ? pid : 0;
+}
+
+/**
  * 找出需要清理的孤儿 Chrome：本项目 profile + 带调试端口（纯函数）。
  * CDP 无鉴权，残留一天就多一天「同机任意进程可接管已登录 profile」的面。
+ *
+ * 并发守卫：默认会看 SingletonLock，profile 正被活着的进程占用就跳过，
+ * 避免 daemon 重启时把另一个会话正在用的离屏 Chrome 清掉。
+ * options.guardActive === false 可强制全清（排障用）。
  */
 export function findOrphanedChromes(rows, options = {}) {
   const opts = options || {};
-  return collectOrphans(rows, opts, (row) => isProjectChrome(row.command, opts));
+  const guardActive = opts.guardActive !== false;
+  return collectOrphans(rows, opts, (row) => {
+    if (!isProjectChrome(row.command, opts)) return false;
+    if (!guardActive) return true;
+    const inUse = chromeProfileInUse(userDataDirOf(row.command), opts);
+    return inUse === 0;                 // 有人在用 → 不算孤儿，绝不杀
+  });
 }
 
 /** 两类孤儿合并去重（daemon 启动时清理就调这个） */

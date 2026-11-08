@@ -87,13 +87,14 @@ export async function runOnce(task, options = {}) {
     let hardTimer = null;
     const timer = setTimeout(() => {
       record({ event: 'timeout', afterMs: timeoutMs });
-      // 先礼后兵：TERM 整组，5 秒后还在就 KILL 整组（卡在系统调用里的任务不理 TERM）。
+      // 先礼后兵：TERM 整组，6 秒后还在就 KILL 整组（卡在系统调用里的任务不理 TERM）。
       // 按组杀是因为任务是 detached 起的：只杀组长会把 ocu/Chrome 留在后台。
+      // 6 秒和下面 SIGTERM 分支保持一致：任务侧同步清理预算 ~2.5 秒，宽限必须比它长。
       signalProcessTree(child.pid, 'SIGTERM');
       hardTimer = setTimeout(() => {
-        record({ event: 'timeout-kill', afterMs: timeoutMs + 5000 });
+        record({ event: 'timeout-kill', afterMs: timeoutMs + 6000 });
         signalProcessTree(child.pid, 'SIGKILL');
-      }, 5000);
+      }, 6000);
       if (typeof hardTimer.unref === 'function') hardTimer.unref();
     }, timeoutMs);
 
@@ -137,11 +138,13 @@ function forwardSignalToTask(signal) {
 
 process.on('SIGTERM', () => {
   forwardSignalToTask('SIGTERM');
-  // 给任务 4 秒收尾，再补 KILL 并退出；超时也要退，别让 daemon 等死
+  // 宽限 6 秒再补 KILL：任务侧的同步清理（sync-quit / task-emergency-cleanup）预算约 2.5 秒，
+  // 宽限必须大于它，剩下的才是余量。原来 4 秒时，多应用清理会被 SIGKILL 截断，
+  // 应用留在后台——正是评审 M-2 指出的问题。
   setTimeout(() => {
     forwardSignalToTask('SIGKILL');
     process.exit(0);
-  }, 4000).unref();
+  }, 6000).unref();
 });
 
 async function runTask(name, { retries = 1, timeoutMs = 300000 } = {}) {
