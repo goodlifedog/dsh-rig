@@ -11,9 +11,11 @@
 import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { launch } from '../browser.mjs';
 import { overlay } from '../agentd.mjs';
+import { checkAutomationPermission as defaultCheckAutomationPermission } from '../applescript-driver.mjs';
 
 // ocu 绝对不能画假光标（否则用户屏幕上会飘一个虚拟光标）
 process.env.OPEN_COMPUTER_USE_VISUAL_CURSOR = '0';
@@ -23,6 +25,90 @@ const PROFILE = process.env.HEADLESS_PROFILE
 const OCU = process.env.OCU_BIN || path.join(os.homedir(), '.local', 'bin', 'ocu');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// ---------- H2：发 AppleEvent 前的自动化授权静默预检 ----------
+// 这个 demo 用 System Events 读「前台 pid」和「窗口数」，两者都是 AppleEvent；
+// 首次未授权机器直接发会弹系统「自动化」授权框。先静默查一次，明确未授权就不发。
+// 注意 core/appleevent-preflight.mjs 由并行任务负责；本文件先内置最小实现，后续统一收口。
+const SYSTEM_EVENTS_BUNDLE = 'com.apple.systemevents';
+
+// 模块内缓存：默认 unknown（探测没结论时按「未知」处理，仍然走原逻辑）
+let automationGate = { allow: true, skipped: false, status: 'unknown', reason: '' };
+
+/** 纯函数：授权状态 → 是否允许发 AppleEvent；只有明确未授权才跳过，unknown/抛错仍尝试。 */
+export function decideAutomationAllow(status) {
+  const s = String(status == null ? '' : status).trim() || 'unknown';
+  if (s === 'denied' || s === 'needs-consent') {
+    return {
+      allow: false,
+      skipped: true,
+      status: s,
+      reason: '环境跳过：未授权自动化（' + s + '），不发送 AppleEvent 以免弹授权框',
+    };
+  }
+  return { allow: true, skipped: false, status: s, reason: '' };
+}
+
+/**
+ * 静默预检 System Events 自动化授权（不弹框）；探测失败/抛错按 unknown → 仍尝试。
+ * @param {{deps?:{checkAutomationPermission?:Function}}} [options]
+ */
+export async function preflightSystemEvents(options = {}) {
+  const opts = options || {};
+  const deps = opts.deps || {};
+  const check = deps.checkAutomationPermission || defaultCheckAutomationPermission;
+  let status = 'unknown';
+  try {
+    const result = await check({ bundleId: SYSTEM_EVENTS_BUNDLE }, opts);
+    status = (result && result.status) || 'unknown';
+  } catch {
+    status = 'unknown';
+  }
+  return decideAutomationAllow(status);
+}
+
+/**
+ * 读前台进程 pid（同步）。未授权时不发 AppleEvent，返回 { ok:false, skipped:true }。
+ * @param {{gate?:object, deps?:{execFileSync?:Function}}} [options]
+ */
+export function queryFrontPid(options = {}) {
+  const opts = options || {};
+  const gate = opts.gate || automationGate;
+  if (gate && gate.allow === false) return { ok: false, skipped: true, pid: null, reason: gate.reason || '' };
+  const run = (opts.deps && opts.deps.execFileSync) || execFileSync;
+  try {
+    const out = run('osascript', ['-e',
+      'tell application "System Events" to get unix id of first process whose frontmost is true'],
+      { encoding: 'utf8', timeout: 10000 }).trim();
+    const n = Number(out);
+    return { ok: true, skipped: false, pid: Number.isFinite(n) && n > 0 ? n : null, reason: '' };
+  } catch {
+    return { ok: false, skipped: false, pid: null, reason: '' };
+  }
+}
+
+/**
+ * 数某 pid 的窗口数（AX/System Events）。未授权时不发 AppleEvent，返回安全兜底值 null 并告警。
+ * @param {number} pid
+ * @param {{gate?:object, deps?:{execFileSync?:Function}, warn?:Function}} [options]
+ */
+export function queryWindowCount(pid, options = {}) {
+  const opts = options || {};
+  const gate = opts.gate || automationGate;
+  const warn = opts.warn || ((text) => console.warn(text));
+  if (gate && gate.allow === false) {
+    warn('[!] 未授权自动化，窗口数查询降级为 null（不发送 AppleEvent 以免弹授权框）');
+    return null;
+  }
+  const run = (opts.deps && opts.deps.execFileSync) || execFileSync;
+  try {
+    const out = run('osascript', ['-e',
+      'tell application "System Events" to count windows of (first process whose unix id is ' + pid + ')'],
+      { encoding: 'utf8', timeout: 10000 }).trim();
+    const n = Number(out);
+    return Number.isFinite(n) ? n : null;
+  } catch { return null; }
+}
 
 /**
  * 当前前台：应用名（读 ocu list_apps 的 [frontmost] 行）+ 前台进程 pid
@@ -37,14 +123,9 @@ function frontmost() {
     const line = text.split('\n').find((l) => l.includes('[frontmost'));
     if (line) name = line.replace(/\s*\[frontmost[^\]]*\].*$/, '').replace(/\s*—\s*[^ ]+$/, '').trim();
   } catch {}
-  let pid = null;
-  try {
-    const out = execFileSync('osascript', ['-e',
-      'tell application "System Events" to get unix id of first process whose frontmost is true'],
-      { encoding: 'utf8', timeout: 10000 }).trim();
-    const n = Number(out);
-    if (Number.isFinite(n) && n > 0) pid = n;
-  } catch {}
+  // H2：未授权自动化时不发 AppleEvent，pid 留空（安全兜底），由后面的环境跳过逻辑吸收
+  const pidRes = queryFrontPid();
+  const pid = pidRes.ok ? pidRes.pid : null;
   return { name, pid };
 }
 
@@ -55,15 +136,9 @@ function sameFront(a, b) {
   return a.name === b.name;
 }
 
-/** 该 pid 的窗口数（System Events / Accessibility）。headless 必须是 0。 */
+/** 该 pid 的窗口数（System Events / Accessibility）。headless 必须是 0；未授权时降级为 null。 */
 function axWindowCount(pid) {
-  try {
-    const out = execFileSync('osascript', ['-e',
-      'tell application "System Events" to count windows of (first process whose unix id is ' + pid + ')'],
-      { encoding: 'utf8', timeout: 10000 }).trim();
-    const n = Number(out);
-    return Number.isFinite(n) ? n : null;
-  } catch { return null; }
+  return queryWindowCount(pid);
 }
 
 /** 从 ps 取这个 pid 的命令行，确认真的是 --headless=new 起来的那一头 */
@@ -137,6 +212,15 @@ async function main() {
   const locked = isScreenLocked();
   const failures = [];
   const report = { ok: false, frontmost: {}, launch: {}, nav: {}, frames: [], click: {}, screen: {}, close: {} };
+
+  // H2：先静默预检自动化授权；明确未授权时不发 AppleEvent（前台 pid / 窗口数降级为 null），
+  // 由文件末尾的「窗口数为 null → 环境跳过」逻辑吸收，不误报成真失败。
+  automationGate = await preflightSystemEvents();
+  report.automation = automationGate;
+  if (automationGate.skipped) {
+    console.warn('[!] ' + automationGate.reason);
+    await overlay.log(automationGate.reason).catch(() => {});
+  }
 
   // ---------- 0. 启动前基线 ----------
   await overlay.status('后台浏览器启动（无窗口）');
@@ -256,4 +340,10 @@ async function main() {
   if (failures.length) throw new Error('屏幕无窗口验收未过：' + failures.join('；'));
 }
 
-main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
+// 导入本模块（单测拿纯函数/预检）时不要真的启动 headless Chrome；
+// runner 直接 spawn 本文件时 process.argv[1] 就是它，照常执行任务本体。
+const invokedDirectly = Boolean(process.argv[1])
+  && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (invokedDirectly) {
+  main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
+}

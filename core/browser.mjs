@@ -28,6 +28,7 @@ import path from 'node:path';
 import { CDP, listTargets } from './cdp.mjs';
 import { overlay } from './agentd.mjs';
 import { isScreenLocked } from './platform.mjs';
+import { checkAutomationPermission as defaultCheckAutomationPermission } from './applescript-driver.mjs';
 
 export const CHROME_BIN = process.env.CHROME_BIN
   || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
@@ -36,6 +37,79 @@ export const DEFAULT_PROFILE = process.env.AGENT_CHROME_PROFILE
   || path.join(os.homedir(), '.desktop-agent', 'chrome-profile');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// ---------- H2：发 AppleEvent 前的自动化授权静默预检 ----------
+// 我们需要用 System Events 读「当前前台应用」，这也是一个 AppleEvent；
+// 首次运行未授权的机器上直接发会弹系统「自动化」授权框。所以先静默查一次
+// （AEDeterminePermissionToAutomateTarget + askUserIfNeeded=false），明确未授权就不发。
+// 注意 core/appleevent-preflight.mjs 由并行任务负责；本文件先内置最小实现，后续统一收口。
+export const SYSTEM_EVENTS_BUNDLE = 'com.apple.systemevents';
+
+// 与旧实现完全一致的脚本（只读前台应用 bundle id，不改任何状态）
+const FRONT_BUNDLE_SCRIPT = 'tell application "System Events" to get bundle identifier of first process whose frontmost is true';
+
+/** 模块内缓存的授权结论：默认 unknown（=探测没结论时按「未知」处理，仍然走原逻辑） */
+let automationGate = { allow: true, skipped: false, status: 'unknown', reason: '' };
+
+/**
+ * 纯函数：授权状态 → 是否允许发 AppleEvent。
+ * 只有明确未授权（denied / needs-consent）才跳过；granted / unknown / 探测失败
+ * 一律允许尝试——不能因为探测抖动让浏览器启动莫名失败。
+ * @param {string} status
+ * @returns {{allow:boolean, skipped:boolean, status:string, reason:string}}
+ */
+export function decideAutomationAllow(status) {
+  const s = String(status == null ? '' : status).trim() || 'unknown';
+  if (s === 'denied' || s === 'needs-consent') {
+    return {
+      allow: false,
+      skipped: true,
+      status: s,
+      reason: '环境跳过：未授权自动化（' + s + '），不发送 AppleEvent 以免弹授权框',
+    };
+  }
+  return { allow: true, skipped: false, status: s, reason: '' };
+}
+
+/**
+ * 静默预检 System Events 自动化授权；探测失败/抛错按 unknown → 仍然尝试。
+ * @param {{deps?:{checkAutomationPermission?:Function}}} [options]
+ */
+export async function checkFrontQueryAutomation(options = {}) {
+  const opts = options || {};
+  const deps = opts.deps || {};
+  const check = deps.checkAutomationPermission || defaultCheckAutomationPermission;
+  let status = 'unknown';
+  try {
+    const result = await check({ bundleId: SYSTEM_EVENTS_BUNDLE }, opts);
+    status = (result && result.status) || 'unknown';
+  } catch {
+    status = 'unknown';
+  }
+  return decideAutomationAllow(status);
+}
+
+/**
+ * 读当前前台应用 bundle id（同步）。未授权时**不发 AppleEvent**，直接返回结构化 skipped。
+ * @param {{gate?:object, timeoutMs?:number, deps?:{execFileSync?:Function}}} [options]
+ * @returns {{ok:boolean, skipped:boolean, bundleId:string, reason:string}}
+ */
+export function queryFrontBundle(options = {}) {
+  const opts = options || {};
+  const gate = opts.gate || automationGate;
+  if (gate && gate.allow === false) {
+    return { ok: false, skipped: true, bundleId: '', reason: gate.reason || '未授权自动化' };
+  }
+  const run = (opts.deps && opts.deps.execFileSync) || execFileSync;
+  const runOpts = { encoding: 'utf8' };
+  if (opts.timeoutMs) runOpts.timeout = opts.timeoutMs;
+  try {
+    const out = run('osascript', ['-e', FRONT_BUNDLE_SCRIPT], runOpts);
+    return { ok: true, skipped: false, bundleId: String(out || '').trim(), reason: '' };
+  } catch {
+    return { ok: false, skipped: false, bundleId: '', reason: '' };
+  }
+}
 
 /**
  * 确保某个目录存在且只有本用户可进（0700，含已存在的目录）。
@@ -261,13 +335,8 @@ async function spawnChrome(opts, userDataDir, args) {
 
 /** 当前前台应用的 bundle id；读不到返回空串 */
 function currentFrontBundle() {
-  try {
-    return String(execFileSync('osascript', ['-e',
-      'tell application "System Events" to get bundle identifier of first process whose frontmost is true'],
-      { encoding: 'utf8', timeout: 4000 })).trim();
-  } catch {
-    return '';
-  }
+  const r = queryFrontBundle({ timeoutMs: 4000 });
+  return r.ok ? r.bundleId : '';
 }
 
 /**
@@ -307,13 +376,17 @@ export async function launch(opts = {}) {
   const logLine = (text) => { overlay.log(text).catch(() => {}); };
   const args = buildArgs(opts, userDataDir);
 
+  // H2：读前台应用是 AppleEvent，先静默预检自动化授权；明确未授权时不发、不重试，
+  // 降级成结构化 skipped（launch 返回值里带 automationGate / frontQuery），由调用方决定。
+  automationGate = await checkFrontQueryAutomation({ deps: opts.deps });
+  if (automationGate.skipped) {
+    logLine(automationGate.reason);
+    console.log('[browser] ' + automationGate.reason);
+  }
+
   // 记录当前前台的 bundle id，启动后立刻抢回来（启动 Chrome 难免会激活一下）
-  let prevBundleId = null;
-  try {
-    prevBundleId = execFileSync('osascript', ['-e',
-      'tell application "System Events" to get bundle identifier of first process whose frontmost is true'],
-      { encoding: 'utf8' }).trim();
-  } catch {}
+  const frontQuery = queryFrontBundle({ gate: automationGate });
+  let prevBundleId = frontQuery.ok ? frontQuery.bundleId : null;
 
   let lastError = null;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -344,6 +417,9 @@ export async function launch(opts = {}) {
         headless: Boolean(opts.headless),
         attempt,
         staleKilled: stale.killed,
+        // H2：自动化预检结论 + 前台查询结果（未授权时 skipped=true，没有发 AppleEvent）
+        automationGate,
+        frontQuery: { ok: frontQuery.ok, skipped: frontQuery.skipped, reason: frontQuery.reason },
         async connect({ urlMatch, titleMatch, timeoutMs: connectTimeoutMs = 20000 } = {}) {
           const started = Date.now();
           const target = urlMatch || titleMatch || null;

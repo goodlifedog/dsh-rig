@@ -28,7 +28,7 @@
 | `form-fill` | ⚠️ 后台改写 BOSS 搜索框并读回校验，最后恢复用户原搜索词（会在用户 Chrome 里写） |
 | `greet-inner` | ⚠️ boss-greet 的内层脚本：点卡片 → 核对详情 → 点立即沟通 → 关弹窗 |
 | `greet-verify` | ⚠️ 读消息列表。返回 [{ raw, time, body, who }] |
-| `headless-demo` | 当前前台：应用名（读 ocu list_apps 的 [frontmost] 行）+ 前台进程 pid |
+| `headless-demo` | 纯函数：授权状态 → 是否允许发 AppleEvent；只有明确未授权才跳过，unknown/抛错仍尝试 |
 | `human-demo` | 拟人操作演示：贝塞尔鼠标轨迹 + 随机节奏输入 |
 | `mcp-demo` | 通过 MCP 接口演示 ocu 工具调用 |
 | `multi-app` | 环境跳过原因：没在运行的应用绝不去"探测" |
