@@ -1,34 +1,49 @@
 # 外部监控日志（评审侧维护，执行侧按需读取）
 
-> 更新：2026-11-08 23:13
+> 更新：2026-11-08 23:18
 
-## 一、最新核验（逐条实跑）
+## 一、真实应用适配：第一次拿到「读」的证据
 
-| 项 | 结果 |
-| --- | --- |
-| `npm test` | 1223 项 / 0 失败 ✅ |
-| `repo:check` / `verify` | 全部通过 ✅ |
-| 发布链路 | `npm pack` 137 文件/518KB，含 ocu 许可；全局安装后 CLI 可用、ocu 随依赖装好 ✅ |
-| `adapter-demo` 守卫链 | 锁屏跳过 / 用户活跃让路 / front-risk 不可被 --allow-launch 绕过 / 只关自己拉起的应用 / 点击无变化判失败 ✅ |
+`adapter-demo --app Safari`（Safari 已在运行，只读）：
 
-## 二、必改：`adapter-demo --type-text` 写入后不还原（数据安全）
+```
+gate       ✅ Safari 已在运行，直接读
+read-tree  ✅ 窗口="起始页"，nodes=105，按钮 40，输入区 1
+echo       ✅ 小窗可回显：windowId=8767，截图 21045 字节
+```
 
-现状：找输入区 → `set_value` 写入 → 读回校验 → 结束。**全文件没有读原值/恢复逻辑。**
+**读界面 + 小窗回显两条链路对 Safari 是通的。**
 
-后果：拿它测 TextEdit 这类有用户内容的应用，测试文本会留在用户文档里；测试只用临时 fixture，所以跑测试发现不了。
+## 二、必改：front-unchanged 把系统通知浮层算成「前台被抢」
 
-修法（建议第 2 条）：
-1. 写前读原值，写后恢复，异常路径也恢复（与 form-fill 的 restore-after-error 同款）
-2. **只写「空且未命名」的目标**（复用 text-edit-guard 判定），有内容就跳过并写明原因
-3. 或要求显式 `--allow-write` 才执行写入
+同一个命令连跑两次，结果自相矛盾：
 
-## 三、待验证（需要用户离开的窗口：键鼠空闲 ≥180s 且未锁屏）
+| 次数 | front before → after | 判定 |
+| --- | --- | --- |
+| 第 1 次 | DeepSeek Harness → **UserNotificationCenter** | ❌ 假失败 |
+| 第 2 次 | **UserNotificationCenter** → UserNotificationCenter | ✅ 假通过 |
 
-1. `node core/tasks/adapter-demo.mjs --app Antigravity --file examples/adapters/sample.html`（真 Electron，先只读）
-2. 再试 `--click-text`；最后才试 `--type-text`（修完还原后再试）
-3. 每条都要留下：命令、真实输出、前台是否变化
+根因：`UserNotificationCenter` / `NotificationCenter` 是系统通知浮层。
+- 它中途出现 → 被当成目标应用抢前台（假失败）
+- 它作为基线 → 「前后一致」毫无意义（假通过）
 
-## 四、仍未修的分类器 bug
+修法：
+1. 维护一份「系统浮层进程」名单（`UserNotificationCenter`、`NotificationCenter`、`Window Server`、`loginwindow` 等），
+   前台比较时忽略它们（但要记录「期间出现系统浮层」）
+2. **基线校验**：baseline 是系统浮层时不要判 unchanged，标「基线无效，需重测」
+3. 补两条单测：浮层中途出现不判失败；浮层作为基线时判「基线无效」
 
-`core/app-runtime.mjs`：`if (electron || info.hasAsar) return { type: 'electron' }`
-→ ChatGPT 有 app.asar 但框架是 Codex+Sparkle，被判成 Electron。asar 只能算「疑似」，必须有 Electron Framework 或 Electron Helper 才算。
+## 三、Antigravity：应用侧限制（不要再耗时间）
+
+```
+open -g -a Antigravity            → 无进程
+直接执行二进制 --version          → v24.21.0（能跑）
+bundle: com.google.antigravity, arm64, 有签名
+```
+结论：冷启动即退，不是工具问题。ADAPTERS 里记为「应用侧限制」。
+
+## 四、当前风险名单（11 个，读取会抢前台）
+
+`ChatGPT、Gemini、Ghostty、QQ、Steam、Telegram、UURemote、WPS Office、iRightMouse、文本编辑、预览`
+
+优先级建议：Safari（读已通，下一步验点击）→ Chrome（CDP 已通）→ 再考虑名单外的新应用。
