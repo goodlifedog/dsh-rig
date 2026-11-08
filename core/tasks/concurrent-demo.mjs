@@ -15,6 +15,8 @@
  */
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import os from 'node:os';
+import path from 'node:path';
 import { ensureAppRunning, isAppRunning, frontName, state, find, click, quitApp, settleFront } from '../background.mjs';
 import { isScreenLocked, isMac } from '../platform.mjs';
 import { restoreFront } from '../front-watch.mjs';
@@ -23,6 +25,9 @@ import { closeOcuMcp } from '../ocu-mcp.mjs';
 const exec = promisify(execFile);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const APP = { appName: '计算器', bundleId: 'com.apple.calculator', processName: 'Calculator' };
+// 独立 profile，避免和 headless-demo / browser 任务互相抢（同一 profile 起第二个实例会互相杀）
+const BROWSER_PROFILE = process.env.CONCURRENT_PROFILE
+  || path.join(os.homedir(), '.desktop-agent', 'concurrent-profile');
 
 /**
  * 快速读前台应用名（lsappinfo，约 10ms，比 System Events 的 120ms 快一个量级）。
@@ -133,6 +138,26 @@ async function main() {
     const after = await state('计算器');
     const display = (/文本\s*[\u200e]?\s*(-?[\d.,]+)/.exec(String(after || '')) || [])[1] || '';
     record('读回显示值', display.length > 0, '显示=' + display);
+
+    // 再叠一个 Chromium 族的活：headless 浏览器在后台开页面、读标题（屏幕上没有窗口），
+    // 证明"原生应用 + 浏览器"两族同时干活时前台同样不受影响。
+    if (process.env.CONCURRENT_BROWSER !== '0') {
+      const t0 = Date.now();
+      let browser = null;
+      try {
+        const { launch } = await import('../browser.mjs');
+        browser = await launch({ userDataDir: BROWSER_PROFILE, headless: true, timeoutMs: 45000 });
+        const page = await browser.connect({ timeoutMs: 20000 });
+        await page.send('Page.navigate', { url: 'https://example.com' });
+        const loaded = await page.waitFor('document.readyState === "complete"', { timeout: 15000 });
+        const title = await page.evaluate('document.title');
+        record('headless 浏览器同时在干活', Boolean(loaded) && String(title || '').length > 0, (Date.now() - t0) + 'ms 标题=' + title);
+      } catch (error) {
+        record('headless 浏览器同时在干活', false, String((error && error.message) || error).slice(0, 100));
+      } finally {
+        if (browser) await browser.close().catch(() => null);
+      }
+    }
 
     // 多待一会儿：给你机会在它干活时继续用电脑（这段采样的目的就是抓并发证据）
     const holdMs = Number(process.env.CONCURRENT_HOLD_MS || 5000);
