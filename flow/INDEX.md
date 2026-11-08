@@ -20,6 +20,8 @@
 > **只想看一页？→ [START-HERE.md](START-HERE.md)**
 >
 > **通宵收尾的结论 → [FINAL-REPORT.md](FINAL-REPORT.md)**
+>
+> **待执行任务单：改名 + 内置 ocu + 可搜索性 → [TASK-RENAME-TO-RIG.md](TASK-RENAME-TO-RIG.md)**
 
 
 | 我想… | 看这份 |
