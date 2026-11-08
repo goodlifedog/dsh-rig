@@ -7,17 +7,13 @@
  *   npm run app:runtime -- --all --user   # 只看 /Applications 里自己装的
  *   npm run app:runtime -- Safari --json
  */
-import { scanDirs, matchAppByNames } from '../core/app-scan.mjs';
+import { scanDirs, matchAppByNames, userAppDirs, SYSTEM_APP_DIRS, allAppDirs } from '../core/app-scan.mjs';
 import { profileApp } from '../core/app-profile.mjs';
 import { chooseDriverChain, describeProfile } from '../core/app-runtime.mjs';
 
-const USER_DIRS = ['/Applications', '/Applications/Utilities'];
-const DIRS = [
-  ...USER_DIRS,
-  '/System/Applications', '/System/Applications/Utilities',
-  // Finder 在这里（还有些系统级 app），不扫就查不到
-  '/System/Library/CoreServices',
-];
+const USER_DIRS = userAppDirs();
+// 含 Finder 所在的 CoreServices；不扫就查不到
+const DIRS = allAppDirs();
 
 async function profileOf(app) {
   const collected = await profileApp(app.appPath);

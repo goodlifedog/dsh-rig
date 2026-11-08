@@ -56,7 +56,7 @@
 
 ```bash
 npm run app:resolve -- Finder          # 看这个应用现在能用哪几条通道、按什么顺序
-npm run app:resolve -- --all-user      # 把 /Applications 里的应用逐个协商
+npm run app:resolve -- --all-user      # 把自己装的应用（/Applications + ~/Applications）逐个协商
 ```
 
 协商只做只读探测：应用在不在跑、AX 树有没有内容、CDP 端口开没开、AppleScript 授没授权、窗口在不在。

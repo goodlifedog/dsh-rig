@@ -6,11 +6,12 @@
  *   npm run apps:inventory
  */
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PRESETS, presetNames, SPECIAL_APP_HANDLING } from '../core/app-presets.mjs';
 import { flattenPresets, mergeInventory, renderInventoryMarkdown, normalizeName, nextProbeCommands } from '../core/app-inventory.mjs';
-import { scanDirs, readBundleInfo } from '../core/app-scan.mjs';
+import { scanDirs, scanShortcutStubs, readBundleInfo, userAppDirs, SYSTEM_APP_DIRS, FINDER_APP_PATH } from '../core/app-scan.mjs';
 import { profileApp } from '../core/app-profile.mjs';
 
 /**
@@ -34,10 +35,11 @@ async function withRuntime(apps) {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
-const USER_DIRS = ['/Applications', '/Applications/Utilities'];
+// /Applications、/Applications/Utilities 与 ~/Applications（Homebrew/Steam 快捷方式会装这儿）
+const USER_DIRS = userAppDirs();
 // 系统应用只取预设里提到的那几个（Finder 在 CoreServices 里，单独补），否则报告会被几十个系统小工具淹掉
-const SYSTEM_DIRS = ['/System/Applications', '/System/Applications/Utilities'];
-const FINDER_PATH = '/System/Library/CoreServices/Finder.app';
+const SYSTEM_DIRS = SYSTEM_APP_DIRS;
+const FINDER_PATH = FINDER_APP_PATH;
 
 /**
  * 合并全部历史矩阵报告（按文件时间从旧到新），同一个 bundle 以最近一次为准。
@@ -121,8 +123,14 @@ async function main() {
     special: SPECIAL_APP_HANDLING,
     cdpByBundle: cdpHistory(),
   });
+  // 快捷方式壳（Steam 游戏启动器这类）：不进接管统计，但要在报告里点名，避免"合计"对不上
+  const stubs = await scanShortcutStubs([path.join(os.homedir(), 'Applications')]);
   const now = new Date();
-  const markdown = renderInventoryMarkdown(rows, { now, matrixReport: matrix ? 'reports/app-matrix-*.json（合并全部历史）' : '还没有矩阵报告' });
+  const markdown = renderInventoryMarkdown(rows, {
+    now,
+    matrixReport: matrix ? 'reports/app-matrix-*.json（合并全部历史）' : '还没有矩阵报告',
+    shortcutStubs: stubs.map((s) => s.name + '（' + s.exe + '）'),
+  });
   const dir = path.join(ROOT, 'reports');
   fs.mkdirSync(dir, { recursive: true });
   const stamp = now.toISOString().replace(/[:.]/g, '-');
@@ -130,7 +138,7 @@ async function main() {
   fs.writeFileSync(outFile, markdown);
 
   const counts = rows.reduce((acc, r) => { acc[r.status] = (acc[r.status] || 0) + 1; return acc; }, {});
-  console.log('扫描到 ' + installed.length + ' 个应用，预设门类：' + presetNames().join('/'));
+  console.log('扫描到 ' + installed.length + ' 个应用' + (stubs.length ? '（另有 ' + stubs.length + ' 个快捷方式壳未计入：' + stubs.map((s) => s.name).join('、') + '）' : '') + '，预设门类：' + presetNames().join('/'));
   console.log('状态汇总: ' + JSON.stringify(counts));
   console.log('报告: reports/app-inventory-' + stamp + '.md');
   const next = nextProbeCommands(rows);

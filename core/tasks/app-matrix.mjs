@@ -19,7 +19,7 @@ import { foreignAcceptanceOwner } from '../acceptance-lock.mjs';
 import { ensureAppRunning, isAppRunning, frontName, state, find, windowControls, readSafe, findSafe, settleFront, waitForWindow, dismissOnboarding, quitApp } from '../background.mjs';
 import { isScreenLocked } from '../platform.mjs';
 import { presetApps } from '../app-presets.mjs';
-import { scanDirs, findByBundle } from '../app-scan.mjs';
+import { scanDirs, findByBundle, userAppDirs, SYSTEM_APP_DIRS } from '../app-scan.mjs';
 import { recommendStrategy } from '../app-strategy.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
 import { localHeaders } from '../local-token.mjs';
@@ -181,8 +181,8 @@ async function main() {
   let installedApps = [];
   try {
     installedApps = [
-      ...(await scanDirs(['/Applications', '/Applications/Utilities'])),
-      ...(await scanDirs(['/System/Applications', '/System/Applications/Utilities'])),
+      ...(await scanDirs(userAppDirs())),
+      ...(await scanDirs(SYSTEM_APP_DIRS)),
     ];
   } catch {}
   const frontStart = await frontName();

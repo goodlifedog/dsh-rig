@@ -11,12 +11,12 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseProbeArgs, probeEnv } from '../core/app-probe-plan.mjs';
-import { scanDirs, matchAppByNames } from '../core/app-scan.mjs';
+import { scanDirs, matchAppByNames, userAppDirs, SYSTEM_APP_DIRS } from '../core/app-scan.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
-const USER_DIRS = ['/Applications', '/Applications/Utilities'];
-const SYSTEM_DIRS = ['/System/Applications', '/System/Applications/Utilities'];
+const USER_DIRS = userAppDirs();
+const SYSTEM_DIRS = SYSTEM_APP_DIRS;
 
 function runNode(scriptPath, env) {
   return new Promise((resolve, reject) => {

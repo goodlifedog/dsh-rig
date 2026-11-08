@@ -10,7 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { scanDirs, findByBundle } from '../app-scan.mjs';
+import { scanDirs, findByBundle, allAppDirs } from '../app-scan.mjs';
 import { frontName, isAppRunning, settleFront } from '../background.mjs';
 import {
   ensureHelper,
@@ -22,7 +22,7 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
-const DIRS = ['/Applications', '/Applications/Utilities', '/System/Applications', '/System/Applications/Utilities', '/System/Library/CoreServices'];
+const DIRS = allAppDirs();
 
 const CASES = [
   { appName: 'Finder', bundleId: 'com.apple.finder', label: '主目录名', script: 'tell application "Finder" to get name of home', redact: false },

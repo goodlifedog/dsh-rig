@@ -246,7 +246,7 @@ flow/               # 每个流程的方法论与踩坑记录
 
 ```bash
 npm run app:runtime -- Steam          # 看单个应用归到哪族、该走什么通道
-npm run app:runtime -- --all --user   # 把 /Applications 里自己装的应用归类一遍
+npm run app:runtime -- --all --user   # 把自己装的（/Applications + ~/Applications）归类一遍
 npm run app:resolve -- Finder         # 通道协商：现在哪条真的能用、按什么顺序降级
 npm run cdp:channel                   # CDP 通道端到端自检（自建 Chromium 实例，4 项）
 npm run cdp:apps                      # 看本机 Electron 应用愿不愿意开调试端口

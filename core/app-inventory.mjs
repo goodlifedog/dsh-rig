@@ -282,7 +282,7 @@ export function renderInventoryMarkdown(rows, meta = {}) {
     '# 本机应用适配清点',
     '',
     '- 生成时间：' + (meta.now ? meta.now.toISOString() : new Date().toISOString()),
-    '- 数据来源：/Applications 与 /System/Applications 扫描 + core/app-presets.mjs + ' + (meta.matrixReport || '最近一次矩阵报告'),
+    '- 数据来源：/Applications、~/Applications 与 /System/Applications 扫描 + core/app-presets.mjs + ' + (meta.matrixReport || '最近一次矩阵报告'),
     '- 合计：' + rows.length + ' 个应用',
     '',
     '| 应用 | 门类 | 运行时 | 状态 | 建议控法 | 说明 |',
@@ -299,6 +299,11 @@ export function renderInventoryMarkdown(rows, meta = {}) {
   }
   lines.push('');
   lines.push('汇总：' + order.filter((s) => counts.has(s)).map((s) => s + ' ' + counts.get(s)).join('，'));
+  const stubs = (meta.shortcutStubs || []).filter(Boolean);
+  if (stubs.length) {
+    lines.push('');
+    lines.push('另有 ' + stubs.length + ' 个快捷方式壳未计入统计（只有 run.sh 启动器、没有 bundle id，属于游戏/启动器快捷方式，不在后台接管范围）：' + stubs.join('、'));
+  }
 
   // 按运行时族汇总：回答「还有什么软件能适配」要看族，不是逐个应用看
   lines.push('');

@@ -11,7 +11,7 @@ import { overlayBase } from '../core/ports.mjs';
  */
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { scanDirs, matchAppByNames } from '../core/app-scan.mjs';
+import { scanDirs, matchAppByNames, userAppDirs, allAppDirs } from '../core/app-scan.mjs';
 import { profileApp } from '../core/app-profile.mjs';
 import { negotiateChannels, driverLabel } from '../core/driver-resolution.mjs';
 import { isAppRunning, readSafe, windowCount, frontName, settleFront } from '../core/background.mjs';
@@ -53,11 +53,7 @@ async function overlayWindowCount(app) {
   }
 }
 
-const DIRS = [
-  '/Applications', '/Applications/Utilities',
-  '/System/Applications', '/System/Applications/Utilities',
-  '/System/Library/CoreServices',
-];
+const DIRS = allAppDirs();
 
 async function resolveOne(app, profile) {
   const before = await frontName();
@@ -99,7 +95,7 @@ async function main() {
   const allUser = args.includes('--all-user');
   const names = args.filter((a) => !a.startsWith('-'));
 
-  const scanDirsList = allUser ? ['/Applications', '/Applications/Utilities'] : DIRS;
+  const scanDirsList = allUser ? userAppDirs() : DIRS;
   if (!asJson) console.error('[resolve] 扫描安装的应用…');
   const installed = await scanDirs(scanDirsList);
   if (!asJson) console.error('[resolve] 扫到 ' + installed.length + ' 个应用');

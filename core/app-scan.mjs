@@ -7,10 +7,38 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { normalizeName } from './app-inventory.mjs';
 
 const exec = promisify(execFile);
+
+/**
+ * 用户自己装的应用目录。除了 /Applications，还要看每个用户的 ~/Applications：
+ * Homebrew cask、部分国产安装器、Steam 快捷方式会装在这里，只扫 /Applications 会漏掉，
+ * 清点报告就会给出「没装/没测」的错误结论。
+ * @param {string} [homeDir] 便于测试注入，默认取当前用户 home
+ * @returns {string[]}
+ */
+export function userAppDirs(homeDir) {
+  const home = String(homeDir || os.homedir());
+  return ['/Applications', '/Applications/Utilities', path.join(home, 'Applications')];
+}
+
+/** 系统自带应用目录；默认只取预设里提到的，避免几十个系统小工具淹掉报告 */
+export const SYSTEM_APP_DIRS = ['/System/Applications', '/System/Applications/Utilities'];
+
+/** Finder 不在 /Applications 里，单独给路径 */
+export const FINDER_APP_PATH = '/System/Library/CoreServices/Finder.app';
+
+/**
+ * 全量扫描目录（用户 + 系统 + CoreServices），去重后返回。
+ * @param {string} [homeDir]
+ * @returns {string[]}
+ */
+export function allAppDirs(homeDir) {
+  return [...new Set([...userAppDirs(homeDir), ...SYSTEM_APP_DIRS, '/System/Library/CoreServices'])];
+}
 
 /** 读一个 .app 的 bundle id / 可执行名 / 显示名 */
 export async function readBundleInfo(appPath, deps = {}) {
@@ -66,6 +94,45 @@ export async function scanDirs(dirs, deps = {}) {
         process: info.exe || '',
         appPath,
       });
+    }
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * 扫「快捷方式壳」：~/Applications 里有种 .app 只有 run.sh 启动器、没有 CFBundleIdentifier
+ * （Steam 游戏快捷方式、部分国产安装器做的启动器）。它们不是能接管的独立应用，
+ * 但清点时得知道它们存在，否则报告里的「合计」会少算，看着像漏扫。
+ *
+ * @param {string[]} dirs
+ * @param {{readdir?:Function, readInfo?:Function}} [deps]
+ * @returns {Promise<Array<{name:string, exe:string, appPath:string}>>}
+ */
+export async function scanShortcutStubs(dirs, deps = {}) {
+  const readdir = deps.readdir || ((dir) => fs.promises.readdir(dir, { withFileTypes: true }));
+  const readInfo = deps.readInfo || readBundleInfo;
+  const out = [];
+  for (const dir of dirs || []) {
+    let entries = [];
+    try {
+      entries = await readdir(dir);
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const name = entry && entry.name ? entry.name : '';
+      const looksDir = entry && typeof entry.isDirectory === 'function'
+        ? (entry.isDirectory() || (typeof entry.isSymbolicLink === 'function' && entry.isSymbolicLink()))
+        : false;
+      if (!looksDir || !name.endsWith('.app')) continue;
+      const appPath = path.join(dir, name);
+      let info = null;
+      try {
+        info = await readInfo(appPath);
+      } catch {
+        continue;
+      }
+      if (info && !info.bundle && info.exe) out.push({ name: name.replace(/\.app$/i, ''), exe: info.exe, appPath });
     }
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
