@@ -659,29 +659,40 @@ export function toolFailureText(result) {
  * 实测（2026-11-07）：QQ / Gemini 这类应用是在 AX 操作「完成之后」才异步激活的，
  * 读完立刻比对会漏判。所以操作完先等一小会儿，再连续复查几轮，发现被抢就还原。
  *
+ * 用户中途自己切到别的应用时，绝不能再把他拽回来——那也会被感知成"屏幕在反复切"。
+ * 所以只还原「抢前台的那个应用」；一旦发现前台换成了第三个应用，立刻停手并如实标记 stoppedByUser。
+ *
  * @param {string} expect 期望的前台应用名
  * @param {{waitMs?:number, retries?:number, deps?:object}} [options]
- * @returns {{stolen:boolean, restores:number, finalFront:string}}
+ * @returns {{stolen:boolean, restores:number, finalFront:string, restored:boolean, stoppedByUser:boolean}}
  */
 export async function settleFront(expect, options = {}) {
   const opts = options || {};
   const deps = Object.assign({ frontName, restoreFront }, opts.deps || {});
   const waitMs = Number.isFinite(opts.waitMs) ? opts.waitMs : 250;
   const retries = Number.isFinite(opts.retries) ? opts.retries : 3;
+  const canRestore = Boolean(expect) && expect !== '(unknown)';
   let restores = 0;
   let stolen = false;
+  let stoppedByUser = false;
+  let thief = '';
   let finalFront = expect;
   for (let i = 0; i < retries; i += 1) {
     await new Promise((r) => setTimeout(r, waitMs));
     const seen = await deps.frontName();
     finalFront = seen;
     if (!expect || !seen || seen === expect) continue;
+    // 第一次发现被抢：记下抢前台的是谁。之后如果前台换成了第三个应用，
+    // 说明用户自己切走了，尊重用户，不再抢回来。
+    if (!thief) thief = seen;
+    else if (seen !== thief) { stoppedByUser = true; break; }
     stolen = true;
+    if (!canRestore) continue;
     await deps.restoreFront(expect);
     restores += 1;
   }
   // restored：最终前台是否真的回到了期望值。调用方不能只看"尝试过还原"，要看最终状态。
-  return { stolen, restores, finalFront, restored: Boolean(expect) && finalFront === expect };
+  return { stolen, restores, finalFront, restored: Boolean(expect) && finalFront === expect, stoppedByUser };
 }
 
 

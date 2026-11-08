@@ -38,6 +38,35 @@ test('restored 只看最终状态：没被抢也算还原成功', async () => {
   assert.equal(r.restored, true);
 });
 
+test('用户中途自己切到别的应用：不再抢回来（尊重用户），并如实标记', async () => {
+  const seq = ['DSH', 'QQ', 'Safari'];
+  let restores = 0;
+  const r = await settleFront('DSH', {
+    waitMs: 5,
+    retries: 3,
+    deps: {
+      frontName: async () => seq.shift() || 'Safari',
+      restoreFront: async () => { restores += 1; return true; },
+    },
+  });
+  assert.equal(r.stoppedByUser, true);
+  assert.equal(restores, 1, '只在确认是 QQ 抢的时候还原一次');
+  assert.equal(r.finalFront, 'Safari');
+  assert.equal(r.restored, false);
+});
+
+test('期望前台未知（(unknown)）：不盲目 set frontmost，只如实报告', async () => {
+  let restores = 0;
+  const r = await settleFront('(unknown)', {
+    waitMs: 5,
+    retries: 2,
+    deps: { frontName: async () => 'QQ', restoreFront: async () => { restores += 1; return true; } },
+  });
+  assert.equal(r.stolen, true);
+  assert.equal(restores, 0, '不知道原来是谁就不该乱设前台');
+  assert.equal(r.restored, false);
+});
+
 test('restored 如实反映还原失败', async () => {
   const r = await settleFront('DSH', { waitMs: 5, retries: 2, deps: { frontName: async () => 'Calculator', restoreFront: async () => false } });
   assert.equal(r.stolen, true);

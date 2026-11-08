@@ -255,6 +255,7 @@ npm run apps:probe -- 抖音,Antigravity --keep
 - 查看/清除：`npm run front:risk` 看名单；`npm run front:risk -- --clear "Ghostty"` 清一个重新测；`--clear-all` 全清；`--seed` 从历史矩阵报告补种
 - 临时强制全测：`AGENT_FRONT_RISK=off npm run matrix`
 - 任务里的 `guard()` 检测到目标被激活时，会**先把前台还原给操作前的应用，再报错**，不会把被抢的应用留在前台
+- 还原本身也不会乱抢：`settleFront()` 只还原"抢前台的那个应用"，一旦发现前台换成第三个应用（你自己切走了）立刻停手；Chrome 的后台启动延迟还原同样只在"前台仍是 Chrome"时执行
 
 边界：这是应用侧行为（不是控制层的 bug），名单只能做到"不再反复触发"，做不到让应用不抢；
 真要读这类应用的界面，只能等应用修好或改用 CDP/画面通道。

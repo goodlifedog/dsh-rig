@@ -243,10 +243,27 @@ async function spawnChrome(opts, userDataDir, args) {
   return { pid: child.pid };
 }
 
-/** 把前台还给用户：Chrome 的激活发生在窗口创建之后，所以要延迟并多试几次 */
+/** 当前前台应用的 bundle id；读不到返回空串 */
+function currentFrontBundle() {
+  try {
+    return String(execFileSync('osascript', ['-e',
+      'tell application "System Events" to get bundle identifier of first process whose frontmost is true'],
+      { encoding: 'utf8', timeout: 4000 })).trim();
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * 把前台还给用户：Chrome 的激活发生在窗口创建之后，所以要延迟并多试几次。
+ *
+ * 关键边界：只有「前台还是 Chrome」时才还原。用户在这两三秒里自己切到了别的应用，
+ * 就说明他已经主动离开 Chrome，这时再 open -b 会把他硬拽回原应用——看起来就是又切了一次屏。
+ */
 function restoreFront(prevBundleId) {
   if (!prevBundleId || prevBundleId === 'com.google.Chrome') return;
   const restore = () => {
+    if (currentFrontBundle() !== 'com.google.Chrome') return;
     try { spawnSync('open', ['-b', prevBundleId], { stdio: 'ignore', timeout: 5000 }); } catch {}
   };
   setTimeout(restore, 400);
