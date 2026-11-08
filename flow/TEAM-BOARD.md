@@ -67,6 +67,9 @@
 | task-70 | ocu-recipe | 复核修复：录屏判定剥注释、前台读取失败熔断 | 核验后提交 `3fcd769` |
 | task-71 | cdp-bridge | 复核修复：Chrome 没运行不发事件、-1743/-1744 归环境跳过、matrix 还原错误处理 | 核验后提交 `a1ec1be` |
 | task-72 | overlay-multi | 复核修复：清理跳过可见、验收收尾查终态前台、预检缓存分级 | 核验后提交 `9a3b0df` |
+| task-73 | headless-engineer | L1：入口守卫统一 isDirectRun（realpath 归一），19 个入口 + 15 条测试 | 核验后提交 `466dbdd` |
+| task-74 | overlay-multi（原 cdp-bridge 子 agent 连续失败后转派） | 只读复核 away-maintenance：2 高危 + 6 中 + 7 低 | Lead 修 H1/H2/M1–M5/L1/L2/L4/L7，提交 `1db1337` |
+| task-75 | headless-engineer | L1 收尾：剩下 6 处手写入口守卫统一 | 进行中 |
 
 ## 当前状态
 
