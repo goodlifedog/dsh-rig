@@ -128,7 +128,7 @@ test('非回环默认不带 token（自定义 OVERLAY_URL/AGENTD_URL 指向别�
   delete process.env.AGENT_ALLOW_REMOTE_TOKEN;
   try {
     for (const url of [
-      'http://10.0.0.5:7788/health',
+      'http://203.0.113.5:7788/health',
       'https://example.com/health',
       'http://127.0.0.1.evil.com/health',
       'http://localhost.evil.com:7788/health',
@@ -152,8 +152,8 @@ test('非回环 + 显式 AGENT_ALLOW_REMOTE_TOKEN=1 才带 token（环境变量�
   const prev = process.env.AGENT_ALLOW_REMOTE_TOKEN;
   process.env.AGENT_ALLOW_REMOTE_TOKEN = '1';
   try {
-    assert.equal(shouldSendToken('http://192.168.1.2:7788/', { silent: true }), true);
-    const headers = tokenHeadersFor('http://192.168.1.2:7788/health', {}, { silent: true, token: TOKEN });
+    assert.equal(shouldSendToken('http://203.0.113.9:7788/', { silent: true }), true);
+    const headers = tokenHeadersFor('http://203.0.113.9:7788/health', {}, { silent: true, token: TOKEN });
     assert.equal(headers['X-Agent-Token'], TOKEN);
   } finally {
     if (prev === undefined) delete process.env.AGENT_ALLOW_REMOTE_TOKEN;
@@ -167,20 +167,20 @@ test('显式允许远程时只警告一次，且 silent 不打扰测试', () => 
   console.warn = (...args) => { warns.push(args.map(String).join(' ')); };
   try {
     // silent:true 不产生警告
-    assert.equal(shouldSendToken('http://10.9.9.9:7788/', { allowRemote: true, silent: true }), true);
+    assert.equal(shouldSendToken('http://198.51.100.9:7788/', { allowRemote: true, silent: true }), true);
     assert.equal(warns.length, 0);
 
     // 第一次真正允许远程：警告一次
-    assert.equal(shouldSendToken('http://10.9.9.9:7788/', { allowRemote: true }), true);
+    assert.equal(shouldSendToken('http://198.51.100.9:7788/', { allowRemote: true }), true);
     assert.equal(warns.length, 1, '应该打印一次警告');
     assert.match(warns[0], /AGENT_ALLOW_REMOTE_TOKEN/);
-    assert.match(warns[0], /10\.9\.9\.9/, '警告里要写清发往哪个主机');
+    assert.match(warns[0], /198\.51\.100\.9/, '警告里要写清发往哪个主机');
 
     // 第二次不再重复警告
-    assert.equal(shouldSendToken('http://10.9.9.9:7788/', { allowRemote: true }), true);
+    assert.equal(shouldSendToken('http://198.51.100.9:7788/', { allowRemote: true }), true);
     assert.equal(warns.length, 1, '警告只打一次，不要刷屏');
 
-    const headers = tokenHeadersFor('http://10.9.9.9:7788/health', { 'X-Test': '1' }, { allowRemote: true, token: TOKEN });
+    const headers = tokenHeadersFor('http://198.51.100.9:7788/health', { 'X-Test': '1' }, { allowRemote: true, token: TOKEN });
     assert.equal(headers['X-Agent-Token'], TOKEN);
     assert.equal(headers['X-Test'], '1');
   } finally {
@@ -191,7 +191,7 @@ test('显式允许远程时只警告一次，且 silent 不打扰测试', () => 
 test('local-token 与 safety 的回环判定规则保持一致（两边各留一份实现，不能漂移）', () => {
   const hosts = [
     '127.0.0.1', '127.0.0.1:7788', 'localhost', 'localhost:7789', '[::1]:7788', '[::1]',
-    'evil.example', '127.0.0.1.evil.com', 'localhost.evil.com', '', '10.0.0.1', '[::1',
+    'evil.example', '127.0.0.1.evil.com', 'localhost.evil.com', '', '198.51.100.1', '[::1',
   ];
   for (const host of hosts) {
     assert.equal(isLoopbackHost(host), safetyIsLoopbackHost(host), JSON.stringify(host));

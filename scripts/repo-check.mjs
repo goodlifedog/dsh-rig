@@ -89,6 +89,17 @@ for (const f of tracked) {
   // 手机号要独立成数，避免把 13 位时间戳误判
   if (/(?<!\d)1[3-9]\d{9}(?!\d)/.test(text.replace(/https?:\/\/\S+/g, ''))) leaks.push(f + ' 疑似手机号');
   if (tokens.some((t) => text.toLowerCase().includes(t.toLowerCase()))) leaks.push(f + ' 含本机用户名/机器名');
+  // 邮箱（放行 GitHub noreply / 代码托管地址 / example 占位）
+  const EMAIL_ALLOW = /@(users\.noreply\.github\.com|noreply\.github\.com|github\.com|example\.(com|org)|localhost)$/i;
+  const emails = text.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) || [];
+  if (emails.some((mail) => !EMAIL_ALLOW.test(mail))) leaks.push(f + ' 含真实邮箱');
+  // 私钥/云厂商/开发平台 token
+  if (/\b(?:ghp_|gho_|ghs_|github_pat_|xox[baprs]-)[A-Za-z0-9_]{10,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY/.test(text)) leaks.push(f + ' 疑似密钥/token');
+  // 内网地址（docs 里举例也不允许；127.0.0.1/localhost 合法）
+  if (/\b(?:192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b/.test(text)) leaks.push(f + ' 含内网 IP');
+  // 本机 .local 主机名（排除 localhost）
+  // 说明：不再按文本匹配 .local 主机名——bundle id 片段（com.local.*）与测试用通用主机名会误报；
+  // 真正需要防的是「本机主机名」，已由上面的动态 hostname token 检查覆盖。
 }
 add('没有绝对路径/手机号/本机用户名泄漏', hasGit ? leaks.length === 0 : true,
   hasGit ? leaks.slice(0, 3).join(', ') : '跳过（非 git 目录，没有文件列表）', !hasGit);

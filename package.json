@@ -5,7 +5,7 @@
   "type": "module",
   "description": "后台电脑控制 + 小窗回显：用 Accessibility 语义树驱动真实 macOS 应用，全程不抢焦点",
   "license": "MIT",
-  "author": "goodlifedog",
+  "author": "goodlifedog <goodlifedog@users.noreply.github.com>",
   "engines": {
     "node": ">=20"
   },
@@ -81,5 +81,6 @@
     "tasks:doc": "node scripts/tasks-doc.mjs",
     "env:doc": "node scripts/env-doc.mjs",
     "away:maintain": "node scripts/away-maintenance.mjs"
-  }
+  },
+  "homepage": "https://github.com/goodlifedog"
 }
