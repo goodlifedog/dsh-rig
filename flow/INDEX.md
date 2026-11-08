@@ -66,6 +66,7 @@ npm run away:maintain    # 用户离开时一条龙：verify:live → 新门类�
 - 底层 ocu 怎么同步进来：[OCU-SYNC.md](OCU-SYNC.md)
 - 外部评审留下的补丁：[PATCHES.md](PATCHES.md)；发版文案草稿：[RELEASE-NOTES-DRAFT.md](RELEASE-NOTES-DRAFT.md)
 - 方法论与历史记录：[RECIPE.md](RECIPE.md)（踩坑总结）、[SCAN.md](SCAN.md)（扫描类任务）
+- 外部监控日志（评审侧维护、执行侧按需读取）：[SUPERVISION.md](SUPERVISION.md)
 - 外部评审收尾结论：[FINAL-REPORT.md](FINAL-REPORT.md)（工程可发、剩下的是主人的决定）
 
 ## 维护约定

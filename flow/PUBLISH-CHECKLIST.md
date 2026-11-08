@@ -16,7 +16,7 @@ cat flow/PUBLISH-VERDICT.md
 
 # 1. 应用两个补丁（发布配置 + P1 七项修复）
 # 只应用发布配置补丁；P1 的 7 项修复主会话已自行实现（patch-p1.diff 已作废，别再应用）
-git apply flow/patch-publish.diff
+# 发布配置已直接写在仓库的 package.json 里，不需要打补丁
 
 # 2. 把两处占位换成自己的
 #    身份已经统一为 GitHub 虚拟身份 goodlifedog（作者/提交者/署名/appId）；如要换成别的名字按下面替换
@@ -67,7 +67,7 @@ node core/cli.mjs foo; echo $? # 应为 2（P1 已实现，无需打补丁）
 
 ## B. 发布配置
 
-- [ ] **B1. 应用发布补丁**（补丁已实测：干净 checkout 里 `git apply` 成功，应用后全量测试仍全绿）：`git apply flow/patch-publish.diff`（包名 scoped / bin / files / repository / CI 只跑 macOS / 徽章换真地址六项）
+- [ ] **B1. 应用发布补丁**（补丁已实测：干净 checkout 里 `git apply` 成功，应用后全量测试仍全绿）：`# 发布配置已直接写在仓库的 package.json 里，不需要打补丁`（包名 scoped / bin / files / repository / CI 只跑 macOS / 徽章换真地址六项）
   - 应用后把 `@goodlifedog/desktop-agent` 和 `github.com/goodlifedog/desktop-agent` 换成真实值
   - 旧的 `dist-app/` 构建产物已删除（含旧署名）；发版前在 `overlay/` 里重新 `npm run dist`，产物是 gitignored 的，不要把带本机信息的构建目录一起打包上传
   - `npm run repo:check` 会动态扫描本机用户名/主机名，任何 tracked 文本文件里出现就会报错（防止以后再写回去）

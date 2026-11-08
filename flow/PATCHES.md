@@ -5,14 +5,14 @@
 ## 待应用
 
 ```bash
-git apply flow/patch-publish.diff        # 发布配置（发布前必打）
+# 发布配置已直接落进 package.json（不再用补丁；旧的 patch-publish.diff 已删除）
 # patch-env-doc 已应用（环境变量清单自动生成 + 同步检查），文件已删
 # patch-scope-lock 已应用（锁屏时 scope:check 环境跳过），文件已删
 # patch-ports 已应用（端口单一来源 core/ports.mjs），文件已删
 # repocheck-zip / packaging-files 已应用（ZIP 降级 + 打包白名单），文件已删
 ```
 
-### `patch-publish.diff`（78 行 / 3 个文件）
+### ~~patch-publish.diff~~（已废弃，文件已删除）
 
 - 包名换 scoped：`@goodlifedog/desktop-agent`（原名 `desktop-agent` 在 npm 已被占用）
 - 补 `bin` / `files` 白名单 / `repository` / `publishConfig`
