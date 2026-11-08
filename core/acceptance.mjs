@@ -14,6 +14,7 @@ import { overlay } from './agentd.mjs';
 import { overlayBase } from './ports.mjs';
 import { tokenHeadersFor } from './local-token.mjs';
 import { createAppleEventPreflight, runAppleEventGuarded, SYSTEM_EVENTS_BUNDLE_ID } from './appleevent-preflight.mjs';
+import { frontName } from './background.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -488,6 +489,71 @@ async function tidyOverlayWindows() {
   } catch {}
 }
 
+/** 从 cleanup-test-data 的 stdout 里挑出 JSON（脚本前面可能混有日志行） */
+function parseCleanupJson(stdout) {
+  const text = String(stdout || '');
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  try {
+    const parsed = JSON.parse(text.slice(start, end + 1));
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * M2 纯函数：把 cleanup-test-data 的结果翻译成验收收尾说明。
+ * - 解析 stdout JSON，envSkip/deleted/skippedKinds 摘要并入 CLEANUP_NOTES；
+ * - 子进程退出码非 0 也记一条（别静默）；
+ * - 解析失败/超时抛错不崩，只记失败原因。
+ * @param {{code?:number, stdout?:string, stderr?:string, error?:string}} result
+ * @returns {string[]}
+ */
+export function summarizeCleanupRun(result = {}) {
+  const notes = [];
+  const code = Number(result && result.code);
+  const parsed = parseCleanupJson(result && result.stdout);
+  if (parsed) {
+    const deleted = parsed.deleted || {};
+    const counts = {
+      notes: Math.max(0, Number(deleted.notes) || 0),
+      textEdit: Math.max(0, Number(deleted.textEdit) || 0),
+      chrome: Math.max(0, Number(deleted.chrome) || 0),
+    };
+    const parts = 'notes=' + counts.notes + ' textEdit=' + counts.textEdit + ' chrome=' + counts.chrome;
+    const kinds = Array.isArray(parsed.skippedKinds) && parsed.skippedKinds.length
+      ? parsed.skippedKinds.join('/')
+      : '未知通路';
+    if (parsed.envSkip === true || parsed.skipped === true) {
+      notes.push('清理：检测到环境跳过（' + kinds + '），deleted ' + parts + '；未清理项见清理报告，授权/应用可用后请重跑');
+    } else if (counts.notes + counts.textEdit + counts.chrome > 0) {
+      notes.push('清理：deleted ' + parts);
+    }
+  } else if (String((result && result.stdout) || '').trim()) {
+    notes.push('清理：解析清理脚本 JSON 失败（详见清理输出）');
+  }
+  if (Number.isFinite(code) && code !== 0) notes.push('清理脚本退出码 ' + code + '（详见清理输出）');
+  if (result && result.error) notes.push('清理失败：' + String(result.error).slice(0, 160));
+  return notes;
+}
+
+/**
+ * M5 纯函数：未授权时收尾前台与起点不一致 -> 一条环境说明（不判 FAIL）。
+ * 只在前台读取成功、有 AppleEvent 告警、且前后不同时返回文案。
+ * @param {{frontAtStart?:string, finalFront?:string, appleEventWarnings?:string[]}} input
+ * @returns {string}
+ */
+export function finalFrontWarning({ frontAtStart = '', finalFront = '', appleEventWarnings = [] } = {}) {
+  const start = String(frontAtStart || '').trim();
+  const final = String(finalFront || '').trim();
+  const warnings = (Array.isArray(appleEventWarnings) ? appleEventWarnings : []).filter(Boolean);
+  if (!start || !final || !warnings.length || final === start) return '';
+  return '自动化未授权导致前台可能未还原：起始 ' + start + ' → 结束 ' + final
+    + '（已跳过 AppleEvent；仅记录环境说明，不判验收失败）';
+}
+
 async function cleanupAfterAcceptance() {
   await tidyOverlayWindows();
   // 收尾再采样一次：失败/中止的情况下，前面 per-task 的清理可能还没来得及跑
@@ -496,7 +562,8 @@ async function cleanupAfterAcceptance() {
   try {
     // 清理脚本现在是安全模式：笔记默认只报告（要 --force 才删）、TextEdit 只关带测试标记的文稿、
     // 只会退出测试应用，所以验收后可以直接真跑，把环境收拾干净。
-    await run('node', ['scripts/cleanup-test-data.mjs'], { timeout: 240000 });
+    const cleanupRun = await run('node', ['scripts/cleanup-test-data.mjs'], { timeout: 240000 });
+    for (const note of summarizeCleanupRun(cleanupRun)) CLEANUP_NOTES.push(note);
   } catch (error) {
     console.warn('清理失败：' + ((error && error.message) || error));
   }
@@ -616,6 +683,14 @@ async function main() {
   await restoreUserFront();
 
   await cleanupAfterAcceptance();
+  // M5：收尾用非 AppleEvent 的 frontName 复核终态前台；未授权导致还原被跳过时写进报告（不判失败）
+  let finalFront = '';
+  try { finalFront = await frontName(); } catch {}
+  const frontNote = finalFrontWarning({ frontAtStart: FRONT_AT_START, finalFront, appleEventWarnings: APPLEEVENT_WARNINGS });
+  if (frontNote) {
+    CLEANUP_NOTES.push(frontNote);
+    console.warn('  ⚠ ' + frontNote);
+  }
   if (CLEANUP_NOTES.length) console.log('\n收尾：' + CLEANUP_NOTES.join('；'));
   if (APPLEEVENT_WARNINGS.length) console.log('\n自动化授权告警：' + APPLEEVENT_WARNINGS.join('；'));
 

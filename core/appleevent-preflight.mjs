@@ -22,6 +22,13 @@ export const SYSTEM_EVENTS_BUNDLE_ID = 'com.apple.systemevents';
 /** 默认预检超时：短到不阻塞（探测本身通常几十 ms），又足够覆盖首次启动 helper。 */
 export const PREFLIGHT_TIMEOUT_MS = 800;
 
+// 预检缓存 TTL（L1）：授权状态基本稳定，但 denied/unknown 要更快重试——
+// 用户中途授权后不该再被旧 denied 卡 5 秒；探测失败也不该让每个动作都等 800ms。
+// granted 默认 5s（可被 cacheMs/grantedCacheMs 覆盖）；denied 2s；unknown 1s。
+export const GRANTED_CACHE_MS = 5000;
+export const DENIED_CACHE_MS = 2000;
+export const UNKNOWN_CACHE_MS = 1000;
+
 /** checkAutomationPermission 的 status → 允许/跳过（纯函数，便于单测）。 */
 export function decideAutomationAllow(status) {
   const s = String(status == null ? '' : status).trim() || 'unknown';
@@ -65,13 +72,17 @@ async function defaultCheckAutomationPermission(app, options) {
 }
 
 /**
- * 创建预检函数（可注入 checkAutomationPermission 便于单测/复用）。
+ * 创建预检函数（可注入 checkAutomationPermission / now 便于单测/复用）。
  *
  * @param {{
  *   checkAutomationPermission?: (app:{bundleId:string}, options?:object)=>Promise<{status?:string}>,
  *   bundleId?: string,
  *   timeoutMs?: number,
- *   cacheMs?: number,
+ *   cacheMs?: number,          // 兼容旧参数：设置 granted TTL（0 = 关闭全部缓存）
+ *   grantedCacheMs?: number,   // granted 缓存，默认 5000ms
+ *   deniedCacheMs?: number,    // denied/needs-consent 缓存，默认 2000ms
+ *   unknownCacheMs?: number,   // 探测失败/超时缓存，默认 1000ms（仍放行，只是不再每次都探测）
+ *   now?: () => number,        // 可注入时钟（测试用）
  * }} [options]
  * @returns {(input?:{action?:string, bundleId?:string})=>Promise<{allowed:boolean,status:string,warning?:string,error?:string,cached?:boolean}>}
  */
@@ -80,23 +91,42 @@ export function createAppleEventPreflight(options = {}) {
   const check = typeof opts.checkAutomationPermission === 'function'
     ? opts.checkAutomationPermission
     : defaultCheckAutomationPermission;
+  const now = typeof opts.now === 'function' ? opts.now : () => Date.now();
   const timeoutMs = Number.isFinite(opts.timeoutMs) ? opts.timeoutMs : PREFLIGHT_TIMEOUT_MS;
   const defaultBundleId = String(opts.bundleId || SYSTEM_EVENTS_BUNDLE_ID);
-  // 授权状态在一次验收里基本稳定：缓存已得出结论的状态，避免每个 helper 都起一次探测进程。
-  const cacheMs = Number.isFinite(opts.cacheMs) ? opts.cacheMs : 5000;
+  const legacyCacheMs = Number.isFinite(opts.cacheMs) ? opts.cacheMs : null;
+  const grantedCacheMs = Number.isFinite(opts.grantedCacheMs)
+    ? opts.grantedCacheMs
+    : (legacyCacheMs === null ? GRANTED_CACHE_MS : legacyCacheMs);
+  // 兼容 old cacheMs=0（单测用它关闭缓存）：denied/unknown 也跟着关；
+  // 其他情况按 L1 的短 TTL 分别缓存。
+  const deniedCacheMs = Number.isFinite(opts.deniedCacheMs)
+    ? opts.deniedCacheMs
+    : (legacyCacheMs === 0 ? 0 : DENIED_CACHE_MS);
+  const unknownCacheMs = Number.isFinite(opts.unknownCacheMs)
+    ? opts.unknownCacheMs
+    : (legacyCacheMs === 0 ? 0 : UNKNOWN_CACHE_MS);
+  const ttlFor = (status) => (status === 'granted' ? grantedCacheMs : (status === 'denied' ? deniedCacheMs : unknownCacheMs));
   let cached = null;
 
   return async function preflight(input = {}) {
     const target = String((input && input.bundleId) || defaultBundleId);
     const action = String((input && input.action) || 'AppleEvent');
-    if (cached && cached.status !== 'unknown' && cached.bundleId === target && Date.now() - cached.at < cacheMs) {
-      if (cached.status === 'granted') return { allowed: true, status: 'granted', cached: true };
-      return {
-        allowed: false,
-        status: 'denied',
-        warning: action + '：' + cached.reason,
-        cached: true,
-      };
+    if (cached && cached.bundleId === target) {
+      const ttl = ttlFor(cached.status);
+      if (ttl > 0 && now() - cached.at < ttl) {
+        if (cached.status === 'granted') return { allowed: true, status: 'granted', cached: true };
+        if (cached.status === 'denied') {
+          return {
+            allowed: false,
+            status: 'denied',
+            warning: action + '：' + cached.reason,
+            cached: true,
+          };
+        }
+        // unknown 缓存：仍然放行（行为不变），只是避免连续 800ms 探测
+        return { allowed: true, status: 'unknown', cached: true };
+      }
     }
 
     let result = null;
@@ -113,12 +143,14 @@ export function createAppleEventPreflight(options = {}) {
 
     const status = probeError ? 'unknown' : normalizeAutomationStatus(result);
     const decision = decideAutomationAllow(status);
+    const at = now();
     if (!decision.allow) {
       const warning = action + '：' + decision.reason;
-      if (cacheMs > 0) cached = { status: 'denied', at: Date.now(), bundleId: target, reason: decision.reason };
+      if (deniedCacheMs > 0) cached = { status: 'denied', at, bundleId: target, reason: decision.reason };
       return { allowed: false, status, warning };
     }
-    if (status === 'granted' && cacheMs > 0) cached = { status: 'granted', at: Date.now(), bundleId: target };
+    if (status === 'granted' && grantedCacheMs > 0) cached = { status: 'granted', at, bundleId: target };
+    else if (status === 'unknown' && unknownCacheMs > 0) cached = { status: 'unknown', at, bundleId: target };
     const response = { allowed: true, status };
     if (probeError) response.error = probeError;
     return response;

@@ -17,7 +17,7 @@ import { execFile, execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { ensureAppRunning, frontName, quitApp } from '../core/background.mjs';
+import { ensureAppRunning, frontName, isAppRunning, quitApp } from '../core/background.mjs';
 import { closeOcuMcp } from '../core/ocu-mcp.mjs';
 import { countNotes, deleteTopNotes, deleteMarkedTestNotes, LEGACY_TEST_WORDS } from '../core/note-cleanup.mjs';
 import { shouldQuitApp, shouldRunNoteCleanup } from '../core/cleanup-policy.mjs';
@@ -99,10 +99,28 @@ function userRecentlyActive() {
 // 本次清理自己拉起来的应用：只有这些可以无条件关；别人的要等用户离开才清
 const launchedByUs = new Set();
 
-async function purgeNotes(report) {
-  const count = await countNotes();
+/**
+ * 清理测试笔记（可注入 countNotes 便于单测 M1 的未授权报告）。
+ * @param {Array<object>} report
+ * @param {{countNotes?:Function}} [options]
+ */
+export async function purgeNotes(report, options = {}) {
+  const opts = options || {};
+  const count = await (typeof opts.countNotes === 'function' ? opts.countNotes : countNotes)();
   report.push({ kind: 'note-count', count });
-  if (count <= 0) return 0;
+  // countNotes 返回 -1 = 未授权/读不到笔记列表：明确记一条环境跳过，
+  // 否则 deleted.notes=0 会被读成「没有测试笔记=清理成功」（M1）。
+  if (count < 0) {
+    report.push({
+      kind: 'note-skipped',
+      envSkip: true,
+      status: 'unavailable',
+      deleted: 0,
+      reason: '读不到 Notes 笔记列表（自动化未授权或 Notes 不可用），未删除任何笔记；授权后重跑 npm run cleanup:test',
+    });
+    return 0;
+  }
+  if (count === 0) return 0;
   if (!forceNotes) {
     report.push({ kind: 'note-skip', note: '当前文件夹有 ' + count + ' 条笔记；清理需要 --force（只删带 [AGENT-TEST] 标记的笔记；历史测试词要 --force-all，不动用户笔记）' });
     return 0;
@@ -160,6 +178,29 @@ async function purgeNotes(report) {
   return 0;
 }
 
+/**
+ * 顶层清理汇总（M1，纯函数便于单测）：任一通路跳过就算 skipped。
+ * envSkip 只统计「环境/授权原因跳过」；app-not-running 也算没验证，计入 skipped/envSkip。
+ * @param {Array<object>} report cleanup-test-data 的 report 数组
+ * @param {{notes?:number,textEdit?:number,chrome?:number}} deleted
+ */
+export function summarizeCleanup(report = [], deleted = {}) {
+  const list = Array.isArray(report) ? report : [];
+  const skippedEntries = list.filter((r) => r && (r.envSkip === true || r.skipped));
+  const envSkip = skippedEntries.length > 0;
+  const skippedKinds = [...new Set(skippedEntries.map((r) => String((r && r.kind) || 'unknown')))];
+  return {
+    skipped: skippedEntries.length > 0,
+    envSkip,
+    skippedKinds,
+    deleted: {
+      notes: Math.max(0, Number((deleted && deleted.notes) || 0)),
+      textEdit: Math.max(0, Number((deleted && deleted.textEdit) || 0)),
+      chrome: Math.max(0, Number((deleted && deleted.chrome) || 0)),
+    },
+  };
+}
+
 async function cleanupNotes(report) {
   // 用户正在用电脑时连启动备忘录都别做：清理不该让人看到窗口弹出来
   const gate = shouldRunNoteCleanup({ userActive: userRecentlyActive(), force: forceNotes || forceAllNotes });
@@ -191,6 +232,28 @@ export async function cleanupTextEdit(report, options = {}) {
   const deps = opts.deps || {};
   const runOsa = deps.osa || osa;
   const pause = deps.sleep || sleep;
+  const isRunning = typeof deps.isAppRunning === 'function' ? deps.isAppRunning : isAppRunning;
+
+  // M3：先查进程（ps/pgrep，无 TCC），没运行就不发 AppleEvent——避免把 TextEdit 拉起来/弹授权框。
+  let running = false;
+  try {
+    // 只传 processName：isAppRunning 走 pgrep（无 TCC），不会因 appName/bundleId 分支退回 osascript AppleEvent
+    running = Boolean(await isRunning({ processName: 'TextEdit' }));
+  } catch {
+    running = false;
+  }
+  if (!running) {
+    report.push({
+      kind: 'textedit-skipped',
+      skipped: 'app-not-running',
+      envSkip: true,
+      bundleId: TEXTEDIT_BUNDLE_ID,
+      deleted: 0,
+      reason: 'TextEdit 未运行，未发 AppleEvent',
+    });
+    return { deleted: 0, skipped: true };
+  }
+
   const preflight = typeof opts.preflight === 'function'
     ? opts.preflight
     : createAppleEventPreflight({ bundleId: TEXTEDIT_BUNDLE_ID });
@@ -209,9 +272,6 @@ export async function cleanupTextEdit(report, options = {}) {
     console.warn('[!] ' + reason);
     return { deleted: 0, skipped: true };
   }
-
-  const running = runOsa('application "TextEdit" is running') === 'true';
-  if (!running) { report.push({ kind: 'textedit', running: false }); return { deleted: 0, skipped: false }; }
   const count = Number(runOsa('tell application "TextEdit" to count documents')) || 0;
   let deleted = 0;
   for (let i = count; i >= 1; i -= 1) {
@@ -300,6 +360,25 @@ export async function reportOnly(report, options = {}) {
   const opts = options || {};
   const deps = opts.deps || {};
   const runOsa = deps.osa || osa;
+  const isRunning = typeof deps.isAppRunning === 'function' ? deps.isAppRunning : isAppRunning;
+  let running = false;
+  try {
+    running = Boolean(await isRunning({ processName: 'Google Chrome' }));
+  } catch {
+    running = false;
+  }
+  if (!running) {
+    report.push({
+      kind: 'chrome-skipped',
+      skipped: 'app-not-running',
+      envSkip: true,
+      bundleId: CHROME_BUNDLE_ID,
+      reason: 'Chrome 未运行，未发 AppleEvent',
+    });
+    report.push({ kind: 'chatgpt', note: '聊天记录不在本次清理范围（用户数据，需要确认后再动）' });
+    return { read: false, skipped: true };
+  }
+
   const preflight = typeof opts.preflight === 'function'
     ? opts.preflight
     : createAppleEventPreflight({ bundleId: CHROME_BUNDLE_ID });
@@ -338,7 +417,17 @@ async function main() {
   await quitTestApps(report);
   await reportOnly(report); // Chrome 只报告不删除，所以 chrome 恒为 0
   const after = await frontName();
-  console.log(JSON.stringify({ dryRun, front: { before, after }, deleted, report }, null, 1));
+  // 顶层明确 skipped/envSkip：任一通路跳过（未授权/应用未运行/读不到）都不算「清理成功」（M1）
+  const summary = summarizeCleanup(report, deleted);
+  console.log(JSON.stringify({
+    dryRun,
+    front: { before, after },
+    deleted: summary.deleted,
+    skipped: summary.skipped,
+    envSkip: summary.envSkip,
+    skippedKinds: summary.skippedKinds,
+    report,
+  }, null, 1));
   await closeOcuMcp().catch(() => {});
 }
 

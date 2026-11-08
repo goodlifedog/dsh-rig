@@ -11,6 +11,9 @@ import {
   createAppleEventPreflight,
   runAppleEventGuarded,
   withTimeout,
+  GRANTED_CACHE_MS,
+  DENIED_CACHE_MS,
+  UNKNOWN_CACHE_MS,
 } from '../core/appleevent-preflight.mjs';
 
 const grantedCheck = async () => ({ status: 'granted' });
@@ -176,4 +179,83 @@ test('runAppleEventGuarded：run 抛错返回兜底，不向上炸', async () =>
 test('withTimeout：正常值透传，超时抛 preflight-timeout', async () => {
   assert.equal(await withTimeout(Promise.resolve(7), 50), 7);
   await assert.rejects(() => withTimeout(new Promise(() => {}), 20), /preflight-timeout/);
+});
+test('缓存 TTL 常量：granted 5s、denied 2s、unknown 1s', () => {
+  assert.equal(GRANTED_CACHE_MS, 5000);
+  assert.equal(DENIED_CACHE_MS, 2000);
+  assert.equal(UNKNOWN_CACHE_MS, 1000);
+});
+
+test('缓存 TTL（fake now）：granted 5s 内复用，过期重新探测', async () => {
+  let clock = 1000;
+  let probes = 0;
+  const preflight = createAppleEventPreflight({
+    now: () => clock,
+    checkAutomationPermission: async () => { probes += 1; return { status: 'granted' }; },
+  });
+  assert.equal((await preflight({ action: 'a' })).allowed, true);
+  clock += 4000;
+  const cached = await preflight({ action: 'b' });
+  assert.equal(cached.allowed, true);
+  assert.equal(cached.cached, true);
+  assert.equal(probes, 1);
+  clock += 1500; // 累计 5500 > 5000
+  await preflight({ action: 'c' });
+  assert.equal(probes, 2);
+});
+
+test('缓存 TTL（fake now）：denied 2s 后重新探测，用户中途授权能及时生效', async () => {
+  let clock = 1000;
+  let probes = 0;
+  let status = 'denied';
+  const preflight = createAppleEventPreflight({
+    now: () => clock,
+    checkAutomationPermission: async () => { probes += 1; return { status }; },
+  });
+  assert.equal((await preflight({ action: 'a' })).allowed, false);
+  clock += 1500;
+  const cached = await preflight({ action: 'b' });
+  assert.equal(cached.allowed, false);
+  assert.equal(cached.cached, true);
+  assert.equal(probes, 1, '2s 内 denied 应复用缓存');
+  status = 'granted';
+  clock += 600; // 累计 2100 > 2000
+  const afterGrant = await preflight({ action: 'c' });
+  assert.equal(afterGrant.allowed, true);
+  assert.equal(afterGrant.status, 'granted');
+  assert.equal(probes, 2);
+});
+
+test('缓存 TTL（fake now）：unknown 缓存 1s，避免每个动作都等 800ms', async () => {
+  let clock = 1000;
+  let probes = 0;
+  const preflight = createAppleEventPreflight({
+    now: () => clock,
+    checkAutomationPermission: async () => { probes += 1; return { status: 'unknown' }; },
+  });
+  const first = await preflight({ action: 'a' });
+  assert.equal(first.allowed, true, 'unknown 仍然尝试');
+  assert.equal(first.status, 'unknown');
+  clock += 900;
+  const cached = await preflight({ action: 'b' });
+  assert.equal(cached.allowed, true);
+  assert.equal(cached.cached, true);
+  assert.equal(probes, 1);
+  clock += 200; // 累计 1100 > 1000
+  await preflight({ action: 'c' });
+  assert.equal(probes, 2);
+});
+
+test('缓存可分别关闭：denied/unknown TTL=0 时每次都探测', async () => {
+  let clock = 1000;
+  let probes = 0;
+  const preflight = createAppleEventPreflight({
+    now: () => clock,
+    deniedCacheMs: 0,
+    unknownCacheMs: 0,
+    checkAutomationPermission: async () => { probes += 1; return { status: 'unknown' }; },
+  });
+  await preflight({ action: 'a' });
+  await preflight({ action: 'b' });
+  assert.equal(probes, 2);
 });
