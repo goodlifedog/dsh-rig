@@ -24,7 +24,7 @@
 | secondaryAction(app, index, action) | 触发元素自带次要动作（删除/置顶/显示简介） |
 | scrollElement(app, {...}) | 滚动列表或文档 |
 | selectTextIn(app, {...}) | 选中文本或放置光标 |
-| readSafe(app, {...}) | 带前台保护的读取（被抢就还原并标记）；默认查前台风险名单，命中直接跳过不读（`risk:false` 关闭） |
+| readSafe(app, {...}) | 带前台保护的读取（同步抢前台立刻还原、异步抢前台由 settleFront 兜住并标记）；默认查前台风险名单，命中直接跳过不读（`risk:false` 关闭） |
 | findSafe(app, query, {...}) | 带前台保护的元素查询（同样受前台风险名单保护） |
 | frontRiskGate() | 默认前台风险门控：名单里的应用「一读就自己跳前台」，已被记录证据，读取时直接跳过（`AGENT_FRONT_RISK=off` 关闭） |
 | resetFrontRiskGate() | 丢掉缓存的名单（改了环境变量/名单文件后重新读；测试用） |

@@ -509,13 +509,18 @@ export async function readSafe(app, options = {}) {
     error = String(e && e.message || e).slice(0, 120);
   }
   const after = await deps.frontName();
+  const canRestore = opts.restore !== false;
+  const stoleNow = Boolean(before && after && before !== after);
+  // 立刻还原（不等 settleFront 的 180ms 首轮等待）：同步抢前台的应用只会闪这一下，
+  // 越早还原用户越不容易看到。异步激活的（操作完成后才跳）交给下面 settleFront 兜。
+  if (canRestore && stoleNow) {
+    try { await deps.restoreFront(before); } catch {}
+  }
   // 有些应用是在 AX 操作完成后才异步激活的：延迟再复查几轮
-  const settle = opts.restore === false
-    ? { stolen: false }
-    : await settleFront(before, { waitMs: 180, retries: 2, deps });
-  // 还原统一交给 settleFront 做（它还会兜住"操作完才异步激活"的情况），这里不再重复还原，
-  // 否则一次读取会触发两次前台还原，日志和统计都会失真。
-  const frontStolen = Boolean(before && after && before !== after) || settle.stolen;
+  const settle = canRestore
+    ? await settleFront(before, { waitMs: 180, retries: 2, deps })
+    : { stolen: false };
+  const frontStolen = stoleNow || settle.stolen;
   if (frontStolen && risk && typeof risk.note === 'function') {
     try { risk.note(app); } catch {}
   }
@@ -547,11 +552,16 @@ export async function findSafe(app, query, options = {}) {
     error = String(e && e.message || e).slice(0, 120);
   }
   const after = await deps.frontName();
-  const settle = opts.restore === false
-    ? { stolen: false }
-    : await settleFront(before, { waitMs: 180, retries: 2, deps });
-  // 同 readSafe：还原只由 settleFront 负责，避免重复还原
-  const frontStolen = Boolean(before && after && before !== after) || settle.stolen;
+  const canRestore = opts.restore !== false;
+  const stoleNow = Boolean(before && after && before !== after);
+  // 同 readSafe：同步抢前台的立刻还原，异步的交给 settleFront
+  if (canRestore && stoleNow) {
+    try { await deps.restoreFront(before); } catch {}
+  }
+  const settle = canRestore
+    ? await settleFront(before, { waitMs: 180, retries: 2, deps })
+    : { stolen: false };
+  const frontStolen = stoleNow || settle.stolen;
   if (frontStolen && risk && typeof risk.note === 'function') {
     try { risk.note(app); } catch {}
   }
