@@ -1,3 +1,6 @@
+/**
+ * 后台改写 BOSS 搜索框并读回校验，最后恢复用户原搜索词（会在用户 Chrome 里写）
+ */
 import { execFile } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';

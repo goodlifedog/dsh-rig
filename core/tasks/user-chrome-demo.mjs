@@ -1,3 +1,6 @@
+/**
+ * 在用户自己的 Chrome 里演示后台点击/输入并恢复原状态
+ */
 import { isScreenLocked, lockedSkipNotice } from '../platform.mjs';
 'use strict';
 // 验证「默认操作你自己的 Chrome」这条链路：只读 + 可选的后台点击，全程不切前台。

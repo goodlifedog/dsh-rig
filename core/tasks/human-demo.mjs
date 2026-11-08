@@ -1,3 +1,6 @@
+/**
+ * 拟人操作演示：贝塞尔鼠标轨迹 + 随机节奏输入
+ */
 import { isScreenLocked, lockedSkipNotice } from '../platform.mjs';
 'use strict';
 import fsp from 'node:fs/promises';

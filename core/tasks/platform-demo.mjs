@@ -1,3 +1,6 @@
+/**
+ * 跨平台控制层演示：macOS 走 ocu、Windows 走 UIA
+ */
 'use strict';
 // 跨平台控制层演示：验证「同一套调用，macOS 走 ocu、Windows 走 UIA」。
 // macOS 只读界面（不点击），Windows 尝试读记事本。

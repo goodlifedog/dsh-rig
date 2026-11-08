@@ -10,31 +10,31 @@
 | `applescript-channel` | AppleScript 通道验证：查授权状态（静默、不弹框），对已授权的应用发只读命令 |
 | `background-control` | ⚠️ 后台控制验收：启动软件、点击、写入，全程不抢前台，并把真实窗口回显到小窗 |
 | `background-stability` | 后台操作稳定性：连续多轮在多个应用上做读/点，每轮都检查前台有没有被抢 |
-| `boss-candidates` | （文件头没写用途说明） |
-| `boss-greet` | ⚠️ （文件头没写用途说明） |
+| `boss-candidates` | 只筛选 BOSS 列表页岗位并打分，产出候选清单，不投递 |
+| `boss-greet` | ⚠️ 逐条 BOSS 投递：发一条 → 读消息列表核对 → 确认送达才发下一条 |
 | `boss-scan-dedicated` | BOSS 扫描（专用浏览器版） |
-| `boss-scan` | （文件头没写用途说明） |
+| `boss-scan` | 读取 BOSS 职位列表并统计，只读不投递 |
 | `browser-background` | 浏览器后台控制：独立实例 + CDP，全程不碰用户前台 |
 | `browser-demo` | 专用浏览器自证：离屏 Chrome 实例 + CDP，全程不碰用户窗口 |
 | `cdp-channel` | CDP 通道端到端验证：自己起一个 Chromium 实例，验证"读页面 / 按文字点 / 往输入框写"这三件事 |
 | `cdp-driver` | CDP 通道验证：对 Electron / Chromium 系应用开调试端口，看能不能连进去读页面 |
 | `cold-launch` | 冷启动验收：把应用彻底退掉，再用后台方式拉起，检查前台有没有跳转 |
 | `concurrent-demo` | 并发验证：AI 在后台干活时，用户还能不能用电脑 |
-| `coverage-probe` | （文件头没写用途说明） |
+| `coverage-probe` | 探测正在运行应用的 AX 覆盖率，按节点数/可交互控件分档 |
 | `drive-agent-cli` | ⚠️ 通过后台终端驱动 agent CLI（opencode / codex / claude 等），并把结果读回来 |
 | `drive-agent` | ⚠️ 驱动另一个 agent 工具：把一个提示词送进桌面 agent 应用，等它回复，再读回来 |
 | `electron-demo` | 任务层示例：用「临时 Electron 实例 + CDP」自证读写能力 |
 | `form-fill-local` | ⚠️ 本地对照：起一个最小 HTML 表单页（file:// + Electron accessory 窗口，不抢焦点）， |
-| `form-fill` | ⚠️ （文件头没写用途说明） |
-| `greet-inner` | ⚠️ （文件头没写用途说明） |
+| `form-fill` | ⚠️ 后台改写 BOSS 搜索框并读回校验，最后恢复用户原搜索词（会在用户 Chrome 里写） |
+| `greet-inner` | ⚠️ boss-greet 的内层脚本：点卡片 → 核对详情 → 点立即沟通 → 关弹窗 |
 | `greet-verify` | ⚠️ 读消息列表。返回 [{ raw, time, body, who }] |
 | `headless-demo` | 当前前台：应用名（读 ocu list_apps 的 [frontmost] 行）+ 前台进程 pid |
-| `human-demo` | （文件头没写用途说明） |
-| `mcp-demo` | （文件头没写用途说明） |
+| `human-demo` | 拟人操作演示：贝塞尔鼠标轨迹 + 随机节奏输入 |
+| `mcp-demo` | 通过 MCP 接口演示 ocu 工具调用 |
 | `multi-app` | 并行结果判定（纯函数）：fulfilled 不等于成功——快照可能是空树（节点 0）， |
 | `parallel-demo` | 并行演示：同时驱动两个独立后台浏览器，各自把画面推到自己那一路小窗 |
 | `parallel-real-demo` | 双应用并行回显：同时操作两个真实软件，并把它们各自的窗口实时回显到两个小窗 |
-| `platform-demo` | （文件头没写用途说明） |
+| `platform-demo` | 跨平台控制层演示：macOS 走 ocu、Windows 走 UIA |
 | `terminal-control` | ⚠️ 终端类后台控制验收：在 Ghostty 里敲一条无害命令，确认输出出现、前台未变 |
 | `user-active-demo` | 「你在用 A，我在后台控 B」场景验证 |
-| `user-chrome-demo` | ⚠️ （文件头没写用途说明） |
+| `user-chrome-demo` | ⚠️ 在用户自己的 Chrome 里演示后台点击/输入并恢复原状态 |

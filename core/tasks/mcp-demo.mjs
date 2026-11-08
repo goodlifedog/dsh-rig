@@ -1,3 +1,6 @@
+/**
+ * 通过 MCP 接口演示 ocu 工具调用
+ */
 'use strict';
 // MCP 常驻连接演示：对比「每次 spawn CLI」与「一次握手后连续调用」。
 import { getOcuMcp, closeOcuMcp } from '../ocu-mcp.mjs';

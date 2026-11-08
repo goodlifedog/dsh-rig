@@ -1,3 +1,6 @@
+/**
+ * 探测正在运行应用的 AX 覆盖率，按节点数/可交互控件分档
+ */
 import { execFile } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import os from 'node:os';

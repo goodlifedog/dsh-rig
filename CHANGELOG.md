@@ -2,6 +2,7 @@
 
 ## 0.7.0（未发布）
 
+- 补全 10 个任务的用途说明（boss-candidates/boss-greet/boss-scan/coverage-probe/form-fill/greet-inner/human-demo/mcp-demo/platform-demo/user-chrome-demo），`flow/TASKS.md` 里 32 个任务现在都有说明、没有「没写用途说明」占位
 - `verify:safe` 增加第 9 项「后台操作稳定性」：实测 15 轮 0 失败、0 次前台抢占、单轮 944–1028ms（中位 973ms），前台始终 DSH；两族并发验证照旧通过。README/USAGE/MAC-APPS 同步成 9 项
 - README 更新到当前能力：并发验证实测（273 次采样 0 抢）写进开头、边界说明改成「风险名单默认跳过 + 还原 + 自动记名单」、补 verify:safe / demo:concurrent 两条命令
 - `guard()` 发现操作中应用被激活时，除了还原还会把该应用记进前台风险名单：任务里第一次被抢，后续读取/矩阵/协商就默认跳过它，不再反复闪；测试注入 noteRisk 防止污染真实名单
@@ -220,4 +221,3 @@
 - 新增 daemon 集成测试（独立端口 + 临时任务目录）：验证队列串行、环境失败不重试、临时失败重试一次、/stats 计数正确
 - 会话窗口自动回收：超过 30 分钟没活动（且没固定/没放大/没悬停）的会话窗口自动关闭，避免开久了堆窗口占内存；`OVERLAY_SESSION_TTL_MS` 可调（0 关闭），短 TTL 实测 14 秒内回收生效
 - 仓库体检新增两项：文档里提到的 `npm run` 命令必须真实存在（75 处引用全部命中）、文档引用的图片必须存在，防文档漂移
-- 新增 `GET /stats`：按任务聚合最近 200 条运行记录（次数、成功率、平均/最慢耗时、重试次数），health 与 `npm run status` 都会展示

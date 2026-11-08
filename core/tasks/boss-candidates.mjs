@@ -1,3 +1,6 @@
+/**
+ * 只筛选 BOSS 列表页岗位并打分，产出候选清单，不投递
+ */
 'use strict';
 // 只做筛选、不投递：读当前 BOSS 列表页，按可配置标准打分，产出候选清单供人工圈定。
 import { execFile } from 'node:child_process';

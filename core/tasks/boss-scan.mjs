@@ -1,3 +1,6 @@
+/**
+ * 读取 BOSS 职位列表并统计，只读不投递
+ */
 import { execFile } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
