@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { envSkipReason } from './run-classify.mjs';
 import { acquireLock, releaseLock } from './acceptance-lock.mjs';
 import { findForeignUiRunsNow } from './foreground-guard.mjs';
-import { diffNewlyRunning, sampleRunningApps, cleanupMessages } from './acceptance-cleanup.mjs';
+import { diffNewlyRunning, sampleRunningApps, shouldRunCleanup, cleanupMessages } from './acceptance-cleanup.mjs';
 import { quitAppSync } from './sync-quit.mjs';
 import { overlay } from './agentd.mjs';
 import { overlayBase } from './ports.mjs';
@@ -234,8 +234,23 @@ function restoreUserFront() {
 
 // 验收开始时的测试应用运行集合（基线）：只收「之后新出现的」，用户自己开着的绝不动
 let APPS_AT_START = new Set();
+// 基线是否可信（P3）：非 macOS / pgrep 全挂时采样会返回空集，那不是「真的一个都没在跑」。
+// 基线不可信就整轮不做收尾——宁可不收，也不能把用户本来就开着的应用退掉。
+let APPS_BASELINE_TRUSTED = false;
 // 「收掉验收期间被拉起的 X」这类收尾记录，最后写进报告
 const CLEANUP_NOTES = [];
+// 跳过收尾的原因按原因去重，避免每个任务刷一遍同样的提示
+const CLEANUP_SKIP_NOTES = new Set();
+
+/** 记录一次「因为基线不可信而没有收尾」，同一原因只记一次 */
+function noteCleanupSkipped(reason) {
+  const text = String(reason || '未知原因');
+  if (CLEANUP_SKIP_NOTES.has(text)) return;
+  CLEANUP_SKIP_NOTES.add(text);
+  const line = '基线不可信，跳过收尾：' + text + '（本轮不退出任何应用）';
+  CLEANUP_NOTES.push(line);
+  console.log('  ⚠ ' + line);
+}
 
 /**
  * 收掉「验收开始时不在这批测试应用里运行、现在却在运行」的应用。
@@ -248,8 +263,18 @@ const CLEANUP_NOTES = [];
  * @returns {Promise<string[]>} 真正收掉的应用名
  */
 async function cleanupUnexpectedApps(stage = '') {
-  const runningNow = sampleRunningApps(TEST_APPS);
-  const unexpected = diffNewlyRunning(APPS_AT_START, runningNow, TEST_APPS);
+  // P3：基线不可信时「空集」不代表真没在跑，diff 会把用户原有应用全列成新增 → 一律不动手。
+  if (!APPS_BASELINE_TRUSTED) {
+    noteCleanupSkipped('验收开始时的基线采样没有成功');
+    return [];
+  }
+  const sample = sampleRunningApps(TEST_APPS);
+  const decision = shouldRunCleanup(APPS_BASELINE_TRUSTED, sample);
+  if (!decision.run) {
+    noteCleanupSkipped('本次采样不可信（' + decision.reason + '）');
+    return [];
+  }
+  const unexpected = diffNewlyRunning(APPS_AT_START, sample.apps, TEST_APPS);
   if (!unexpected.length) return [];
   const quit = [];
   for (const name of unexpected) {
@@ -440,8 +465,15 @@ async function main() {
   console.log('=== 桌面代理端到端验收 ===');
   FRONT_AT_START = frontmostApp();
   // 基线：验收开始时这批测试应用里谁在跑。用户自己开着的（比如本来就开着计算器）之后永远不动。
-  APPS_AT_START = sampleRunningApps(TEST_APPS);
-  if (APPS_AT_START.size) console.log('验收开始时已在运行的测试应用（不会被收）：' + [...APPS_AT_START].join('、'));
+  // 采样带可信度：空集可能只是「pgrep 没跑成」，那种基线不能用来判定「新增」。
+  const baseline = sampleRunningApps(TEST_APPS);
+  APPS_AT_START = baseline.apps;
+  APPS_BASELINE_TRUSTED = baseline.trusted;
+  if (!baseline.trusted) {
+    console.log('⚠ 基线采样不可信（' + baseline.reason + '）：本轮验收不做「意外应用」收尾，避免误退用户应用');
+  } else if (APPS_AT_START.size) {
+    console.log('验收开始时已在运行的测试应用（不会被收）：' + [...APPS_AT_START].join('、'));
+  }
   const h = await checkOverlay();
   if (h.ok) await checkIdleHide();
 
