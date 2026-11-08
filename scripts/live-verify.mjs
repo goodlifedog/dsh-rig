@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { isScreenLocked } from '../core/platform.mjs';
 import { classifyLiveStep, summarizeLiveSteps, midRunStopReason } from '../core/live-verify.mjs';
 import { overlayBase } from '../core/ports.mjs';
-import { localHeaders } from '../core/local-token.mjs';
+import { tokenHeadersFor } from '../core/local-token.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const KEEP_AWAKE = process.env.LIVE_KEEP_AWAKE === '1';
@@ -32,12 +32,13 @@ const OVERLAY = overlayBase();
 async function tidyOverlay() {
   const post = async (p, body) => {
     try {
-      await fetch(OVERLAY + p, { method: 'POST', headers: localHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(body || {}), signal: AbortSignal.timeout(1500) });
+      const url = OVERLAY + p;
+      await fetch(url, { method: 'POST', headers: tokenHeadersFor(url, { 'Content-Type': 'application/json' }), body: JSON.stringify(body || {}), signal: AbortSignal.timeout(1500) });
     } catch {}
   };
   let sessions = [];
   try {
-    const res = await fetch(OVERLAY + '/sessions', { headers: localHeaders(), signal: AbortSignal.timeout(1500) });
+    const res = await fetch(OVERLAY + '/sessions', { headers: tokenHeadersFor(OVERLAY + '/sessions'), signal: AbortSignal.timeout(1500) });
     sessions = (await res.json()).sessions || [];
   } catch {}
   for (const s of sessions) {
@@ -92,8 +93,9 @@ function runStep(step) {
       if (idle >= 0 && idle < ABORT_IDLE_MS) {
         aborted = true;
         killGroup('SIGTERM');
-        // 给任务链一点时间做应急清理（关掉自己拉起的应用）；不听话的 3 秒后强杀
-        setTimeout(() => killGroup('SIGKILL'), 3000);
+        // 给任务链留足应急清理时间（M-2）：任务侧同步关应用默认总预算 2500ms，
+        // 这里宽限 6 秒，避免 SIGKILL 落在清理预算中间把残留应用留下；不听话的才强杀
+        setTimeout(() => killGroup('SIGKILL'), 6000);
       }
     }, 1000);
     child.stdout.on('data', (b) => { out += b; });
