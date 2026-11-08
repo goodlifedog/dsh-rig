@@ -8,6 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { envSkipReason } from './run-classify.mjs';
 import { acquireLock, releaseLock } from './acceptance-lock.mjs';
 import { findForeignUiRunsNow } from './foreground-guard.mjs';
+import { diffNewlyRunning, sampleRunningApps, cleanupMessages } from './acceptance-cleanup.mjs';
+import { quitAppSync } from './sync-quit.mjs';
 import { overlay } from './agentd.mjs';
 import { overlayBase } from './ports.mjs';
 import { tokenHeadersFor } from './local-token.mjs';
@@ -230,6 +232,38 @@ function restoreUserFront() {
   } catch { return false; }
 }
 
+// 验收开始时的测试应用运行集合（基线）：只收「之后新出现的」，用户自己开着的绝不动
+let APPS_AT_START = new Set();
+// 「收掉验收期间被拉起的 X」这类收尾记录，最后写进报告
+const CLEANUP_NOTES = [];
+
+/**
+ * 收掉「验收开始时不在这批测试应用里运行、现在却在运行」的应用。
+ *
+ * 每跑完一个任务、以及验收收尾各调一次。任务把应用拉起来留在后台时，后续任务退出别的应用
+ * 会把前台带到它身上，验收就误判「前台被抢占」（16:09 那次是 multi-app 留下了计算器）。
+ * 只发 AppleScript quit（优雅退出），退不掉就如实记录，绝不强杀（可能丢用户没保存的内容）。
+ *
+ * @param {string} stage 记录用：哪个阶段发现的
+ * @returns {Promise<string[]>} 真正收掉的应用名
+ */
+async function cleanupUnexpectedApps(stage = '') {
+  const runningNow = sampleRunningApps(TEST_APPS);
+  const unexpected = diffNewlyRunning(APPS_AT_START, runningNow, TEST_APPS);
+  if (!unexpected.length) return [];
+  const quit = [];
+  for (const name of unexpected) {
+    const result = quitAppSync({ appName: name, processName: name }, { budgetMs: 8000 });
+    const ok = Boolean(result && result.quit);
+    if (ok) quit.push(name);
+    const text = cleanupMessages([name], stage)[0] || ('收掉验收期间被拉起的 ' + name);
+    const line = ok ? text : text.replace(/^收掉/, '未能收掉');
+    CLEANUP_NOTES.push(line);
+    console.log('  ' + (ok ? '· ' : '⚠ ') + line);
+  }
+  return quit;
+}
+
 async function runTask(name, timeoutMs = 180000, env) {
   const r = await runTaskProcess('node', ['core/runner.mjs', 'run', name, '--timeout', String(timeoutMs)], env ? { env, timeout: timeoutMs + 5000 } : { timeout: timeoutMs + 5000 });
   if (r.aborted) {
@@ -242,7 +276,11 @@ async function runTask(name, timeoutMs = 180000, env) {
   const skipped = Boolean(reason);
   const ok = r.code === 0 || skipped;
   record('任务 ' + name, ok, ok ? (reason ? '环境跳过（' + reason + '）' : '') : out.slice(-200).replace(/\n/g, ' '), skipped);
-  // 每个任务之后把前台还给用户：下一个任务的判定基线必须是「用户原来的应用」
+  // 每个任务之后先收掉「任务意外拉起的应用」，再把前台还给用户。
+  // 顺序有讲究：退出应用本身会改变前台，最后一步必须是还原前台，
+  // 否则下一个任务的起点基线还是歪的（16:09 那次就是计算器顶在前面）。
+  await cleanupUnexpectedApps('任务 ' + name + ' 之后');
+  // 下一个任务的判定基线必须是「用户原来的应用」
   if (restoreUserFront()) console.log('  （已把前台还给 ' + FRONT_AT_START + '）');
   return ok;
 }
@@ -335,6 +373,9 @@ async function tidyOverlayWindows() {
 
 async function cleanupAfterAcceptance() {
   await tidyOverlayWindows();
+  // 收尾再采样一次：失败/中止的情况下，前面 per-task 的清理可能还没来得及跑
+  await cleanupUnexpectedApps('验收收尾');
+  restoreUserFront();
   try {
     // 清理脚本现在是安全模式：笔记默认只报告（要 --force 才删）、TextEdit 只关带测试标记的文稿、
     // 只会退出测试应用，所以验收后可以直接真跑，把环境收拾干净。
@@ -398,6 +439,9 @@ async function main() {
   }
   console.log('=== 桌面代理端到端验收 ===');
   FRONT_AT_START = frontmostApp();
+  // 基线：验收开始时这批测试应用里谁在跑。用户自己开着的（比如本来就开着计算器）之后永远不动。
+  APPS_AT_START = sampleRunningApps(TEST_APPS);
+  if (APPS_AT_START.size) console.log('验收开始时已在运行的测试应用（不会被收）：' + [...APPS_AT_START].join('、'));
   const h = await checkOverlay();
   if (h.ok) await checkIdleHide();
 
@@ -448,6 +492,7 @@ async function main() {
   restoreUserFront();
 
   await cleanupAfterAcceptance();
+  if (CLEANUP_NOTES.length) console.log('\n收尾：' + CLEANUP_NOTES.join('；'));
 
   const { total, passed, skipped, failed } = summarizeResults(RESULTS);
   // 分母要写总项数：以前写 passed/(total-skipped)，13 项里 2 项跳过会显示「11/11」，
@@ -470,6 +515,10 @@ async function main() {
     '| 项目 | 结果 | 说明 |',
     '| --- | --- | --- |',
     ...RESULTS.map((r) => '| ' + r.name + ' | ' + (r.skipped ? 'SKIP' : (r.ok ? 'PASS' : 'FAIL')) + ' | ' + (r.detail || '') + ' |'),
+    // 收尾说明单独成节：这些不是「验收项」，不该混进上面的通过/失败统计
+    ...(CLEANUP_NOTES.length
+      ? ['', '## 收尾说明', '', ...CLEANUP_NOTES.map((t) => '- ' + t)]
+      : []),
   ];
   fs.writeFileSync(file, lines.join('\n') + '\n');
   console.log('报告：' + file);
