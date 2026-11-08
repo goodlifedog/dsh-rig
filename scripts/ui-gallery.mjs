@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { localHeaders } from '../core/local-token.mjs';
+import { tokenHeadersFor } from '../core/local-token.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -16,10 +16,11 @@ const DOCS = path.join(ROOT, 'overlay', 'docs');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function post(p, body) {
-  return fetch(BASE + p, { method: 'POST', headers: localHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(body || {}), signal: AbortSignal.timeout(5000) });
+  const url = BASE + p;
+  return fetch(url, { method: 'POST', headers: tokenHeadersFor(url, { 'Content-Type': 'application/json' }), body: JSON.stringify(body || {}), signal: AbortSignal.timeout(5000) });
 }
 async function health() {
-  const r = await fetch(BASE + '/health', { headers: localHeaders(), signal: AbortSignal.timeout(3000) });
+  const r = await fetch(BASE + '/health', { headers: tokenHeadersFor(BASE + '/health'), signal: AbortSignal.timeout(3000) });
   return r.json();
 }
 
@@ -66,7 +67,8 @@ async function main() {
     await pg.send('Page.navigate', { url: 'https://example.com' });
     await sleep(1200);
     // 按小窗需要的像素出图（收起 600px），别固定 2560px
-    const target = await (await fetch(BASE + '/frame-target?session=default', { headers: localHeaders(), signal: AbortSignal.timeout(3000) })).json();
+    const frameTargetUrl = BASE + '/frame-target?session=default';
+    const target = await (await fetch(frameTargetUrl, { headers: tokenHeadersFor(frameTargetUrl), signal: AbortSignal.timeout(3000) })).json();
     const scale = target && target.width ? Math.min(3, Math.max(0.3, target.width / 1280)) : 1;
     const shotRes = await pg.send('Page.captureScreenshot', { format: 'jpeg', quality: 80, clip: { x: 0, y: 0, width: 1280, height: 800, scale } });
     await post('/frame', { dataUrl: 'data:image/jpeg;base64,' + shotRes.data, note: 'gallery 底图', cursor: { x: 700, y: 420, click: false } });
@@ -77,7 +79,7 @@ async function main() {
   // 0b. 清掉可能残留的错误
   await post('/window', { windowId: null });
   try {
-    const wins = await (await fetch(BASE + '/windows', { headers: localHeaders(), signal: AbortSignal.timeout(3000) })).json();
+    const wins = await (await fetch(BASE + '/windows', { headers: tokenHeadersFor(BASE + '/windows'), signal: AbortSignal.timeout(3000) })).json();
     const self = (wins.windows || []).find((w) => w.self);
     if (self) {
       const f = path.join('/tmp', 'gallery-src.png');

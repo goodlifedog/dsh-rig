@@ -113,4 +113,86 @@ function isAuthorized(headers, token, queryToken, settings = {}) {
   return allowQuery && Boolean(queryToken) && safeEqual(queryToken, token);
 }
 
-module.exports = { TOKEN_HEADER, tokenPath, newToken, ensureTokenSync, readTokenSync, withTokenHeaders, isAuthorized, hardenDataDir };
+// ---------- token 发送目标决策（M-5） ----------
+//
+// 背景：OVERLAY_URL / AGENTD_URL 允许自定义（注释里写「别的机器/隧道」），
+// 而旧代码会无条件把 X-Agent-Token 附到每个请求上——URL 一旦指向非回环主机，
+// token 就明文发出去了。这里按「目标 URL 是不是本机回环」决定要不要带 token：
+//   - 回环（127.0.0.1 / localhost / [::1]）→ 带；
+//   - 非回环 → 默认不带；只有显式 AGENT_ALLOW_REMOTE_TOKEN=1 才带，并打印一次警告。
+// 规则与 core/safety.mjs 的 isLoopbackHost 保持一致（那边是 ESM，这里是 CJS，最小实现各留一份，
+// 两边都有单测；改规则要同时改）。
+const REMOTE_TOKEN_ENV = 'AGENT_ALLOW_REMOTE_TOKEN';
+
+/** host 头（可带端口）或 URL 的 hostname 是否指向本机回环 */
+function isLoopbackHost(hostHeader) {
+  const raw = String(hostHeader || '').trim().toLowerCase();
+  if (!raw) return false;
+  let host = raw;
+  if (host.startsWith('[')) {
+    const end = host.indexOf(']');
+    if (end < 0) return false;
+    host = host.slice(1, end);
+  } else {
+    host = host.split(':')[0];
+  }
+  return host === '127.0.0.1' || host === 'localhost' || host === '::1';
+}
+
+/** URL 是否指向本机回环（只认 http/https；解析失败按「不是回环」处理，fail closed） */
+function isLoopbackUrl(url) {
+  let parsed;
+  try { parsed = new URL(String(url == null ? '' : url)); } catch { return false; }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+  return isLoopbackHost(parsed.hostname);
+}
+
+let remoteTokenWarned = false;
+
+/**
+ * 这个 URL 该不该带 token。
+ * @param {string|URL} url 请求目标
+ * @param {{allowRemote?:boolean, silent?:boolean}} [options]
+ *   allowRemote 默认读 AGENT_ALLOW_REMOTE_TOKEN=1；测试可以显式传 true/false
+ * @returns {boolean}
+ */
+function shouldSendToken(url, options = {}) {
+  const opts = options || {};
+  if (isLoopbackUrl(url)) return true;
+  // 这里用字面量而不是 process.env[REMOTE_TOKEN_ENV]：scripts/env-doc.mjs 只认字面量写法，
+  // 否则 AGENT_ALLOW_REMOTE_TOKEN 不会出现在 flow/TASK-ENV.md 里（repo:check 会报不同步）。
+  const allowRemote = opts.allowRemote === undefined
+    ? process.env.AGENT_ALLOW_REMOTE_TOKEN === '1'
+    : Boolean(opts.allowRemote);
+  if (!allowRemote) return false;
+  if (!opts.silent && !remoteTokenWarned) {
+    remoteTokenWarned = true;
+    let target = '';
+    try { target = new URL(String(url)).host; } catch {}
+    try {
+      console.warn('[desktop-agent] ' + REMOTE_TOKEN_ENV + '=1：X-Agent-Token 将发往非回环地址 '
+        + (target || '(无法解析的 URL)') + '。只在你完全信任这条隧道时开启。');
+    } catch {}
+  }
+  return true;
+}
+
+/**
+ * 按 URL 生成请求头：回环才附带 token（或显式允许远程时）。
+ * @param {string|URL} url
+ * @param {object} [extra] 显式请求头
+ * @param {{allowRemote?:boolean, silent?:boolean, token?:string, path?:string}} [options]
+ *   token/path 仅测试用：不传就按默认 token 文件读
+ */
+function tokenHeadersFor(url, extra, options = {}) {
+  const opts = options || {};
+  const headers = Object.assign({}, extra || {});
+  if (!shouldSendToken(url, opts)) return headers;
+  const value = opts.token !== undefined ? String(opts.token) : readTokenSync(opts.path);
+  return withTokenHeaders(value, headers);
+}
+
+module.exports = {
+  TOKEN_HEADER, tokenPath, newToken, ensureTokenSync, readTokenSync, withTokenHeaders, isAuthorized, hardenDataDir,
+  REMOTE_TOKEN_ENV, isLoopbackHost, isLoopbackUrl, shouldSendToken, tokenHeadersFor,
+};

@@ -13,6 +13,7 @@
 | `AGENTD_TASKS_DIR` | — | `core/daemon.mjs` |
 | `AGENTD_URL` | — | `core/ports.mjs`<br>`overlay/main.js` |
 | `AGENT_ALLOW_QUERY_TOKEN` | （开关，设 1 开启） | `core/daemon.mjs`<br>`overlay/server.js` |
+| `AGENT_ALLOW_REMOTE_TOKEN` | （开关，设 1 开启） | `core/local-token.cjs` |
 | `AGENT_APP` | ChatGPT | `core/tasks/drive-agent.mjs` |
 | `AGENT_CHROME_PROFILE` | — | `core/browser.mjs`<br>`core/tasks/boss-scan-dedicated.mjs`<br>`core/tasks/greet-verify.mjs` |
 | `AGENT_DRIVE_ALLOW_FRONT_RISK` | （开关，设 1 开启） | `core/tasks/drive-agent-cli.mjs`<br>`core/tasks/drive-agent.mjs` |

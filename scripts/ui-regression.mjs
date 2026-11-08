@@ -1,5 +1,5 @@
 import { overlayBase } from '../core/ports.mjs';
-import { localHeaders } from '../core/local-token.mjs';
+import { tokenHeadersFor } from '../core/local-token.mjs';
 import { isScreenLocked } from '../core/platform.mjs';
 'use strict';
 // 小窗效果回归：把「能不能看见、会不会消失、出错说不说人话、放大后比例对不对」都断言一遍。
@@ -16,7 +16,8 @@ function record(name, ok, detail) { results.push({ name, ok, detail: detail || '
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function api(pathname, init) {
-  const r = await fetch(BASE + pathname, { ...init, headers: localHeaders((init && init.headers) || {}), signal: AbortSignal.timeout(5000) });
+  const url = BASE + pathname;
+  const r = await fetch(url, { ...init, headers: tokenHeadersFor(url, (init && init.headers) || {}), signal: AbortSignal.timeout(5000) });
   return { status: r.status, json: await r.json().catch(() => null) };
 }
 async function health() { return (await api('/health')).json; }
@@ -39,7 +40,8 @@ async function waitFor(check, timeoutMs, stepMs) {
 }
 
 async function post(pathname, body) {
-  return api(pathname, { method: 'POST', headers: localHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify(body || {}) });
+  // token 由 api() 按最终 URL 统一决定（回环才带），这里只给 Content-Type
+  return api(pathname, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
 }
 
 async function main() {

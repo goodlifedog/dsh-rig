@@ -46,8 +46,28 @@ export function isAuthorized(headers, expected, options = {}) {
   return token.isAuthorized(headers, expected, opts.queryToken || '', { allowQuery: opts.allowQuery === true });
 }
 
-/** 本地接口请求头：自动带 token（服务端未配置 token 时不加，兼容测试环境） */
+/**
+ * 本地接口请求头：无条件带 token。**只适用于已经确定目标就是本机回环的调用**。
+ * 目标 URL 可能来自 OVERLAY_URL / AGENTD_URL 的自定义值时，请改用 tokenHeadersFor(url)。
+ */
 export function localHeaders(extra = {}) {
   const value = token.readTokenSync();
   return token.withTokenHeaders(value, extra || {});
+}
+
+// ---------- 按目标 URL 决定要不要带 token（M-5） ----------
+export const REMOTE_TOKEN_ENV = token.REMOTE_TOKEN_ENV;
+export const isLoopbackHost = token.isLoopbackHost;
+export const isLoopbackUrl = token.isLoopbackUrl;
+export const shouldSendToken = token.shouldSendToken;
+
+/**
+ * 按 URL 生成请求头：目标是回环才附带 token；非回环默认不带，
+ * 除非显式 AGENT_ALLOW_REMOTE_TOKEN=1（此时打印一次警告）。
+ * @param {string|URL} url 请求目标
+ * @param {object} [extra] 显式请求头
+ * @param {{allowRemote?:boolean, silent?:boolean, token?:string, path?:string}} [options]
+ */
+export function tokenHeadersFor(url, extra = {}, options = {}) {
+  return token.tokenHeadersFor(url, extra, options);
 }

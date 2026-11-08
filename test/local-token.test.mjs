@@ -6,7 +6,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import { isAuthorized } from '../core/local-token.mjs';
+import {
+  isAuthorized, isLoopbackHost, isLoopbackUrl, shouldSendToken, tokenHeadersFor,
+} from '../core/local-token.mjs';
+import { isLoopbackHost as safetyIsLoopbackHost } from '../core/safety.mjs';
 
 const require = createRequire(import.meta.url);
 const cjs = require('../core/local-token.cjs');
@@ -100,4 +103,102 @@ test('token 文件内容被写坏时重新生成，不会把坏值当 token 用'
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// ---------- M-5：token 不能跟着自定义 OVERLAY_URL / AGENTD_URL 发到非回环主机 ----------
+
+test('回环地址才默认带 token（127.0.0.1 / localhost / [::1]）', () => {
+  for (const url of [
+    'http://127.0.0.1:7788/health',
+    'http://localhost:7789/status',
+    'http://[::1]:7788/health',
+    'https://127.0.0.1/',
+  ]) {
+    assert.equal(shouldSendToken(url), true, url + ' 应该带 token');
+    const headers = tokenHeadersFor(url, { 'X-Extra': 'v' }, { token: TOKEN });
+    assert.equal(headers['X-Agent-Token'], TOKEN, url);
+    assert.equal(headers['X-Extra'], 'v', '显式请求头不能被丢掉');
+  }
+  // token 为空时不加头（兼容测试环境，和 withTokenHeaders 的旧行为一致）
+  assert.equal(tokenHeadersFor('http://127.0.0.1:7788/health', {}, { token: '' })['X-Agent-Token'], undefined);
+});
+
+test('非回环默认不带 token（自定义 OVERLAY_URL/AGENTD_URL 指向别的机器时）', () => {
+  const prev = process.env.AGENT_ALLOW_REMOTE_TOKEN;
+  delete process.env.AGENT_ALLOW_REMOTE_TOKEN;
+  try {
+    for (const url of [
+      'http://10.0.0.5:7788/health',
+      'https://example.com/health',
+      'http://127.0.0.1.evil.com/health',
+      'http://localhost.evil.com:7788/health',
+    ]) {
+      assert.equal(shouldSendToken(url), false, url + ' 不应该带 token');
+      const headers = tokenHeadersFor(url, { 'Content-Type': 'application/json' }, { token: TOKEN });
+      assert.equal(headers['X-Agent-Token'], undefined, url + ' 不能把 token 发出去');
+      assert.equal(headers['Content-Type'], 'application/json', '其它请求头照常保留');
+    }
+    // 解析不了的 URL 一律 fail closed（不发）
+    for (const url of ['', null, undefined, 'not a url', '/health', 'file:///tmp/x', 'ftp://127.0.0.1/']) {
+      assert.equal(shouldSendToken(url), false, String(url));
+      assert.equal(tokenHeadersFor(url, {}, { token: TOKEN })['X-Agent-Token'], undefined, String(url));
+    }
+  } finally {
+    if (prev !== undefined) process.env.AGENT_ALLOW_REMOTE_TOKEN = prev;
+  }
+});
+
+test('非回环 + 显式 AGENT_ALLOW_REMOTE_TOKEN=1 才带 token（环境变量路径）', () => {
+  const prev = process.env.AGENT_ALLOW_REMOTE_TOKEN;
+  process.env.AGENT_ALLOW_REMOTE_TOKEN = '1';
+  try {
+    assert.equal(shouldSendToken('http://192.168.1.2:7788/', { silent: true }), true);
+    const headers = tokenHeadersFor('http://192.168.1.2:7788/health', {}, { silent: true, token: TOKEN });
+    assert.equal(headers['X-Agent-Token'], TOKEN);
+  } finally {
+    if (prev === undefined) delete process.env.AGENT_ALLOW_REMOTE_TOKEN;
+    else process.env.AGENT_ALLOW_REMOTE_TOKEN = prev;
+  }
+});
+
+test('显式允许远程时只警告一次，且 silent 不打扰测试', () => {
+  const warns = [];
+  const original = console.warn;
+  console.warn = (...args) => { warns.push(args.map(String).join(' ')); };
+  try {
+    // silent:true 不产生警告
+    assert.equal(shouldSendToken('http://10.9.9.9:7788/', { allowRemote: true, silent: true }), true);
+    assert.equal(warns.length, 0);
+
+    // 第一次真正允许远程：警告一次
+    assert.equal(shouldSendToken('http://10.9.9.9:7788/', { allowRemote: true }), true);
+    assert.equal(warns.length, 1, '应该打印一次警告');
+    assert.match(warns[0], /AGENT_ALLOW_REMOTE_TOKEN/);
+    assert.match(warns[0], /10\.9\.9\.9/, '警告里要写清发往哪个主机');
+
+    // 第二次不再重复警告
+    assert.equal(shouldSendToken('http://10.9.9.9:7788/', { allowRemote: true }), true);
+    assert.equal(warns.length, 1, '警告只打一次，不要刷屏');
+
+    const headers = tokenHeadersFor('http://10.9.9.9:7788/health', { 'X-Test': '1' }, { allowRemote: true, token: TOKEN });
+    assert.equal(headers['X-Agent-Token'], TOKEN);
+    assert.equal(headers['X-Test'], '1');
+  } finally {
+    console.warn = original;
+  }
+});
+
+test('local-token 与 safety 的回环判定规则保持一致（两边各留一份实现，不能漂移）', () => {
+  const hosts = [
+    '127.0.0.1', '127.0.0.1:7788', 'localhost', 'localhost:7789', '[::1]:7788', '[::1]',
+    'evil.example', '127.0.0.1.evil.com', 'localhost.evil.com', '', '10.0.0.1', '[::1',
+  ];
+  for (const host of hosts) {
+    assert.equal(isLoopbackHost(host), safetyIsLoopbackHost(host), JSON.stringify(host));
+  }
+  // URL 层：只有回环主机名才算
+  assert.equal(isLoopbackUrl('http://127.0.0.1:7788/health'), true);
+  assert.equal(isLoopbackUrl('http://[::1]:7788/health'), true);
+  assert.equal(isLoopbackUrl('http://example.com/'), false);
+  assert.equal(isLoopbackUrl('not a url'), false);
 });

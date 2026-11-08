@@ -6,7 +6,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { localHeaders } from '../core/local-token.mjs';
+import { tokenHeadersFor } from '../core/local-token.mjs';
 import { isScreenLocked } from '../core/platform.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -25,12 +25,12 @@ function sh(cmd, args) {
 }
 
 async function health() {
-  const r = await fetch(BASE + '/health', { headers: localHeaders(), signal: AbortSignal.timeout(3000) });
+  const r = await fetch(BASE + '/health', { headers: tokenHeadersFor(BASE + '/health'), signal: AbortSignal.timeout(3000) });
   return await r.json();
 }
 
 async function setVisible(v) {
-  await fetch(BASE + '/visible', { method: 'POST', headers: localHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ visible: v }) });
+  await fetch(BASE + '/visible', { method: 'POST', headers: tokenHeadersFor(BASE + '/visible', { 'Content-Type': 'application/json' }), body: JSON.stringify({ visible: v }) });
 }
 
 async function main() {

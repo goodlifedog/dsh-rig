@@ -4,7 +4,7 @@ import { overlayUrl, overlayPort } from '../core/ports.mjs';
 //   node scripts/restart-check.mjs
 import { execFile } from 'node:child_process';
 import { isMac, isWindows } from '../core/platform.mjs';
-import { localHeaders } from '../core/local-token.mjs';
+import { tokenHeadersFor } from '../core/local-token.mjs';
 import { daemonUrl, daemonPort } from '../core/ports.mjs';
 
 const LABELS = ['com.desktop-agent.daemon', 'com.desktop-agent.overlay'];
@@ -34,7 +34,7 @@ async function probe(url, name) {
   const started = Date.now();
   while (Date.now() - started < 25000) {
     try {
-      const r = await fetch(url, { headers: localHeaders(), signal: AbortSignal.timeout(2000) });
+      const r = await fetch(url, { headers: tokenHeadersFor(url), signal: AbortSignal.timeout(2000) });
       const d = await r.json();
       if (d && d.ok) return { ok: true, pid: d.pid };
     } catch {}

@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { classifyRun, envSkipReason } from '../core/run-classify.mjs';
-import { localHeaders } from '../core/local-token.mjs';
+import { tokenHeadersFor } from '../core/local-token.mjs';
 import { daemonUrl, daemonPort, overlayUrl, overlayPort } from '../core/ports.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -17,7 +17,7 @@ function add(name, ok, detail) { rows.push({ name, ok, detail: detail === undefi
 
 async function getJson(url, timeout = 2500) {
   try {
-    const r = await fetch(url, { headers: localHeaders(), signal: AbortSignal.timeout(timeout) });
+    const r = await fetch(url, { headers: tokenHeadersFor(url), signal: AbortSignal.timeout(timeout) });
     return await r.json();
   } catch { return null; }
 }
@@ -83,7 +83,7 @@ async function main() {
   // 安全边界实机自检：这几条是「承诺过必须挡住」的，服务在跑就顺手验一遍
   if (daemon && daemon.ok) {
     const noToken = await httpStatus(daemonUrl('/status'));
-    const withToken = await httpStatus(daemonUrl('/status'), { headers: localHeaders() });
+    const withToken = await httpStatus(daemonUrl('/status'), { headers: tokenHeadersFor(daemonUrl('/status')) });
     add('接口票据（daemon）', noToken === 401 && withToken === 200, '无票=' + noToken + '｜带票=' + withToken);
     const daemonHost = await httpStatus(daemonUrl('/'), { host: 'evil.example:' + daemonPort() });
     add('Host 校验（daemon 防 DNS rebinding）', daemonHost === 403, 'Host=evil.example → ' + daemonHost);
@@ -91,12 +91,12 @@ async function main() {
   if (ov && ov.ok) {
     const overlayHost = await httpStatus(overlayUrl('/health'), {
       host: 'evil.example:' + overlayPort(),
-      headers: localHeaders(),
+      headers: tokenHeadersFor(overlayUrl('/health')),
     });
     add('Host 校验（小窗防 DNS rebinding）', overlayHost === 403, 'Host=evil.example → ' + overlayHost);
     const badFrame = await httpStatus(overlayUrl('/frame'), {
       method: 'POST',
-      headers: Object.assign({ 'Content-Type': 'application/json' }, localHeaders()),
+      headers: tokenHeadersFor(overlayUrl('/frame'), { 'Content-Type': 'application/json' }),
       body: JSON.stringify({ dataUrl: 'https://evil.example/track.png' }),
     });
     add('推帧白名单（不收远程图片）', badFrame === 400, '远程 dataUrl → ' + badFrame);

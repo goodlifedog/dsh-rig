@@ -4,8 +4,7 @@ import { daemonBase, overlayBase } from '../core/ports.mjs';
 //   node scripts/soak.mjs            默认 6 轮
 //   SOAK_ROUNDS=12 node scripts/soak.mjs
 import { execFileSync } from 'node:child_process';
-import { readToken, withTokenHeaders } from '../core/local-token.mjs';
-import { localHeaders } from '../core/local-token.mjs';
+import { tokenHeadersFor } from '../core/local-token.mjs';
 
 const DAEMON = daemonBase();
 const OVERLAY = overlayBase();
@@ -16,13 +15,11 @@ const TASKS = (process.env.SOAK_TASKS || 'electron-demo,headless-demo').split(',
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const getJson = async (url, timeout = 3000) => {
-  try { return await (await fetch(url, { headers: localHeaders(), signal: AbortSignal.timeout(timeout) })).json(); } catch { return null; }
+  try { return await (await fetch(url, { headers: tokenHeadersFor(url), signal: AbortSignal.timeout(timeout) })).json(); } catch { return null; }
 };
 const postJson = async (url, body) => {
   try {
-    const token = await readToken();
-    const headers = withTokenHeaders(token, { 'Content-Type': 'application/json' });
-    const r = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body || {}), signal: AbortSignal.timeout(5000) });
+    const r = await fetch(url, { method: 'POST', headers: tokenHeadersFor(url, { 'Content-Type': 'application/json' }), body: JSON.stringify(body || {}), signal: AbortSignal.timeout(5000) });
     return await r.json();
   } catch { return null; }
 };

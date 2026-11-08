@@ -7,7 +7,7 @@ import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { launch } from '../core/browser.mjs';
-import { localHeaders } from '../core/local-token.mjs';
+import { tokenHeadersFor } from '../core/local-token.mjs';
 import { isScreenLocked } from '../core/platform.mjs';
 
 const OVERLAY = overlayBase();
@@ -23,14 +23,17 @@ const TARGET_FPS = Math.max(2, Number(process.env.FPS_CHECK_TARGET) || 13);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const getJson = async (url) => {
-  try { return await (await fetch(url, { headers: localHeaders(), signal: AbortSignal.timeout(3000) })).json(); } catch { return null; }
+  try { return await (await fetch(url, { headers: tokenHeadersFor(url), signal: AbortSignal.timeout(3000) })).json(); } catch { return null; }
 };
-const post = (p, body) => fetch(OVERLAY + p, {
-  method: 'POST',
-  headers: localHeaders({ 'Content-Type': 'application/json' }),
-  body: JSON.stringify({ session: SESSION, ...(body || {}) }),
-  signal: AbortSignal.timeout(5000),
-}).then((r) => r.json()).catch(() => null);
+const post = (p, body) => {
+  const url = OVERLAY + p;
+  return fetch(url, {
+    method: 'POST',
+    headers: tokenHeadersFor(url, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ session: SESSION, ...(body || {}) }),
+    signal: AbortSignal.timeout(5000),
+  }).then((r) => r.json()).catch(() => null);
+};
 
 function rssMb(pid) {
   if (!pid) return 0;
@@ -111,7 +114,8 @@ async function main() {
   await browser.close();
   await post('/status', { clear: true });
   await post('/visible', { visible: false });
-  await fetch(OVERLAY + '/close', { method: 'POST', headers: localHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ session: SESSION }) }).catch(() => {});
+  const closeUrl = OVERLAY + '/close';
+  await fetch(closeUrl, { method: 'POST', headers: tokenHeadersFor(closeUrl, { 'Content-Type': 'application/json' }), body: JSON.stringify({ session: SESSION }) }).catch(() => {});
 
   const actualFps = sent / elapsed;
   const validSamples = fpsSamples.filter((v) => v > 0);
