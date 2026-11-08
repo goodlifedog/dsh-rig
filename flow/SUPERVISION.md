@@ -1,39 +1,46 @@
 # 外部监控日志（评审侧维护，执行侧按需读取）
 
-> 更新：2026-11-08 23:37
+> 更新：2026-11-08 23:45
 
-## 一、本轮修复（评审侧提交）
+## 一、待修：写入后「恢复空值」是坏的（唯一未闭环的数据安全问题）
 
-**`extractValue` 读回值被元数据污染**：Safari 地址栏的 AX 行是
-`Value: xxx, Placeholder: 搜索或输入网站名称`，裁剪列表里没有 `Placeholder:`，
-导致写入后读回永远不等 → `type-text` 判失败 → `restore` 也判失败。
+**实跑证据**（临时 Electron 夹具，不涉及用户数据）：
 
-- 修：裁剪列表补 `Placeholder:`，加单测（Safari 形态的 AX 行）
-- 验证：`npm test` 1273/0、`verify` 全通过（提交 `5649430`）
+```
+type-guard  ✅ 目标输入区为空，允许写入
+type-text   ✅ 写入并读回成功：value="AGENT-TEST-WRITE"
+restore     ❌ 恢复失败：当前 "AGENT-TEST-WRITE"，原值 ""
+```
 
-## 二、一个反例（评审侧自己的错）
+根因：`set_value('')` 清不空字段（Electron/Chromium 对空串设值无效；非空值可以）。
+影响：任何「原值为空的字段」被写入后，测试文本会留在那里。
 
-为了验证「写入 → 恢复」路径，我把测试文本写进了**用户正在用的 Safari 地址栏**，
-结果因上面那个 bug 恢复失败，在你的 Safari 里留了 `AGENT-TEST-WRITE`。
+## 二、验证夹具（已跑通，可直接复用）
 
-已处理：用键盘（⌘A → delete）清空地址栏，前台还原到 Calculator（用户离开时的状态），
-复测确认无残留。
+```bash
+ELECTRON=overlay/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron
+"$ELECTRON" --no-sandbox examples/adapters/sample.html &
+node core/tasks/adapter-demo.mjs --app Electron --type-text "AGENT-TEST"
+```
 
-**规则（给双方）**：验证写入路径必须选「可以随便弄脏」的目标——临时新建的空备忘录、
-专用 fixture 应用，或 headless 页面；**不要拿用户正在用的窗口做写入测试**。
+夹具窗口标题 `[AGENT-TEST] adapter-demo sample`，23 节点 / 4 按钮 / 1 输入区；
+用完 kill 掉即可，完全隔离。
 
-## 三、适配矩阵（不变）
+## 三、修法与两个待确认点
 
-| 应用 | 读 | 点击 | 回显 | 写入 |
-| --- | --- | --- | --- | --- |
-| Safari | ✅ 105 | ✅ 105→112→105 | ✅ 21KB | 空栏可写（恢复路径待用安全目标复验） |
-| Finder / 访达 | ✅ 204/87 | 未试 | 如实跳过 | — |
-| Notes / 备忘录 | ✅ 57 | 未试 | 如实跳过 | ✅ 被守卫拒绝（实测） |
-| 计算器 | ✅ 37 | 未试 | ✅ 57KB | — |
-| Chrome | ❌ AX 不可读 | — | — | 走 CDP |
+恢复空值改走键盘：
+```js
+await deps.click(app, target.index);   // target.index 用快照行号，不是 find() 的 index
+await deps.pressKey(app, '??');        // 待确认 ocu press_key 的组合键写法
+await deps.pressKey(app, '??');        // 删除键写法
+```
 
-## 四、下一批建议（按风险从低到高）
+待确认：
+1. `ocu call press_key` 的组合键语法（`cmd+a` / `CMD+A` / 需要 modifiers 字段？）——我试 `cmd+a` 返回的是不可读负载，需要在夹具上确认
+2. 是否把「写入并保留」和「写入后恢复」拆成两个参数（`--fill` vs `--type-text`），语义更清楚
 
-1. 计算器/访达补点击验证（读已通）
-2. 写入恢复路径：新建一条空备忘录 → 写入 → 恢复 → 删除该备忘录（全程可回滚）
-3. 微信只读（需用户在场，登录态相关）
+## 四、其它状态不变
+
+- Safari 端到端 ✅（读 / 点 / 还原 / 回显 / 前台未变）
+- Finder / Notes / 计算器 读 ✅；Notes 写入被守卫拒绝 ✅
+- 测试 1273/0、彩排 6/6、工作区干净
