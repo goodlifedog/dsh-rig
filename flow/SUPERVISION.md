@@ -1,38 +1,34 @@
 # 外部监控日志（评审侧维护，执行侧按需读取）
 
-> 我这边没有直接给你发消息的通道，所以把状态和指令写在这里。
-> 每个阶段边界读一次即可；不用每轮都看。
+> 状态更新：2026-11-08 22:48
 
-## 当前状态（2026-11-08 22:39）
+## 已经完成的（我核验过）
 
-| 项 | 状态 |
+| 项 | 证据 |
 | --- | --- |
-| `npm test` | 1177 项 / 1175 过 / 2 跳过 / 0 失败 ✅ |
-| `npm run repo:check` | 全部通过 ✅ |
-| `npm run verify` | 全部通过 ✅ |
-| 工作区 | **77 个文件未提交**（13 删 + 60 改 + 4 新增），最后一次提交 22:25 |
-| 改名 | package.json 已是 dsh-rig / 0.8.0；launchd 标签已换 + 有 LEGACY 清理 |
-| BOSS | 代码与文档基本清完（core 引用 0） |
-| 未开始 | README 首屏、package 的 bin/files/repository/publishConfig、ocu 依赖、适配工作 |
+| 删 BOSS | core 引用 0，验收无 boss-scan，form-fill 已通用化 |
+| 隐私 | 历史作者统一为 GitHub 账号；简历文件已从 HEAD 与历史消失；跟踪文件无真实姓名/本机路径 |
+| 改名 | package/launchd/appId/README 全换；service-guard 兼容旧目录名 |
+| 内置 ocu | npm 依赖 + resolveOcu(node_modules) + bundle 脚本改优先 node_modules；`npm i -g` 后 CLI 可用、ocu 随依赖装好 |
+| 网页点击示例 | `examples/web-click` 跑通，且已接进验收（`{ name: 'web-click' }`） |
+| 仓库结构 | flow 45→19 份、docs 9→6 份，脚本归位 scripts/ |
+| 门 | `npm test` 1197/0、`repo:check` 全通过、`verify` 全通过 |
 
-## 现在请先做这两件事
+## 现在请按顺序做（这是唯一还差的功能目标）
 
-1. **立刻提交**当前这一批（含 `docs/ADAPTERS.md`、`examples/`、两个新测试文件），
-   提交信息说明「删 BOSS + 通用化改写 + 清单/夹具同步」
-2. **删除 `flow/patch-publish.diff`**：它还写着 `@goodlifedog/desktop-agent` + `0.7.0`，
-   与现在完全脱节；发布配置应直接落进 `package.json`
+1. **先提交**当前这一批（25 删 + 16 改 + 2 改名 + 4 新增）：结构清理不落盘，后面所有判断都悬空
+2. **开始第一个适配：Preview（系统/阅读门类，只读、低风险）**，判定标准见下
+3. 依次 Safari → Chrome → TextEdit → QQ → Ghostty → WPS（后三个必须先确认在 front-risk 名单里）
 
-## 之后的优先级（不要跳）
+## 每个应用「适配完成」的判定（缺一不算）
 
-1. `package.json` 补 `bin` / `files` / `repository` / `publishConfig`，加 `open-computer-use` 依赖
-2. `resolveOcu()` 增加 `node_modules/open-computer-use/bin/ocu` 查找；打包从 node_modules 拷
-3. README 首屏重写：标题 DSH Rig / 徽章 / 中英定位 / GIF 占位 / keywords
-4. 许可：`files` 白名单包含 ocu 的 LICENSE / NOTICE / THIRD_PARTY_NOTICES
-5. 适配工作按 `docs/ADAPTERS.md` 顺序，QQ / WPS / Ghostty 必须走 front-risk 名单
+- 有一条**可复制执行**的命令（不是「已分析」）
+- 有**真实输出**：读到的窗口/文本证据，或点击后状态真的变化
+- 失败要说明是**环境问题**（没装/没授权/锁屏）还是**能力问题**（读不到树），并且不能假绿
+- 抢前台的应用必须走 `front-risk` 名单，不能现场试
 
-## 我这边会持续核验的事
+## 我这边的核验方式
 
-- 每轮跑 `npm test` / `repo:check` / `verify`，确认没有为了推进而牺牲绿线
-- 抽查新任务的守卫（锁屏跳过、用户在场让路、数据恢复、front-risk）
-- 发布前做一次干净副本彩排：install（自动装 ocu）→ 测试 → 打包 → 全局安装 → doctor → publish dry-run
-- 确认仓库与产物里没有真实姓名、本机路径、个人材料（含 git 历史）
+- 每轮跑三道门，抽查新任务是否带守卫（锁屏跳过、用户在场让路、数据恢复、front-risk）
+- 你报「跑通了」我会自己再跑一遍那条命令
+- 发布前做干净副本彩排（install 自动装 ocu → 测试 → 打包 → 全局安装 → doctor → publish dry-run）
