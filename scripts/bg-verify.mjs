@@ -29,21 +29,45 @@ const CHECKS = [
 // 单项超时：某个检查卡住时不能把整轮验收拖死
 const DEFAULT_TIMEOUT_MS = Math.max(10000, Number(process.env.BG_VERIFY_TIMEOUT_MS) || 300000);
 
+// 当前正在跑的检查子进程：本脚本被中止（Ctrl-C / 用户回来被上层杀掉）时，
+// 必须连它一起杀，否则它会在独立进程组里变成孤儿继续动屏幕。
+let activeChild = null;
+
+function killGroup(child, signal) {
+  if (!child || !child.pid) return;
+  try { process.kill(-child.pid, signal); } catch {}
+  try { child.kill(signal); } catch {}
+}
+
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, () => {
+    killGroup(activeChild, signal === 'SIGINT' ? 'SIGINT' : 'SIGTERM');
+    // 给任务应急清理留一点时间，3 秒后强杀
+    setTimeout(() => killGroup(activeChild, 'SIGKILL'), 3000);
+    setTimeout(() => process.exit(signal === 'SIGINT' ? 130 : 143), 3200);
+  });
+}
+
 function run(script, timeoutMs) {
   const limit = Math.max(5000, Number(timeoutMs) || DEFAULT_TIMEOUT_MS);
   return new Promise((resolve) => {
     const started = Date.now();
-    const child = spawn(process.execPath, [path.join(ROOT, script)], { cwd: ROOT, env: { ...process.env } });
+    // detached：自成进程组，必要时能连它的子进程一起停
+    const child = spawn(process.execPath, [path.join(ROOT, script)], { cwd: ROOT, env: { ...process.env }, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    activeChild = child;
     let out = '';
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
-      try { child.kill('SIGKILL'); } catch {}
+      // 先 SIGTERM 让任务自己关掉拉起的应用，3 秒后退不掉再强杀
+      killGroup(child, 'SIGTERM');
+      setTimeout(() => killGroup(child, 'SIGKILL'), 3000);
     }, limit);
     child.stdout.on('data', (b) => { out += b; });
     child.stderr.on('data', (b) => { out += b; });
     child.on('close', (code) => {
       clearTimeout(timer);
+      activeChild = null;
       resolve({ code: timedOut ? 124 : (code === null ? 1 : code), ms: Date.now() - started, out, timedOut, limit });
     });
   });

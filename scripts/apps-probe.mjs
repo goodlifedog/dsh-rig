@@ -18,15 +18,38 @@ const ROOT = path.join(__dirname, '..');
 const USER_DIRS = userAppDirs();
 const SYSTEM_DIRS = SYSTEM_APP_DIRS;
 
+// 当前正在跑的探测子进程：本脚本被 Ctrl-C / 上层杀掉时连它一起杀，避免孤儿继续动屏幕
+let activeChild = null;
+
+function killGroup(child, signal) {
+  if (!child || !child.pid) return;
+  try { process.kill(-child.pid, signal); } catch {}
+  try { child.kill(signal); } catch {}
+}
+
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, () => {
+    killGroup(activeChild, signal === 'SIGINT' ? 'SIGINT' : 'SIGTERM');
+    setTimeout(() => killGroup(activeChild, 'SIGKILL'), 3000);
+    setTimeout(() => process.exit(signal === 'SIGINT' ? 130 : 143), 3200);
+  });
+}
+
 function runNode(scriptPath, env) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [scriptPath], {
       cwd: ROOT,
       env: { ...process.env, ...env },
       stdio: 'inherit',
+      detached: true,
     });
-    child.on('error', reject);
-    child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(scriptPath + ' 退出码 ' + code))));
+    activeChild = child;
+    child.on('error', (error) => { activeChild = null; reject(error); });
+    child.on('exit', (code) => {
+      activeChild = null;
+      if (code === 0) resolve();
+      else reject(new Error(scriptPath + ' 退出码 ' + code));
+    });
   });
 }
 

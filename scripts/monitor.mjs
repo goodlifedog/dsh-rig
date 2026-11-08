@@ -11,18 +11,38 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
 const FAST = process.env.MONITOR_FAST === '1';
 
+// 当前正在跑的巡检子进程：本脚本被中止时连它一起杀，避免孤儿继续动屏幕
+let activeChild = null;
+
+function killGroup(child, signal) {
+  if (!child || !child.pid) return;
+  try { process.kill(-child.pid, signal); } catch {}
+  try { child.kill(signal); } catch {}
+}
+
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, () => {
+    killGroup(activeChild, signal === 'SIGINT' ? 'SIGINT' : 'SIGTERM');
+    setTimeout(() => killGroup(activeChild, 'SIGKILL'), 3000);
+    setTimeout(() => process.exit(signal === 'SIGINT' ? 130 : 143), 3200);
+  });
+}
+
 function runNode(script, args, env) {
   return new Promise((resolve) => {
     const started = Date.now();
-    execFile(process.execPath, [path.join(ROOT, 'scripts', script), ...(args || [])], {
+    const child = execFile(process.execPath, [path.join(ROOT, 'scripts', script), ...(args || [])], {
       cwd: ROOT,
       timeout: 300000,
       maxBuffer: 16 * 1024 * 1024,
+      detached: true,
       env: { ...process.env, ...(env || {}) },
     }, (err, stdout, stderr) => {
+      activeChild = null;
       const out = String(stdout || '') + String(stderr || '');
       resolve({ ok: !err, ms: Date.now() - started, out });
     });
+    activeChild = child;
   });
 }
 

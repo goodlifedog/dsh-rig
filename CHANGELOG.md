@@ -2,6 +2,7 @@
 
 ## 未发布
 
+- 中止处理覆盖到所有会跑 UI 子任务的脚本：`bg:verify`、`apps:probe`、`monitor` 现在把子进程起在独立进程组，自己收到 SIGINT/SIGTERM 时连子进程一起停（先 SIGTERM 让任务应急清理关应用，3 秒后强杀），不再留下孤儿继续动屏幕；`bg:verify` 单项超时也从直接 SIGKILL 改成先 SIGTERM
 - 修中止链条上的孤儿任务：任务是用独立进程组起的，验收被 SIGTERM 后只杀验收自己收不到任务，任务会变成孤儿继续控制应用。现在 acceptance 收到 SIGTERM/SIGINT 会先 `killActiveTask()` 把当前任务进程组一起杀掉再退出；`verify:live` 中止时等 1.5 秒让应急清理跑完再收小窗，并给 3 秒兜底 SIGKILL。补 2 项单测
 - 修任务被中途杀掉会留残窗：验收中止/Ctrl-C 时任务进程直接被 SIGTERM 杀掉，`finally` 里的清理来不及跑（实测留下一只计算器）。新增 `core/task-emergency-cleanup.mjs` + `core/sync-quit.mjs`：信号处理里**同步**优雅退出自己拉起的应用（阻塞等它真退，避开 ocu-mcp 退出钩子的立即 process.exit 竞态），四个会拉应用的任务（background-control / cold-launch / app-matrix / concurrent-demo）都接上；实测 SIGTERM 后计算器被关干净、前台未变。补 6 项单测
 - BOSS 投递中途也会让你：每条投递前复查键鼠空闲，你中途回来就停止后续（不再发下一条），布局文档同步
@@ -230,7 +231,3 @@
 - 健康信息新增 `hostPoll`（最近轮询时间、当前间隔、是否正在轮询）
 - 修标题门控匹配 bug：`titleHint` 传完整窗口标题（带「— DeepSeek Harness」后缀）时永远匹配不上，小窗在该会话里也不出现
 - `npm run scope:check`：把「小窗只出现在召唤它的会话里」做成可重复断言，并量出切走/切回耗时（实测切走 ≤1000ms、切回 ≤1500ms）
-- 归属一变更就同步把状态标成不可见，消除健康信息「说可见其实已藏」的不一致
-- 轮询改三档（可见 400ms / 被门控藏起且宿主在前台 700ms / 其余 1500ms），切走约 0.5s 收起、切回约 0.7s 重新出现；新增 `OVERLAY_ATTACH_MID_MS`
-
-## 0.7.0 (2026-11-06)
