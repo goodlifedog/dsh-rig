@@ -16,7 +16,7 @@ import {
   executableTrust,
 } from '../core/safety.mjs';
 import { windowCount, dialogs, quitApp } from '../core/background.mjs';
-import { attachPage } from '../core/cdp-driver.mjs';
+import { attachPage, verifyDebugPortOwner } from '../core/cdp-driver.mjs';
 import { ensureHelper } from '../core/applescript-driver.mjs';
 
 test('应用名白名单：常见名字放行，能破坏 AppleScript 的一律拒绝', () => {
@@ -152,6 +152,31 @@ test('attachPage：端口主人不是目标应用时拒绝连接（防本地端�
   assert.equal(r.ok, false);
   assert.equal(r.trust, 'mismatch');
   assert.equal(listed, 0, '没通过校验就不该去列 target');
+});
+
+test('CDP 端口主人：没有 pid 时 fail-closed，进程路径里带应用名也不放行（M-4）', async () => {
+  // 模拟攻击：端口主人的可执行路径里带目标应用名（旧实现 command.includes(appName) 会放行）
+  const r = await verifyDebugPortOwner({
+    port: 9333,
+    app: { appName: 'ChatGPT', bundleId: 'com.openai.codex' },
+    portOwner: async () => 31337,
+    deps: { exec: async () => ({ stdout: '/tmp/ChatGPT' }) },
+  });
+  assert.equal(r.ok, false, '没有 pid 时不允许仅凭路径包含应用名放行');
+  assert.equal(r.trust, 'unverified');
+  assert.match(r.reason, /expectedPid/);
+});
+
+test('CDP 端口主人：pid 不相等时，即使路径里带应用名也拒绝', async () => {
+  const r = await verifyDebugPortOwner({
+    port: 9333,
+    expectedPid: 100,
+    app: { appName: 'ChatGPT' },
+    portOwner: async () => 999,
+    deps: { exec: async () => ({ stdout: '/tmp/ChatGPT' }) },
+  });
+  assert.equal(r.ok, false);
+  assert.equal(r.trust, 'mismatch');
 });
 
 test('ensureHelper：文件被换成他主的，会重新编译覆盖', async () => {

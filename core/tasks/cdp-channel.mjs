@@ -55,7 +55,8 @@ async function main() {
 
     let up = null;
     for (let i = 0; i < 40; i += 1) {
-      up = await attachPage({ port: PORT, timeoutMs: 800, expectedPid: chrome.pid });
+      // expectedPid 是 spawn 出来的 Chrome 主进程；expectedExecutable 再给一条严格路径兜底（M-4）
+      up = await attachPage({ port: PORT, timeoutMs: 800, expectedPid: chrome.pid, expectedExecutable: CHROME });
       if (up.ok) break;
       await sleep(250);
     }

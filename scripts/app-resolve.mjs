@@ -15,16 +15,16 @@ import { scanDirs, matchAppByNames, userAppDirs, allAppDirs } from '../core/app-
 import { profileApp } from '../core/app-profile.mjs';
 import { negotiateChannels, driverLabel } from '../core/driver-resolution.mjs';
 import { isAppRunning, readSafe, windowCount, frontName, settleFront } from '../core/background.mjs';
-import { probeDebugPort, debugPortFor } from '../core/cdp-driver.mjs';
+import { probeDebugPort, debugPortFor, verifyDebugPortOwner } from '../core/cdp-driver.mjs';
 import { checkAutomationPermission } from '../core/applescript-driver.mjs';
 import { closeOcuMcp } from '../core/ocu-mcp.mjs';
-import { localHeaders } from '../core/local-token.mjs';
+import { tokenHeadersFor } from '../core/local-token.mjs';
 import { createRiskGate } from '../core/front-risk.mjs';
 
 const OVERLAY = overlayBase();
 
 function appPid(app) {
-  const candidates = [app.processName, app.appName].filter(Boolean);
+  const candidates = [app.processName, app.process, app.appName, app.name].filter(Boolean);
   for (const name of candidates) {
     try {
       const out = String(execFileSync('/usr/bin/pgrep', ['-x', String(name)], { timeout: 2000 })).trim();
@@ -35,10 +35,18 @@ function appPid(app) {
   return 0;
 }
 
+/** 目标应用可执行文件的绝对路径（严格路径核对用；拿不到返回空串） */
+function executablePath(app) {
+  if (app.executable) return String(app.executable);
+  if (!app.appPath || !app.process) return '';
+  return path.join(app.appPath, 'Contents', 'MacOS', app.process);
+}
+
 /** 问 overlay 的系统窗口层：某个应用有几个窗口（AX 窗口数不可信时的补充证据，按 pid 匹配最可靠） */
 async function overlayWindowCount(app) {
   try {
-    const res = await fetch(OVERLAY + '/windows', { headers: localHeaders(), signal: AbortSignal.timeout(2000) });
+    const url = OVERLAY + '/windows';
+    const res = await fetch(url, { headers: tokenHeadersFor(url), signal: AbortSignal.timeout(2000) });
     const data = await res.json();
     const windows = data.windows || [];
     const pid = appPid(app);
@@ -65,7 +73,24 @@ async function resolveOne(app, profile, risk) {
         isRunning: (check) => isAppRunning(check),
         readSafe: (name) => readSafe(name, { timeoutMs: 3000, risk }),
         windowCount: (name) => windowCount(name, { altNames: [app.process] }),
-        probeCdp: (port) => probeDebugPort(port, { timeoutMs: 800 }),
+        probeCdp: async (port) => {
+          const probe = await probeDebugPort(port, { timeoutMs: 800 });
+          if (!probe.ok) return probe;
+          // 端口有响应 ≠ 通道可信：先按 M-4 验证端口主人；拿不到 pid / 可执行路径就 fail closed
+          const gate = await verifyDebugPortOwner({
+            port,
+            expectedPid: appPid(app),
+            expectedExecutable: executablePath(app),
+          });
+          if (!gate.ok) {
+            return {
+              ok: false,
+              error: '端口有 CDP 响应但主人未验证（' + gate.trust
+                + (gate.reason ? '：' + gate.reason : '') + '），拒绝认定 CDP 通道可用',
+            };
+          }
+          return Object.assign({}, probe, { trust: gate.trust });
+        },
         sdefCommands: async () => profile.applescript.commands,
         automationPermission: (target) => checkAutomationPermission(target),
         debugPortFor: (key) => debugPortFor(key),

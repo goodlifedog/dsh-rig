@@ -10,6 +10,8 @@ import {
   rankPageTargets,
   launchWithDebug,
   attachPage,
+  verifyDebugPortOwner,
+  sameExecutablePath,
   readPage,
   clickText,
   typeInto,
@@ -92,26 +94,114 @@ test('launchWithDebug：端口被别的进程占住（固定端口哈希会撞�
   assert.ok(r.error.includes('校验未通过'));
 });
 
-test('launchWithDebug：查不到应用 pid 时按端口主人可执行路径判断，路径不对照样拒绝', async () => {
-  const baseDeps = {
-    exec: async (cmd) => {
-      if (cmd === '/bin/ps') return { stdout: '/Applications/Evil.app/Contents/MacOS/Evil' };
-      return { stdout: '' };
+test('launchWithDebug：查不到应用 pid 且没给可执行路径 → fail-closed，不按名字放行', async () => {
+  const r = await launchWithDebug({ bundle: 'a.b', name: 'AppX' }, {
+    port: 9333,
+    waitMs: 1000,
+    deps: {
+      exec: async () => ({ stdout: '' }),
+      probe: async () => ({ ok: true, version: { Browser: 'Chrome/1' } }),
+      sleep: async () => {},
+      findPid: async () => 0,
+      portOwner: async () => 7777,
     },
+  });
+  assert.equal(r.ok, false, '没有 pid 时不能仅凭名字/路径包含就放行');
+  assert.equal(r.trust, 'unverified');
+  assert.ok(r.error.includes('expectedPid'), '错误里要告诉调用方补 expectedPid：' + r.error);
+});
+
+test('launchWithDebug：没有 pid 但显式给可执行路径时，严格整串相等才放行', async () => {
+  const exe = '/Applications/AppX.app/Contents/MacOS/AppX';
+  const baseDeps = {
+    exec: async (cmd) => (cmd === '/bin/ps' ? { stdout: exe } : { stdout: '' }),
     probe: async () => ({ ok: true, version: { Browser: 'Chrome/1' } }),
     sleep: async () => {},
     findPid: async () => 0,
     portOwner: async () => 7777,
   };
-  const bad = await launchWithDebug({ bundle: 'a.b', name: 'AppX' }, { port: 9333, waitMs: 1000, deps: baseDeps });
+  const bad = await launchWithDebug({ bundle: 'a.b', name: 'AppX', exePath: '/Applications/Other.app/Contents/MacOS/Other' },
+    { port: 9333, waitMs: 1000, deps: baseDeps });
   assert.equal(bad.ok, false);
   assert.equal(bad.trust, 'path-mismatch');
-  const goodDeps = Object.assign({}, baseDeps, {
-    exec: async (cmd) => (cmd === '/bin/ps' ? { stdout: '/Applications/AppX.app/Contents/MacOS/AppX' } : { stdout: '' }),
-  });
-  const good = await launchWithDebug({ bundle: 'a.b', name: 'AppX' }, { port: 9333, waitMs: 1000, deps: goodDeps });
+
+  const good = await launchWithDebug({ bundle: 'a.b', name: 'AppX', exePath: exe },
+    { port: 9333, waitMs: 1000, deps: baseDeps });
   assert.equal(good.ok, true);
-  assert.equal(good.trust, 'path-match');
+  assert.equal(good.trust, 'path-exact');
+  assert.equal(good.appPid, 0);
+});
+
+test('sameExecutablePath：只认整串相等，子串/前缀不放行', () => {
+  const exe = '/Applications/AppX.app/Contents/MacOS/AppX';
+  assert.equal(sameExecutablePath('/tmp/AppX', exe), false, '子串路径不能放行');
+  assert.equal(sameExecutablePath('/Applications/AppX.app', exe), false, '前缀不能放行');
+  assert.equal(sameExecutablePath(exe + '/', exe), true, '尾部斜杠归一化后相等');
+  assert.equal(sameExecutablePath('', exe), false);
+});
+
+test('verifyDebugPortOwner：没有 expectedPid → unverified，argv 长得像目标应用也不放行', async () => {
+  const r = await verifyDebugPortOwner({
+    port: 9333,
+    app: { appName: 'AppX', bundleId: 'a.b', processName: 'AppX' },
+    portOwner: async () => 7001,
+    deps: { exec: async () => ({ stdout: '/tmp/AppX' }) },
+  });
+  assert.equal(r.ok, false);
+  assert.equal(r.trust, 'unverified');
+  assert.ok(r.reason.includes('expectedPid'), '原因里要提示传 expectedPid：' + r.reason);
+  assert.equal(r.command, undefined, '没有可执行路径判据时不该去信 ps 的路径');
+});
+
+test('verifyDebugPortOwner：expectedPid 相等才放行，不等/没监听都拒绝', async () => {
+  const ok = await verifyDebugPortOwner({ port: 9333, expectedPid: 4242, portOwner: async () => 4242 });
+  assert.equal(ok.ok, true);
+  assert.equal(ok.trust, 'ok');
+
+  const mismatch = await verifyDebugPortOwner({ port: 9333, expectedPid: 4242, portOwner: async () => 9999 });
+  assert.equal(mismatch.ok, false);
+  assert.equal(mismatch.trust, 'mismatch');
+  assert.ok(mismatch.reason.includes('不一致'));
+
+  const none = await verifyDebugPortOwner({ port: 9333, expectedPid: 4242, portOwner: async () => 0 });
+  assert.equal(none.ok, false);
+  assert.equal(none.trust, 'no-listener');
+});
+
+test('verifyDebugPortOwner：没有 pid 时只有整串可执行路径相等才放行', async () => {
+  const exe = '/Applications/AppX.app/Contents/MacOS/AppX';
+  const hit = await verifyDebugPortOwner({
+    port: 9333,
+    expectedExecutable: exe,
+    portOwner: async () => 7001,
+    deps: { exec: async (cmd) => ({ stdout: cmd === '/bin/ps' ? exe : '' }) },
+  });
+  assert.equal(hit.ok, true);
+  assert.equal(hit.trust, 'path-exact');
+
+  const near = await verifyDebugPortOwner({
+    port: 9333,
+    expectedExecutable: exe,
+    portOwner: async () => 7001,
+    deps: { exec: async () => ({ stdout: '/tmp/AppX' }) },
+  });
+  assert.equal(near.ok, false);
+  assert.equal(near.trust, 'path-mismatch');
+});
+
+test('attachPage：没给 expectedPid/expectedExecutable → fail-closed，不去列 target', async () => {
+  let listed = 0;
+  const r = await attachPage({
+    port: 9333,
+    portOwner: async () => 7001,
+    deps: {
+      listTargets: async () => { listed += 1; return []; },
+      sleep: async () => {},
+    },
+  });
+  assert.equal(r.ok, false);
+  assert.equal(r.trust, 'unverified');
+  assert.equal(listed, 0, '校验没过就不该去列 target');
 });
 
 test('attachPage：expectedPid 对不上端口主人 → 拒绝连接', async () => {
@@ -143,7 +233,9 @@ test('attachPage：跳过连上就断的空窗口，换下一个', async () => {
   const r = await attachPage({
     port: 9333,
     timeoutMs: 2000,
+    expectedPid: 4242,
     deps: {
+      portOwner: async () => 4242,
       listTargets: async () => [
         { type: 'page', id: 'a', url: 'app://-/detached-window.html', webSocketDebuggerUrl: 'ws://a' },
         { type: 'page', id: 'b', url: 'app://-/index.html', webSocketDebuggerUrl: 'ws://b' },

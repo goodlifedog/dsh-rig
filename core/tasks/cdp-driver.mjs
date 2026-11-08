@@ -77,6 +77,18 @@ async function main() {
     row.browser = launch.version && launch.version.Browser ? launch.version.Browser : '';
     row.appPid = launch.appPid || 0;
     row.portTrust = launch.trust || '';
+    if (!row.appPid) {
+      // 兜底：launch 只可能用严格路径校验通过（path-exact）而没有 pid；
+      // attachPage 现在 fail-closed，没有 pid 不会再连，所以这里直接如实标记，不进入 connect。
+      row.status = 'cdp-unavailable';
+      row.detail = '调试端口有响应，但没识别到应用 pid（trust=' + row.portTrust + '），按 fail-closed 拒绝连接';
+      const quit = await quitApp({ bundleId: app.bundle, appName: app.name, processName: app.process });
+      row.cleanup = quit.mode;
+      row.frontUnchanged = (await frontName()) === before;
+      rows.push(row);
+      console.log(JSON.stringify(row));
+      continue;
+    }
     // 传 expectedPid 让 attachPage 再核一次端口主人（launch 阶段已核过，这里是第二道）
     const attached = await attachPage({ port, expectedPid: launch.appPid, app });
     if (!attached.ok) {
