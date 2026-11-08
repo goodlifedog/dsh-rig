@@ -58,6 +58,9 @@
 | task-61 | headless-engineer | 适配第一批：新增 mail/calendar/reading/photos 门类 + media 补 Music（预设+单测+清点） | 核验后提交 `dc4faca`；清点 32→38 |
 | task-62 | cdp-bridge | 清点口径：细分「部分验证（通道测过、矩阵未读）」+ 修 cdp-ok 判定 | 核验后提交 `1753042` |
 | task-63 | ocu-recipe | 权限闸门覆盖面：认 callTool 界面工具与 ocu js 外层调用 | 核验后提交 `09415a9`；需 AX 任务 16→19 |
+| task-64 | human-input | H2 缺口 A：6 个任务的本地 front() 改共享 frontName（去掉 System Events AppleEvent） | 核验后合并提交 `bb6fecd` |
+| task-65 | cdp-bridge | H2 缺口 B：Chrome 标签与 app-matrix 前台还原接静默预检 | 核验后合并提交 `bb6fecd` |
+| task-66 | ocu-recipe | H2 缺口 C：cleanup-test-data 的 TextEdit/Chrome AppleEvent 接静默预检 | 核验后合并提交 `bb6fecd` |
 
 ## 当前状态
 
@@ -66,5 +69,5 @@
 - 完整验收 2026-11-08 抓出并修复 3 个前台污染问题（multi-app 拉起应用、矩阵还原漏别名、验收残留应用）。
 - ocu 调用审计 11 处高危调用点全部加运行门禁并提交（`50ebe5a`）；补 4 个测试文件，全量 923 项 / 922 过 / 1 跳过 / 0 失败。
 - 权限安全审计的 H1/H3/H4/H5 + M1/M2 已修复并提交（全量 1012 项 / 1010 过 / 2 跳过 / 0 失败）；H2 核心（前台读取不发 AppleEvent）已落地，剩余 acceptance/browser/headless-demo 的裸 AppleEvent 入口记为待办。
-- 静态防回归补齐：规则 5（raw ocu 运行门禁）+ 规则 6（AppleEvent 自动化预检），`npm run safety:audit` 现在扫 123 个文件；全量 1049 项 / 1047 过 / 2 跳过 / 0 失败。
+- 静态防回归补齐：规则 5（raw ocu 运行门禁）+ 规则 6（AppleEvent 自动化预检），`npm run safety:audit` 现在扫 123 个文件；规则 6 的 10 个已知缺口已清零（无豁免清单）。全量 1087 项 / 1085 过 / 2 跳过 / 0 失败。
 - 待办：等屏幕解锁 + 用户离开足够久（≥15 分钟）时跑一次 `verify:live` 完整验收（含会动屏幕的步骤），确认修复后 app-matrix 不再被抢前台、权限闸门不会把正常步骤误跳过。当前屏幕处于锁定状态，`verify:live` 无法在锁屏下跑（AX/截图不可用），后台 watcher 会等「已解锁 + 空闲 ≥20 分钟」自动开跑。
