@@ -71,7 +71,7 @@ export function resolveElectronBinary(explicit) {
   throw new Error(
     '找不到 Electron 可执行文件。已尝试：\n  ' + candidates.join('\n  ') +
     '\n可以显式传 binary，或设置环境变量 ELECTRON_BIN，' +
-    '或在 desktop-agent/overlay 下执行 npm install 装 Electron。'
+    '或在 overlay/ 下执行 npm install 装 Electron。'
   );
 }
 

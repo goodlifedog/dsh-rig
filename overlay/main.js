@@ -45,7 +45,7 @@ const { nextCaptureDelay } = require('./capture-policy.js');
 const { shouldEvictSession, pickEvictionVictim, isSessionReallyVisible } = require('./session-policy.js');
 const { createCrashLog, shouldReloadAfterCrash } = require('./crash-log.js');
 
-const APP_NAME = 'desktop-agent-overlay';
+const APP_NAME = 'dsh-rig-overlay';
 
 // 贴在 DeepSeek Harness 窗口内（右上角），多会话按格子平铺，不自由漂浮
 const ATTACH_TO_DSH = process.env.OVERLAY_ATTACH_DSH !== '0';

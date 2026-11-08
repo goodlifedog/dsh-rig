@@ -515,7 +515,7 @@ async function handleRequest(req, res) {
     // 任务列表、当前任务、日志路径这些一律放 /status（需要票）。
     return json(res, 200, {
       ok: true,
-      service: 'desktop-agent-daemon',
+      service: 'dsh-rig-daemon',
       pid: state.pid,
       uptimeSec: Math.round((Date.now() - new Date(state.startedAt).getTime()) / 1000),
     });

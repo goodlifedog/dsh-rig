@@ -35,7 +35,8 @@ export function isOurDaemonCommand(psCommand, options = {}) {
   if (!/daemon\.mjs/.test(cmd)) return false;
   const root = String((options && options.rootDir) || '');
   if (root && cmd.includes(root)) return true;
-  return /desktop-agent/i.test(cmd);
+  // 兼容改名前的仓库目录名（desktop-agent）与改名后的 dsh-rig：本机升级/别处克隆都要能认出来
+  return /desktop-agent|dsh-rig/i.test(cmd);
 }
 
 /**
@@ -50,7 +51,7 @@ export function isOurOverlayCommand(psCommand, options = {}) {
   if (!/Electron/i.test(cmd)) return false;
   const root = String((options && options.rootDir) || '');
   if (root && cmd.includes(root + '/overlay')) return true;
-  return /desktop-agent/i.test(cmd) && /overlay/i.test(cmd);
+  return /desktop-agent|dsh-rig/i.test(cmd) && /overlay/i.test(cmd);
 }
 
 /**

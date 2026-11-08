@@ -12,7 +12,7 @@ import { isScreenLocked, lockedSkipNotice } from '../platform.mjs';
  *   5. 全程检查前台应用，证明没抢焦点；最后杀进程、清临时目录。
  *
  * 运行：
- *   node desktop-agent/core/tasks/electron-demo.mjs
+ *   node core/tasks/electron-demo.mjs
  *
  * 退出码：全部通过 0，否则 1。
  */

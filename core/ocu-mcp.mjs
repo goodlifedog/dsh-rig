@@ -77,7 +77,7 @@ export class OcuMcp {
     const init = await this._request('initialize', {
       protocolVersion: PROTOCOL_VERSION,
       capabilities: {},
-      clientInfo: { name: 'dsh-desktop-agent', version: '0.6.0' },
+      clientInfo: { name: 'dsh-rig', version: '0.8.0' },
     }, 15000);
     this.serverInfo = init && init.result ? init.result : null;
     this._notify('notifications/initialized', {});

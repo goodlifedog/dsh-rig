@@ -209,7 +209,7 @@ function createOverlayServer(options) {
     if (pathname === '/' && method === 'GET') {
       return json(res, 200, {
         ok: true,
-        service: 'desktop-agent-overlay',
+        service: 'dsh-rig-overlay',
         sessions: true,
         endpoints: [
           'GET /health?session=',
