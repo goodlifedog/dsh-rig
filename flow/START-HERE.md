@@ -9,6 +9,7 @@
 - 代码：`npm run check` / `npm run repo:check` / `npm run safety:audit` 全绿；单测 **636 项（635 过 / 1 跳过）**
 - 真实验收：2026-11-08 实跑端到端验收 **10 通过 / 3 环境跳过 / 0 失败**；之后新增「并发验证」，验收现在 14 项
 - 解锁验收：`npm run verify:live` 一条命令跑完（要求键鼠空闲 ≥15 分钟才开跑，运行中你一碰键鼠就立刻停并收起小窗）
+- 不碰屏幕的验收：`npm run verify:safe`（8 项，全不抢前台不开可见窗口，用户正在用电脑时也能跑；实测 8/8）
 - 不切屏：前台风险名单默认生效（`npm run front:risk` 可看/清），读取会被 AX 顶到前台的应用默认跳过；`guard()` 被抢会先还原再报错
 - 安全检查：`npm run safety:audit` 拦四类致命写法（启动不收尾、强杀、open 不带 -g、界面任务缺护栏）
 - 并发验证：`npm run demo:concurrent`（原生计算器 + headless 浏览器同时干活，前台采样 87 次全未变、屏幕上无新窗口）

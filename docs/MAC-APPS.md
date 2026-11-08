@@ -244,6 +244,7 @@ overlay 的系统窗口列表（CGWindowList）。只信 AX 会把菜单栏工�
 
 ```bash
 LIVE_KEEP_AWAKE=1 npm run verify:live     # acceptance + bg:verify + 小窗回归 + 会话隔离 + 帧率
+npm run verify:safe                      # 不想动屏幕时跑这组：8 项全不抢前台/不开可见窗口
 npm run apps:inventory                     # 刷新清点
 ```
 
