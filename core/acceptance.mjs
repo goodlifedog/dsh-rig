@@ -685,7 +685,7 @@ async function main() {
   const TASK_PLAN = [
     { name: 'multi-app' },
     { name: 'form-fill' },
-    // 通用网页点击示例：替代已删除的 boss-scan，证明「任意页面按文字找按钮→后台点击→读回结果」。
+    // 通用网页点击示例：替代已删除的旧界面扫描任务，证明「任意页面按文字找按钮→后台点击→读回结果」。
     // 它不是 runner 任务，直接 spawn 示例脚本；自己打印 SKIP + exit 0 时算环境跳过。
     { name: 'web-click', example: 'examples/web-click/run.mjs', timeoutMs: 120000 },
     { name: 'platform-demo' },

@@ -2,6 +2,14 @@
 
 ## 0.8.0（未发布）
 
+- **摘掉招聘相关能力（BOSS）**：删除 6 个招聘任务与 4 份站点文档、硬编码招聘站正则与探针脚本（合计 13 个文件、2696 行）；form-fill 重写成通用「当前标签页表单填充」（按无障碍 role 找文本栏→写值→读回→恢复），验收里的旧扫描任务换成通用网页点击示例；README/CAPABILITIES/ARCHITECTURE/USAGE/CHANGELOG 的招聘叙事全部改成通用后台操作表述。
+- **克隆即用（内置 ocu）**：`open-computer-use` 变成 npm 依赖，`resolveOcu` 按 OCU_BIN → node_modules → third_party → 全局的顺序查找；打包只从 node_modules 拷 ocu 运行时与 LICENSE / NOTICE / THIRD_PARTY_NOTICES（不整包打 node_modules）；README/THIRD-PARTY 注明「底层能力来自 open-computer-use（MIT），未修改其源码」。
+- **通用网页点击示例**：新增 `examples/web-click`——headless Chrome + CDP，任意页面按可见文字找按钮 → 后台点击 → 读回结果 → 断言，全程不抢前台；已接进验收替代旧的招聘扫描步骤（8 条单测）。
+- **适配工具与本轮实测**：新增 `core/tasks/adapter-demo.mjs`（读界面树 / 按文字点击 / 键入 / 小窗回显证据，带锁屏/用户活跃/front-risk/运行门禁、临时样例副本与清理）；Safari 端到端 S 级实测通过（读 105 节点/40 按钮 → 点「显示边栏」节点 105→112 → 回显 → 前台不变 → 点「隐藏边栏」还原）；front-unchanged 加了系统浮层忽略与基线稳定校验（通知横幅不再造成假失败/假通过）；适配候选与证据等级见 `docs/ADAPTERS.md`。
+- **小窗 UI 精简**：删掉红色「停止任务」按钮（AI 自动化不需要），放大按钮从右上角移到窗口中央、改成浏览器全屏按钮样式（hover 才出现，隐藏时不挡点击）；✕/Esc 关闭保留。
+- **发布彩排脚本**：新增 `scripts/release-rehearsal.mjs`——干净副本六步（archive → install → test → pack 校验 ocu 许可 → 临时 prefix 全局安装 + doctor → publish dry-run），支持 --dry-run/--quick/--keep；真实跑通 6 PASS / 0 SKIP / 0 FAIL，不污染本机环境。
+- **服务迁移实测**：`service:uninstall` → `service:install` 后只剩 `com.goodlifedog.dsh-rig.daemon/overlay` 两套（单 daemon、单 overlay、单实例占 7789/7788），旧 `com.desktop-agent.*` 标签与 plist 被清理。
+
 - **改名：Desktop Agent → DSH Rig。** npm 包名 `dsh-rig`、CLI 命令 `dsh-rig`、App 显示名 `DSH Rig`；
   打包配置 `appId` 改为 `com.goodlifedog.dsh-rig`、`productName` 改为 `DSH Rig`、DMG 标题同步；
   overlay 子包改名 `dsh-rig-overlay`，与主包版本一起升到 0.8.0（`npm run repo:check` 会校验两者一致）。
@@ -17,11 +25,10 @@
 - **刻意保持不变**：数据目录仍是 `~/.desktop-agent`（token、Chrome profile、报告都在里面，升级不丢数据）；
   控制面端口仍是 7789、小窗端口 7788；本机仓库目录名 `desktop-agent/` 也不动（只是本地路径）。
 
-## 0.7.0
 
 - 隐私清理（用户要求）：项目里不再出现真实姓名与机器名——LICENSE/package.json/overlay 配置/发布文档统一改成 GitHub 虚拟身份 `goodlifedog`（打包 appId `com.goodlifedog.dsh-desktop-agent`，npm 包占位符 `@goodlifedog/*`）；测试 fixture 与本机路径改成 `tester` / `~/…`；本地 git 历史作者/提交者也统一重写为 `goodlifedog <goodlifedog@users.noreply.github.com>`（旧对象已 gc 清理）。`npm run repo:check` 新增动态隐私规则：用当前机器的用户名/主机名扫描所有 tracked 文本文件，出现即报错（不把真实姓名写进检查代码），并覆盖 yml/diff/plist/txt。旧的构建产物 `dist-app/`（gitignored，v0.5.0，含旧署名）已删除，需要时在 `overlay/` 里 `npm run dist` 重新打包。
 
-- ocu 调用审计（「ocu 调用审计（过程记录已归档）」）的 11 处高危调用点全部加上运行门禁并补单测：以前这些任务对**没在运行**的应用直接调 ocu 读取/输入（`snapshot/get_app_state/state/find/readSafe/typeText`），ocu 会把应用启动并可能顶到前台——等于「验证不打扰」的任务自己先打扰了用户。现在统一走 `core/app-presence.mjs`（纯函数 `decideAppPresence` + 注入 `isAppRunning` 的 `requireAppRunning`/`reportAppPresence`，判错一律按没运行处理），未运行即环境跳过（exit 0、不算失败、不启动/不关闭/不改用户应用）；覆盖 user-active-demo / terminal-control / drive-agent / drive-agent-cli / form-fill / mcp-demo / platform-demo / background-control（文本编辑步骤）/ parallel-real-demo，脚本层 `bench-ocu` 也门禁（要测冷读必须显式 `--allow-launch`）。新增 4 个测试文件，全量 903 项 / 902 过 / 1 跳过 / 0 失败。
+- ocu 调用审计（过程记录已归档）的 11 处高危调用点全部加上运行门禁并补单测：以前这些任务对**没在运行**的应用直接调 ocu 读取/输入（`snapshot/get_app_state/state/find/readSafe/typeText`），ocu 会把应用启动并可能顶到前台——等于「验证不打扰」的任务自己先打扰了用户。现在统一走 `core/app-presence.mjs`（纯函数 `decideAppPresence` + 注入 `isAppRunning` 的 `requireAppRunning`/`reportAppPresence`，判错一律按没运行处理），未运行即环境跳过（exit 0、不算失败、不启动/不关闭/不改用户应用）；覆盖 user-active-demo / terminal-control / drive-agent / drive-agent-cli / form-fill / mcp-demo / platform-demo / background-control（文本编辑步骤）/ parallel-real-demo，脚本层 `bench-ocu` 也门禁（要测冷读必须显式 `--allow-launch`）。新增 4 个测试文件，全量 903 项 / 902 过 / 1 跳过 / 0 失败。
 - 把「对具体应用调 ocu 前必须有运行门禁」做成常驻静态检查（P4）：`npm run safety:audit` 新增规则 5，同一文件里没有 `isAppRunning/ensureAppRunning/ensureAppWindow/requireAppRunning` 又直接 `ocu.snapshot/readSafe/state/find/typeText/cua.getApp` 等就报错，逐点可用 `// audit-ok: <理由>` 豁免；根因封装层、CDP/AppleScript 通道、内嵌 JXA 脚本共 14 条文件级白名单（每条写理由，另有「白名单防腐烂」单测）。扫描范围扩到 `core/*.mjs`：120 个文件 / 103 处调用点 / 0 违规；同时修掉 open 规则把 CDP 状态字符串 `'open'` 误判成启动应用的问题，并把「打开系统设置隐私面板」列为必须可见的显式例外。
 - 适配第一批落地（按 「适配候选计划（过程记录已归档）」 候选）：新门类预设的 `name` 用**本地化显示名**（邮件/日历/提醒事项/预览/音乐/照片）——CGWindowList 的窗口 owner 是中文（实测 备忘录/文本编辑/Safari浏览器），用英文名匹配不到窗口，会把可读的应用误判成「找不到窗口」。bundle/process 保持 Info.plist 的英文值。
 - 适配第一批落地（按 「适配候选计划（过程记录已归档）」 候选）：`core/app-presets.mjs` 新增 `mail`(Mail) / `calendar`(Calendar+Reminders) / `reading`(Preview) / `photos`(Photos) 四个门类，`media` 补 Music——bundle/process 全部取自 Info.plist；清点从 32 个应用变 38 个，新增 6 个按门类落「未测」桶。每个门类注释写明首启引导风险（登录/iCloud/通知/媒体库），矩阵只读不点按钮、不删数据、不发信。
