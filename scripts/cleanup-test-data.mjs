@@ -7,6 +7,7 @@
  *   npm run cleanup:test -- --force-all            # 允许退回「按条数删顶部 N 条」
  *   CLEANUP_MAX_TOP=3 npm run cleanup:test -- --force-all
  *   CLEANUP_ALLOW_LARGE=1 npm run cleanup:test -- --force-all   # 显式突破硬上限（默认 5）
+ *   CLEANUP_QUIT_RESIDUAL=1 npm run cleanup:test              # 旧行为：用户离开时也关非本次启动的残留应用（默认不再关）
  *
  * 只删能确认是测试产生的：备忘录标题/正文匹配 后台控制验证 / 后台写入 / 后台测试；
  * 文本编辑里未命名且为空或含上述标记的文稿。用户自己的内容不碰。
@@ -30,6 +31,9 @@ const forceAllNotes = process.argv.includes('--force-all');
 // 只有显式 CLEANUP_ALLOW_LARGE=1 才放行（报告里会写清条数与原因）。
 const CLEANUP_MAX_TOP = resolveMaxTop(process.env.CLEANUP_MAX_TOP);
 const CLEANUP_ALLOW_LARGE = process.env.CLEANUP_ALLOW_LARGE === '1';
+// L4b：默认只关「本次清理自己启动的」应用；非本次启动的一律保留（用户回来发现应用被关是打扰）。
+// 只有排障时显式 CLEANUP_QUIT_RESIDUAL=1（只认 '1'）才恢复旧行为：用户离开时清理残留应用。
+const CLEANUP_QUIT_RESIDUAL = process.env.CLEANUP_QUIT_RESIDUAL === '1';
 
 function osa(script, timeoutMs = 20000) {
   try {
@@ -157,7 +161,7 @@ async function cleanupTextEdit(report) {
   }
   if (!dryRun) {
     const left = Number(osa('tell application "TextEdit" to count documents')) || 0;
-    const decision = shouldQuitApp({ launchedByUs: launchedByUs.has('com.apple.TextEdit'), userActive: userRecentlyActive() });
+    const decision = shouldQuitApp({ launchedByUs: launchedByUs.has('com.apple.TextEdit'), userActive: userRecentlyActive(), quitResidual: CLEANUP_QUIT_RESIDUAL });
     if (left === 0 && decision.quit) {
       await quitApp({ bundleId: 'com.apple.TextEdit', appName: 'TextEdit', processName: 'TextEdit' });
       report.push({ kind: 'textedit-quit', left });
@@ -176,10 +180,13 @@ async function quitTestApps(report) {
     { bundleId: 'com.apple.Notes', appName: 'Notes', processName: 'Notes' },
   ];
   const userActive = userRecentlyActive();
+  const keptResidual = [];
   for (const app of apps) {
-    const decision = shouldQuitApp({ launchedByUs: launchedByUs.has(app.bundleId), userActive });
+    const mine = launchedByUs.has(app.bundleId);
+    const decision = shouldQuitApp({ launchedByUs: mine, userActive, quitResidual: CLEANUP_QUIT_RESIDUAL });
     if (!decision.quit) {
-      report.push({ kind: 'app-keep', app: app.appName, note: decision.reason });
+      report.push({ kind: 'app-keep', app: app.appName, launchedByUs: mine, note: decision.reason });
+      if (!mine) keptResidual.push(app.appName);
       continue;
     }
     // quitApp 内部自带 pid 复核：先 isAppRunning(bundleId)，退不掉时再 pgrep + ps comm 校验
@@ -190,11 +197,19 @@ async function quitTestApps(report) {
         kind: 'quit',
         app: app.appName,
         mode: q.mode,
-        launchedByUs: launchedByUs.has(app.bundleId),
+        launchedByUs: mine,
         pidRecheck: q.mode === 'pid-mismatch' ? 'mismatch-refused' : 'quitApp-isRunning+ps-comm',
         note: decision.reason,
       });
     }
+  }
+  if (keptResidual.length) {
+    report.push({
+      kind: 'app-residual-kept',
+      count: keptResidual.length,
+      apps: keptResidual,
+      note: '保留 ' + keptResidual.length + ' 个非本次启动的应用（默认不关，避免打扰用户）；如需按旧策略清理请设置 CLEANUP_QUIT_RESIDUAL=1',
+    });
   }
 }
 
