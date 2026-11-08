@@ -272,11 +272,12 @@ async function main() {
     {
       name: 'app-matrix',
       timeoutMs: 420000,
-      // 样本挑"不抢前台"的两个：Steam 会短暂抢前台（矩阵能兜住，但它不该当验收样本）
+      // 样本挑"不会自己抢前台"的两个：FastZip + 计算器都是原生应用，读起来稳定。
+      // （iRightMouse/UURemote 历史报告里出现过前台被抢，已进风险名单，不适合当验收样本）
       env: {
         MATRIX_APPS_JSON: JSON.stringify([
           { name: 'FastZip', bundle: 'cn.better365.FastZip', process: 'FastZip' },
-          { name: 'iRightMouse', bundle: 'cn.better365.iRightMouse', process: 'iRightMouse' },
+          { name: '计算器', bundle: 'com.apple.calculator', process: 'Calculator' },
         ]),
       },
     },
