@@ -184,6 +184,22 @@ test('H4 健康状态行（已授权）不能被判成缺权限', () => {
   for (const text of granted) assert.equal(classifyPermissionText(text), '', text);
 });
 
+test('环境跳过只认行首自报，健康统计行里的「其中 1 次环境跳过」不算', () => {
+  const healthStats = [
+    '  ✅ 最近任务失败数                          最近 1 次全部成功（上次：app-matrix 0s）｜其中 1 次环境跳过（未验证）',
+    '  ✅ 任务耗时                             近 1 次：成功率 0%（已排除 1 次环境跳过）｜平均 45ms',
+  ].join('\n');
+  assert.equal(envSkipReason(healthStats), '', '健康统计行不能被判成整轮环境跳过');
+  // 任务自己打印的（行首）仍然要认
+  assert.equal(envSkipReason('  \n环境跳过：屏幕已锁，锁屏下 AX 不可用'), '任务自报环境跳过');
+  assert.equal(envSkipReason('环境跳过'), '任务自报环境跳过');
+  // 允许短前缀（验收输出常见「  SKIP xxx  环境跳过：…」）
+  assert.equal(envSkipReason('  SKIP 真实窗口回显  环境跳过：窗口状态=waiting'), '任务自报环境跳过');
+  assert.equal(envSkipReason('[!] 环境跳过：锁屏状态下无法校验'), '任务自报环境跳过');
+  // 长句叙述不算（健康统计行）
+  assert.equal(envSkipReason('任务耗时：近 1 次成功率 0%，已排除 1 次环境跳过，平均 45ms'), '');
+});
+
 test('H4 非权限文本必须仍返回空（不能吞掉真失败）', () => {
   const cases = [
     'AssertionError: expected 3 to equal 2',

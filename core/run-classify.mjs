@@ -3,10 +3,16 @@
  * 验收脚本、健康面板、巡检共用这一份，避免两套正则各说各话。
  */
 
+// 任务自报的「环境跳过」行：允许行首有短前缀（"[!] "、"SKIP "、"⏭ "、两三个汉字等），
+// 但不认长句里的叙述——健康面板统计行会写「……｜其中 1 次环境跳过（未验证）」，
+// 不设前缀长度上限会把「全部正常」的健康检查整步判成环境跳过（verify:safe 实测踩过）。
+const ENV_SKIP_SELF_RE = /(?:^|\n)[^\n]{0,20}?环境跳过/;
+
 // 每条规则：命中的日志片段 → 环境原因。顺序无关，取第一条命中的说明。
 const ENV_RULES = [
-  // 任务自己已经判定为环境跳过时，日志里会明确写出来，优先信它
-  [/环境跳过/, '任务自报环境跳过'],
+  // 任务自己已经判定为环境跳过时，日志里会明确写出来，优先信它。
+  // 只认行首（允许短前缀）的自报；健康面板统计行那种长句叙述不算（见 ENV_SKIP_SELF_RE 注释）。
+  [ENV_SKIP_SELF_RE, '任务自报环境跳过'],
   [/当前就是前台|不打扰用户|跳过扫描/, '用户正在使用目标应用'],
   [/cgWindowNotFound|宿主窗口/, 'Electron 宿主被占用或窗口读不到'],
   [/读不到 .*界面树|没有辅助功能权限/, '目标应用没运行或缺辅助功能权限'],
@@ -85,8 +91,8 @@ export function envSkipReason(text) {
   const raw = String(text || '');
   // 真失败优先：即使同一份日志里既有失败项又有环境字样，也不能整轮豁免
   if (HARD_FAIL.test(raw)) return '';
-  // 任务自报「环境跳过」最可信，优先于按文案推断的权限原因
-  if (/环境跳过/.test(raw)) return '任务自报环境跳过';
+  // 任务自报「环境跳过」最可信，优先于按文案推断的权限原因（同样只认行首短前缀的自报）。
+  if (ENV_SKIP_SELF_RE.test(raw)) return '任务自报环境跳过';
   const permission = classifyPermissionText(raw);
   if (permission) return permission;
   for (const [re, reason] of ENV_RULES) {
