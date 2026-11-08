@@ -234,7 +234,13 @@ overlay 的系统窗口列表（CGWindowList）。只信 AX 会把菜单栏工�
 - 锁屏/环境跳过：矩阵、验收、探测、健康检查都能区分「环境跳过」和「真失败」，不产出假绿/假红
 - 服务新鲜度：`npm run service:status` 会报「跑的是旧代码」，改完核心代码记得 `npm run service:restart`
 
-**还欠一次的实机全量验收**（用户不在电脑前时跑，会短暂占用屏幕）：
+**实机全量验收进度**（用户不在电脑前时跑，会短暂占用屏幕）：
+
+- 端到端验收已实跑：13 项里 **10 通过、3 环境跳过、0 失败**（form-fill 自报环境跳过；background-control / app-matrix 因为你回到电脑前被立刻停止——这两项标跳过、不算失败）
+- 还欠：后台控制验收（bg:verify）、小窗效果回归、会话隔离、帧率压测——这四项在用户回来时被中止了
+- 现在跑 `verify:live` 要求键鼠空闲 ≥15 分钟才开跑；运行中你一碰键鼠（20 秒内）就立刻停掉并收起小窗，不会等你回来才发现
+
+命令：
 
 ```bash
 LIVE_KEEP_AWAKE=1 npm run verify:live     # acceptance + bg:verify + 小窗回归 + 会话隔离 + 帧率
@@ -255,6 +261,7 @@ npm run apps:inventory                     # 刷新清点
 | 矩阵跳过风险应用 | 通过 | 只跑 Ghostty 时直接标环境跳过、退出码 0，没有启动/读取目标应用 |
 | 驱动类任务跳过 | 通过 | drive-agent / drive-agent-cli 对风险名单目标直接环境跳过，退出码 0 |
 | 清理脚本 dry-run | 通过 | 用户在用电脑时跳过笔记清理、不动 TextEdit/ChatGPT 数据，前台不变 |
+| 端到端验收（acceptance） | 10 PASS / 3 SKIP / 0 FAIL | boss-scan、multi-app、platform-demo、browser-demo、electron-demo、cdp-channel、applescript-channel 全 PASS；form-fill 环境跳过；background-control、app-matrix 因用户回到电脑前被立刻停下（标跳过） |
 
 ## 九、已知边界
 

@@ -19,11 +19,18 @@ export function classifyLiveStep(result = {}) {
   if (result && result.timedOut) {
     return { status: 'FAIL', detail: '超时（超过 ' + Math.round((Number(result.limitMs) || 0) / 1000) + 's 未结束，已终止）' };
   }
+  // 真失败优先：验收里会同时出现「部分环境跳过」和「通过」的行，
+  // 只要存在失败证据就不能被环境跳过文案豁免（同 run-classify 的原则）。
+  const hardFail = out.split('\n').find((line) => /❌|\bFAIL\b|存在失败项|未送达/.test(line));
+  if (hardFail) return { status: 'FAIL', detail: hardFail.replace(/^[\s✅❌]*/, '').trim().slice(0, 80) };
+  // 有没有「真的跑通过了」的证据：验收输出里有 PASS/✅/通过 N 项，就不是整步环境跳过
+  const passEvidence = /(^|\s)(PASS|✅)\b|全部通过|通过\s*\d+/.test(out);
   const skipReason = envSkipReason(out);
-  if (skipReason) return { status: 'SKIP', detail: '环境跳过：' + skipReason };
-  const bad = out.split('\n').find((line) => line.includes('❌'));
-  if (bad) return { status: 'FAIL', detail: bad.replace(/.*❌\s*/, '').trim().slice(0, 80) };
-  if (result && result.code === 0) return { status: 'PASS', detail: '' };
+  if (skipReason && !passEvidence) return { status: 'SKIP', detail: '环境跳过：' + skipReason };
+  if (result && result.code === 0) {
+    if (skipReason) return { status: 'PASS', detail: '（部分子项环境跳过：' + skipReason + '）' };
+    return { status: 'PASS', detail: '' };
+  }
   return { status: 'FAIL', detail: '退出码 ' + (result && result.code) };
 }
 

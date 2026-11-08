@@ -9,6 +9,8 @@ import { envSkipReason } from './run-classify.mjs';
 import { acquireLock, releaseLock } from './acceptance-lock.mjs';
 import { findForeignUiRunsNow } from './foreground-guard.mjs';
 import { overlay } from './agentd.mjs';
+import { overlayBase } from './ports.mjs';
+import { localHeaders } from './local-token.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -283,7 +285,35 @@ function userRecentlyActive(maxIdleSec = 180) {
 }
 
 /** 验收跑完自动清理测试数据（笔记/文稿/测试应用），别把脏数据留给用户 */
+/**
+ * 把所有小窗收起来：验收的 demo 任务会开小窗回显，用户中途回来时屏幕上一层窗口正是它们。
+ * 关掉非 default 会话、default 隐藏（不退出 overlay 进程）。
+ */
+async function tidyOverlayWindows() {
+  const base = overlayBase();
+  const post = async (p, body) => {
+    try {
+      await fetch(base + p, {
+        method: 'POST',
+        headers: localHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(body || {}),
+        signal: AbortSignal.timeout(1500),
+      });
+    } catch {}
+  };
+  try {
+    const res = await fetch(base + '/sessions', { headers: localHeaders(), signal: AbortSignal.timeout(1500) });
+    const data = await res.json();
+    for (const s of data.sessions || []) {
+      if (!s || !s.session) continue;
+      if (s.session === 'default') await post('/visible', { session: 'default', visible: false });
+      else await post('/close', { session: s.session });
+    }
+  } catch {}
+}
+
 async function cleanupAfterAcceptance() {
+  await tidyOverlayWindows();
   try {
     // 清理脚本现在是安全模式：笔记默认只报告（要 --force 才删）、TextEdit 只关带测试标记的文稿、
     // 只会退出测试应用，所以验收后可以直接真跑，把环境收拾干净。
@@ -345,12 +375,15 @@ async function main() {
     },
   ];
   let abortReason = '';
+  let tidiedForAbort = false;
   for (const task of TASK_PLAN) {
     if (!abortReason) {
       const foreignRuns = await findForeignUiRunsNow({ selfPids: [process.pid, process.ppid] });
       abortReason = midRunAbortReason({ userActive: userRecentlyActive(90), foreignCount: foreignRuns.length });
     }
     if (abortReason) {
+      // 用户回来了：先把已经弹出来的小窗收掉，再跳过后续任务（别留一屏幕窗口给用户）
+      if (!tidiedForAbort) { tidiedForAbort = true; await tidyOverlayWindows(); }
       record('任务 ' + task.name, true, '环境跳过（' + abortReason + '），本轮不再继续', true);
       continue;
     }

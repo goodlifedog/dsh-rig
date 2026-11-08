@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 验收中止时把小窗收干净：acceptance 检测到用户回来（或在收尾清理前）会关闭所有非 default 会话、隐藏 default，不再把一屏小窗留给用户；修掉中止分支里引用未定义变量的隐患
+- `verify:live` 步骤分类修正：验收输出里同时有「PASS/通过 N 项」和「部分子项环境跳过」时算 PASS（以前整步误判成 SKIP）；「存在失败项/FAIL/未送达」一律 FAIL，不被环境跳过文案豁免；补 3 项单测
 - 验收不再等你回来才停：`acceptance` 每个任务运行期间每秒查一次键鼠空闲，用户一回到电脑前（默认 <30 秒，`ACCEPT_ABORT_IDLE_SEC` 可调）立刻杀掉当前任务并标环境跳过，不再等一个能跑几分钟的 app-matrix 跑完；单测 3 项
 - `verify:live` 启动门槛从「键鼠空闲 3 分钟」提到 **15 分钟**（`LIVE_MIN_IDLE_SEC` 可调），跑的过程中用户一碰键鼠（<20 秒）立刻停掉当前步骤、收起所有小窗，并提示报告未跑完；中途停止不再把整轮标成失败。**背景：这次实测时用户短暂离开又回来，正好撞上验收，屏幕上出现了小窗和应用窗口切换——现在门槛更高、停止更快**
 - Safari 页面级通道探测：网页内容不在 AX 树里，要控制页面必须开 Safari 的 Allow JavaScript from Apple Events。新增 `checkSafariJavaScript()`（只执行 `1+1`，不碰用户数据，错误分类：disabled/no-document/not-running/denied），`applescript-channel` 每次会打印「Safari 页面 JS 通道：可用/不可用 + 怎么开」；本机实测关着，提示已给出。补 2 项单测

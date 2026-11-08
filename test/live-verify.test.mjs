@@ -50,3 +50,25 @@ test('中途停止：锁屏优先，其次用户回来；都没有就继续', ()
   assert.equal(midRunStopReason({ locked: false, userActive: false }), '');
   assert.equal(midRunStopReason(), '');
 });
+test('分类：既有通过行又有环境跳过行 → PASS（不能整步误判成跳过）', () => {
+  const out = [
+    '  PASS  overlay 在线',
+    '  PASS  任务 boss-scan',
+    '  SKIP  任务 form-fill  环境跳过（任务自报环境跳过）',
+    '结果: 共 13 项，通过 10，环境跳过 3，失败 0',
+  ].join('\n');
+  const v = classifyLiveStep({ code: 0, out });
+  assert.equal(v.status, 'PASS');
+  assert.match(v.detail, /部分子项环境跳过/);
+});
+
+test('分类：出现「存在失败项」这种硬失败 → FAIL，不被环境跳过豁免', () => {
+  const out = '  PASS  a\n  FAIL  b\n结果: 存在失败项';
+  assert.equal(classifyLiveStep({ code: 0, out }).status, 'FAIL');
+});
+
+test('分类：只有通过行没有环境跳过 → PASS 且不带多余说明', () => {
+  const v = classifyLiveStep({ code: 0, out: 'PASS 4 项\n全部通过' });
+  assert.equal(v.status, 'PASS');
+  assert.equal(v.detail, '');
+});
