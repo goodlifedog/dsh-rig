@@ -76,7 +76,7 @@ parallel-demo / parallel-real-demo / scripts/app-resolve.mjs。
 ### 2. 发布配置（补丁已备，`git apply flow/patch-publish.diff`）
 
 - 一次解决：包名 scoped、`bin`、`files` 白名单（1.1MB / 143 文件）、`repository`、`publishConfig`（绕开淘宝镜像）、CI 矩阵、README 徽章
-- 应用后替换两处占位：`@goodlifedog/desktop-agent`、`github.com/tester/desktop-agent`
+- 应用后替换两处占位：`@goodlifedog/desktop-agent`、`github.com/goodlifedog/desktop-agent`
 - 验证：`npm publish --dry-run` 必须显示 `Publishing to https://registry.npmjs.org ... public access`
 
 ### 2.8 ✅ 已解决：`core/text-edit-guard.mjs`（只写未命名空文稿）
@@ -301,7 +301,7 @@ parallel-demo / parallel-real-demo / scripts/app-resolve.mjs。
 
 ### 15. 发布前隐私与历史
 
-- `git config user.email` 未设置（作者是 `tester@goodlifedogdeMacBook-Pro.local`），设置成 GitHub noreply
+- 作者身份已统一：仓库本地 `git config user.name/email` 设为 `goodlifedog` / `goodlifedog@users.noreply.github.com`；历史提交作者也已改写（原来会暴露真实姓名和机器名）
 - 历史里有 20 个 `goodlifedog@users.noreply.github.com` 自动检查点提交，公开前建议 squash
 
 ### 2.1 ✅ 已解决：全等或「去掉 hint 后只剩标点」，`f7eaa78` + 2 条测试

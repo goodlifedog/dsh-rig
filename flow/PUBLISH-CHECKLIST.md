@@ -20,7 +20,7 @@ git apply flow/patch-publish.diff
 
 # 2. 把两处占位换成自己的
 #    package.json:      @goodlifedog/desktop-agent        -> @<你的npm名>/desktop-agent
-#    package.json:      github.com/tester/desktop-agent -> 你的真实仓库地址
+#    package.json:      github.com/goodlifedog/desktop-agent -> 你的真实仓库地址
 #    README.md:         同上（徽章链接）
 
 # 3. 提交身份（否则作者是 机器名@local，且不关联 GitHub 主页）
@@ -63,14 +63,14 @@ node core/cli.mjs foo; echo $? # 应为 2（P1 已实现，无需打补丁）
 
 - [ ] **A2. 仓库用哪个名字/身份**
   - npm 包名 `desktop-agent` 已被占用，必须用 scoped（如 `@你的名字/desktop-agent`）
-  - 提交作者现在是 `tester@goodlifedogdeMacBook-Pro.local`，公开后会暴露机器名且不关联 GitHub 主页
+  - 提交作者已统一为 `goodlifedog <goodlifedog@users.noreply.github.com>`（历史里原来会暴露真实姓名和机器名，现已改写；以后提交用仓库本地 git config 的虚拟身份）
   - 设置：`git config user.name "<名字>" && git config user.email "<id>+<用户名>@users.noreply.github.com"`
   - 验证：`git config user.email` 有值、`git log -1 --format=%ae` 是 noreply 地址
 
 ## B. 发布配置
 
 - [ ] **B1. 应用发布补丁**（补丁已实测：干净 checkout 里 `git apply` 成功，应用后全量测试仍全绿）：`git apply flow/patch-publish.diff`（包名 scoped / bin / files / repository / CI 只跑 macOS / 徽章换真地址六项）
-  - 应用后把 `@goodlifedog/desktop-agent` 和 `github.com/tester/desktop-agent` 换成真实值
+  - 应用后把 `@goodlifedog/desktop-agent` 和 `github.com/goodlifedog/desktop-agent` 换成真实值
   - 验证：`python3 -c "import json;d=json.load(open('package.json'));print(d['name'],bool(d['bin']),bool(d['files']),bool(d['repository']))"`
 
 - [ ] **B1.5. npm 发布源（第 76 轮实测发现的坑）**：本机 `npm config get registry` 是 `https://registry.npmmirror.com`（淘宝镜像），直接 `npm publish` 会推到镜像站，官方源上根本装不到。补丁已加 `"publishConfig": {"registry": "https://registry.npmjs.org", "access": "public"}` 覆盖它。

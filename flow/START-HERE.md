@@ -23,7 +23,7 @@
 | --- | --- | --- |
 | 1 | **BOSS 内容去留** | A. 摘出去（按 `BOSS-EXTRACT.md` 做，2-4 小时）　B. 保留但不上首页 + 加免责声明（1 小时） |
 | 2 | **npm 包名** | scoped 包，如 `@<你的npm名>/desktop-agent`（`desktop-agent` 已被占用） |
-| 3 | **GitHub 仓库地址** | 替换补丁里的 `github.com/tester/desktop-agent` |
+| 3 | **GitHub 仓库地址** | 替换补丁里的 `github.com/goodlifedog/desktop-agent` |
 | 4 | **git 提交身份** | `git config user.email "<id>+<用户名>@users.noreply.github.com"` |
 
 做完这四件，应用 `flow/patch-publish.diff`，再跑一遍 `npm run verify`，就能发。

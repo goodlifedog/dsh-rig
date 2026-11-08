@@ -15,7 +15,7 @@
 +  },
 +  "repository": {
 +    "type": "git",
-+    "url": "git+https://github.com/tester/desktop-agent.git"
++    "url": "git+https://github.com/goodlifedog/desktop-agent.git"
 +  },
 +  "bin": {
 +    "desktop-agent": "./core/cli.mjs"
@@ -67,7 +67,7 @@
  # Desktop Agent
  
 -[![CI](https://github.com/USER/desktop-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/USER/desktop-agent/actions/workflows/ci.yml)
-+[![CI](https://github.com/tester/desktop-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/tester/desktop-agent/actions/workflows/ci.yml)
++[![CI](https://github.com/goodlifedog/desktop-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/goodlifedog/desktop-agent/actions/workflows/ci.yml)
  
  > 后台电脑控制 + 小窗回显。所有操作在你的真实应用里完成，不动你的鼠标、不切你的窗口。
  > **焦点是"尽量不抢"而不是"绝对不抢"**：绝大多数操作在后台完成；个别应用（Telegram、部分 Electron）在被读取时会被短暂顶到前台，

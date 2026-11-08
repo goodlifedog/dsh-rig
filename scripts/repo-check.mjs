@@ -4,6 +4,7 @@
 import { execFileSync } from 'node:child_process';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -63,16 +64,33 @@ for (const f of tracked) {
 }
 add('没有超过 2MB 的文件', hasGit ? big.length === 0 : true, hasGit ? big.slice(0, 3).join(', ') : '跳过（非 git 目录）', !hasGit);
 
-// 5. 隐私扫描（邮箱/手机号/绝对用户路径）
+// 5. 隐私扫描（邮箱/手机号/绝对用户路径/本机用户名与机器名）
 const leaks = [];
+// 动态拿当前机器的用户名/主机名，不把任何真实姓名写进代码：
+// 仓库里一旦出现本机用户名或机器名（例如测试 fixture 里写死 /Users/<name>），公开出去就等于泄露本机信息。
+const GENERIC_USERS = new Set(['user', 'users', 'tester', 'test', 'runner', 'root', 'admin', 'ci', 'dev', 'guest', 'node', 'ubuntu', 'mac', 'macbook', 'localhost', 'example']);
+function personalTokens() {
+  const tokens = [];
+  try {
+    const user = String(os.userInfo().username || '').trim();
+    if (user.length >= 3 && !GENERIC_USERS.has(user.toLowerCase())) tokens.push(user);
+  } catch {}
+  try {
+    const host = String(os.hostname() || '').trim().replace(/\.local$/i, '');
+    if (host.length >= 3 && !GENERIC_USERS.has(host.toLowerCase())) tokens.push(host);
+  } catch {}
+  return [...new Set(tokens)];
+}
+const tokens = personalTokens();
 for (const f of tracked) {
-  if (!/\.(mjs|js|md|json|ps1|sh)$/.test(f)) continue;
+  if (!/\.(mjs|js|md|json|ps1|sh|ya?ml|diff|plist|txt)$/i.test(f)) continue;
   const text = await fsp.readFile(path.join(ROOT, f), 'utf8').catch(() => '');
   if (/\/Users\/[a-zA-Z0-9_.-]+\/(Desktop|Documents|Downloads)/.test(text)) leaks.push(f + ' 含绝对用户路径');
   // 手机号要独立成数，避免把 13 位时间戳误判
   if (/(?<!\d)1[3-9]\d{9}(?!\d)/.test(text.replace(/https?:\/\/\S+/g, ''))) leaks.push(f + ' 疑似手机号');
+  if (tokens.some((t) => text.toLowerCase().includes(t.toLowerCase()))) leaks.push(f + ' 含本机用户名/机器名');
 }
-add('没有绝对路径/手机号泄漏', hasGit ? leaks.length === 0 : true,
+add('没有绝对路径/手机号/本机用户名泄漏', hasGit ? leaks.length === 0 : true,
   hasGit ? leaks.slice(0, 3).join(', ') : '跳过（非 git 目录，没有文件列表）', !hasGit);
 
 // 6. 文档里提到的 npm run 命令必须真实存在（文档漂移最容易发生在这里）
