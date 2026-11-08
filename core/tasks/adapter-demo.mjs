@@ -230,6 +230,112 @@ export function hasStateChanged(before, after) {
   return { changed: details.length > 0, detail: details.join('；') };
 }
 
+// ------------------------- 前台比对：忽略系统浮层（M5/task-92） -------------------------
+
+/**
+ * 系统浮层名单：通知横幅/控制中心/锁屏/Window Server/Dock/Spotlight/输入法候选等。
+ * 这些浮层出现在最前面不代表「真实前台被抢」，比对时要忽略；但 front.before/after 仍记录真实值。
+ */
+export const SYSTEM_OVERLAY_NAMES = Object.freeze([
+  'NotificationCenter', 'Notification Center', '通知中心',
+  'ControlCenter', 'Control Center', '控制中心',
+  'Window Server', 'WindowServer',
+  'loginwindow',
+  'Dock',
+  'Spotlight',
+  '输入法候选', '候选窗口', 'Candidate Window', 'Input Method Candidate',
+]);
+
+/** 是否系统浮层（英文大小写不敏感；中文按包含匹配；纯函数） */
+export function isSystemOverlay(name) {
+  const raw = String(name == null ? '' : name).trim();
+  if (!raw) return false;
+  const lower = raw.toLowerCase();
+  for (const token of SYSTEM_OVERLAY_NAMES) {
+    const t = token.toLowerCase();
+    if (raw === token || lower === t) return true;
+    // 英文：整词或 "Dock " 前缀（避免 Docker Desktop 之类误伤）；中文：包含即可
+    if (/[\u4e00-\u9fa5]/.test(token) ? raw.includes(token) : (lower === t || lower.startsWith(t + ' ') || lower.endsWith(' ' + t))) return true;
+  }
+  return false;
+}
+
+/** 用于比对的前台名：浮层按空串处理，其余 trim（纯函数） */
+export function frontForCompare(name) {
+  const raw = String(name == null ? '' : name).trim();
+  return isSystemOverlay(raw) ? '' : raw;
+}
+
+/**
+ * 前后台比对（纯函数）：忽略系统浮层，返回是否未变 + 被忽略的浮层名。
+ * baseline 传「基线名」（可能是 raw before，也可能是稳定采样里挑出的真实前台）。
+ */
+export function compareFront(beforeName, afterName) {
+  const base = frontForCompare(beforeName);
+  const after = frontForCompare(afterName);
+  const ignoredOverlays = [];
+  for (const name of [beforeName, afterName]) {
+    if (isSystemOverlay(name)) {
+      const raw = String(name).trim();
+      if (raw && !ignoredOverlays.includes(raw)) ignoredOverlays.push(raw);
+    }
+  }
+  // 基线或结束值是浮层/读不到时，不做「被抢」判定（没有可信的真实前台可比）
+  const unchanged = !(base && after) || base === after;
+  return { unchanged, baseline: base, after, ignoredOverlays };
+}
+
+function uniq(list) {
+  return Array.from(new Set((list || []).filter(Boolean)));
+}
+
+/**
+ * 动作前采样前台基线：连续读 2 次；只有浮层差异视为稳定（浮层是瞬态的）。
+ * 不稳 → 重试，最多 attempts 次；仍不稳由调用方按环境跳过处理（不当 FAIL）。
+ *
+ * @param {{frontName:Function, sleep:Function}} deps
+ * @param {{attempts?:number, gapMs?:number}} [options]
+ */
+export async function sampleFrontBaseline(deps, options = {}) {
+  const opts = options || {};
+  const attempts = Number.isFinite(opts.attempts) && opts.attempts > 0 ? Math.floor(opts.attempts) : 3;
+  const gapMs = Number.isFinite(opts.gapMs) && opts.gapMs >= 0 ? opts.gapMs : 120;
+  const read = () => Promise.resolve().then(() => deps.frontName()).catch(() => '');
+  const samples = [];
+  const overlays = [];
+  let raw = '';
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const first = String((await read()) || '').trim();
+    await deps.sleep(gapMs);
+    const second = String((await read()) || '').trim();
+    raw = first;
+    samples.push(first, second);
+    for (const name of [first, second]) if (isSystemOverlay(name)) overlays.push(name);
+    const a = frontForCompare(first);
+    const b = frontForCompare(second);
+    // 稳定：真实前台一致；或只有一边是浮层（横幅划过，不算前台变化）
+    if (a === b || (a && !b) || (!a && b)) {
+      return {
+        stable: true,
+        baseline: a || b,
+        raw,
+        samples,
+        ignoredOverlays: uniq(overlays),
+        attempts: attempt,
+      };
+    }
+  }
+  return {
+    stable: false,
+    baseline: '',
+    raw,
+    samples,
+    ignoredOverlays: uniq(overlays),
+    attempts,
+    reason: '环境跳过：前台基线不稳定（连续采样结果不一致：' + samples.join(' → ') + '），无法可靠判断前台是否被抢',
+  };
+}
+
 /** 读回文本里某个 value（纯函数，用于校验 type-text） */
 export function extractValue(stateText, index) {
   const text = String(stateText || '');
@@ -302,7 +408,8 @@ export async function runAdapterDemo(options = {}, depsInput = {}) {
     readable: false,
     nodes: 0,
     steps,
-    front: { before: '', after: '', unchanged: true },
+    front: { before: '', after: '', unchanged: true, baseline: '' },
+    ignoredOverlays: [],
     envSkip: false,
     reason: '',
     file: options_.file ? String(options_.file) : '',
@@ -319,6 +426,7 @@ export async function runAdapterDemo(options = {}, depsInput = {}) {
     return finish(1);
   }
 
+  // 先记一次真实前台（仅用于环境跳过时的上下文；动作前的正式基线在 open/launch 之后采）
   report.front.before = await deps.frontName().catch(() => '');
   const idleMs = await Promise.resolve().then(() => deps.idleMs()).catch(() => -1);
   const userActive = deps.shouldDeferForActiveUser(idleMs);
@@ -360,6 +468,7 @@ export async function runAdapterDemo(options = {}, depsInput = {}) {
     if (!launched) {
       report.envSkip = true;
       report.reason = '环境跳过：无法启动 ' + app + '（' + ((launch && (launch.error || launch.detail)) || '启动失败') + '）';
+      report.front.after = report.front.before;
       addStep('launch', true, report.reason, { skipped: true });
       return finish(0);
     }
@@ -386,6 +495,30 @@ export async function runAdapterDemo(options = {}, depsInput = {}) {
         ? '已后台打开临时副本：' + copy
         : 'open -g -a 失败：' + ((opened && opened.error) || '未知错误'), { tempFile: copy });
       await deps.sleep(Number(options_.openWaitMs || 1500));
+    }
+
+    // 动作前基线：连续采 2 次；不稳重试（默认最多 3 次）；仍不稳按环境跳过，不判 FAIL。
+    // 系统浮层（通知横幅/控制中心/Dock/输入法候选等）不算真实前台，比对时忽略但真实值仍记录。
+    const baseline = await sampleFrontBaseline(deps, {
+      attempts: options_.baselineAttempts,
+      gapMs: options_.baselineGapMs,
+    });
+    report.front.before = baseline.raw || baseline.baseline;
+    report.front.baseline = baseline.baseline;
+    report.ignoredOverlays = uniq(report.ignoredOverlays.concat(baseline.ignoredOverlays || []));
+    addStep('front-baseline', baseline.stable,
+      baseline.stable
+        ? '基线=' + (baseline.baseline || '(unknown)')
+          + (baseline.ignoredOverlays.length ? '（忽略系统浮层：' + baseline.ignoredOverlays.join(', ') + '）' : '')
+          + '，采样 ' + baseline.attempts + ' 次'
+        : baseline.reason,
+      { baseline: baseline.baseline, ignoredOverlays: baseline.ignoredOverlays, samples: baseline.samples });
+    if (!baseline.stable) {
+      report.envSkip = true;
+      report.reason = baseline.reason;
+      report.front.after = baseline.raw;
+      report.front.unchanged = true;
+      return finish(0);
     }
 
     // 读界面树
@@ -454,19 +587,23 @@ export async function runAdapterDemo(options = {}, depsInput = {}) {
       addStep('cleanup-temp', true, '已删除临时目录：' + tempDir, { tempDir });
       report.tempDir = '';
     }
+    // 结束前台：忽略系统浮层后与基线比对（通知横幅划过不算被抢）
     report.front.after = await deps.frontName().catch(() => '');
-    if (report.front.before && report.front.after) {
-      report.front.unchanged = report.front.before === report.front.after;
-    }
+    const cmp = compareFront(report.front.baseline || report.front.before, report.front.after);
+    report.front.unchanged = report.envSkip ? true : cmp.unchanged;
+    report.front.baseline = cmp.baseline || report.front.baseline;
+    report.ignoredOverlays = uniq(report.ignoredOverlays.concat(cmp.ignoredOverlays || []));
   }
 
   const capable = steps.every((s) => s.ok !== false || s.skipped);
   if (!report.front.unchanged) {
-    report.reason = '前台应用被改变：' + report.front.before + ' → ' + report.front.after;
+    report.reason = '前台应用被改变：' + (report.front.baseline || report.front.before) + ' → ' + report.front.after
+      + (report.ignoredOverlays.length ? '（已忽略系统浮层：' + report.ignoredOverlays.join(', ') + '）' : '');
     addStep('front-unchanged', false, report.reason);
     return finish(1);
   }
-  addStep('front-unchanged', true, '前台未变：' + (report.front.before || '(unknown)'));
+  addStep('front-unchanged', true, '前台未变：' + (report.front.baseline || report.front.before || '(unknown)')
+    + (report.ignoredOverlays.length ? '（忽略系统浮层：' + report.ignoredOverlays.join(', ') + '）' : ''));
   report.reason = capable ? '' : '存在能力失败步骤';
   return finish(capable ? 0 : 1);
 }

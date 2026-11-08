@@ -14,6 +14,10 @@ import {
   pickTypeTarget,
   hasStateChanged,
   extractValue,
+  isSystemOverlay,
+  frontForCompare,
+  compareFront,
+  sampleFrontBaseline,
   runAdapterDemo,
 } from '../core/tasks/adapter-demo.mjs';
 
@@ -285,7 +289,8 @@ test('流程：点击后界面树无变化 → 能力失败 exit1', async () => 
 test('流程：前台被改变 → 能力失败 exit1', async () => {
   let frontCalls = 0;
   const { deps } = fakeDeps({
-    frontName: async () => { frontCalls += 1; return frontCalls === 1 ? 'DeepSeek Harness' : 'Preview'; },
+    // 第 1 次 = 初始上下文，第 2/3 次 = 动作前基线（两次一致），第 4 次 = 动作后（被抢到 Preview）
+    frontName: async () => { frontCalls += 1; return frontCalls <= 3 ? 'DeepSeek Harness' : 'Preview'; },
   });
   const { exitCode, report } = await runAdapterDemo({ app: 'TextEdit' }, deps);
   assert.equal(exitCode, 1);
@@ -305,4 +310,111 @@ test('流程：--file 先复制到 0700 临时目录再打开，结束后删临�
   assert.equal(calls.rmDir.length, 1);
   assert.equal(calls.rmDir[0], '/tmp/adapter-demo-test-dir');
   assert.equal(report.tempDir, '', '报告里不残留临时目录');
+});
+
+// ---------- task-92：系统浮层忽略 + 前台基线稳定性 ----------
+
+test('isSystemOverlay：通知中心/控制中心/Window Server/Dock/Spotlight/loginwindow/输入法候选（中英文、大小写）', () => {
+  for (const name of ['NotificationCenter', 'notificationcenter', 'Notification Center', '通知中心',
+    'ControlCenter', '控制中心', 'Window Server', 'windowserver', 'loginwindow', 'Dock', 'docker'.replace('docker', 'Dock'),
+    'Spotlight', '输入法候选窗口', 'Candidate Window']) {
+    assert.equal(isSystemOverlay(name), true, name);
+  }
+  for (const name of ['Safari', 'Google Chrome', 'TextEdit', 'Docker Desktop', 'Dockyard', '', null]) {
+    assert.equal(isSystemOverlay(name), false, String(name));
+  }
+  assert.equal(frontForCompare('NotificationCenter'), '');
+  assert.equal(frontForCompare(' Safari '), 'Safari');
+});
+
+test('compareFront：通知横幅中途出现 → 忽略，仍算前台未变；真实抢前台 → 判失败', () => {
+  const banner = compareFront('Safari', 'NotificationCenter');
+  assert.equal(banner.unchanged, true, '横幅划过不算被抢');
+  assert.deepEqual(banner.ignoredOverlays, ['NotificationCenter']);
+
+  const bothBanner = compareFront('ControlCenter', '通知中心');
+  assert.equal(bothBanner.unchanged, true);
+  assert.deepEqual(bothBanner.ignoredOverlays.sort(), ['ControlCenter', '通知中心'].sort());
+
+  const stolen = compareFront('Safari', 'Google Chrome');
+  assert.equal(stolen.unchanged, false);
+  assert.equal(stolen.ignoredOverlays.length, 0);
+
+  const unknownAfter = compareFront('Safari', '');
+  assert.equal(unknownAfter.unchanged, true, '结束值读不到时不做「被抢」判定');
+});
+
+test('sampleFrontBaseline：横幅作基线（第一帧横幅、第二帧真实前台）→ 稳定且基线取真实前台', async () => {
+  let i = 0;
+  const reads = ['NotificationCenter', 'Safari'];
+  const deps = { frontName: async () => reads[i++] || 'Safari', sleep: async () => {} };
+  const baseline = await sampleFrontBaseline(deps);
+  assert.equal(baseline.stable, true);
+  assert.equal(baseline.baseline, 'Safari');
+  assert.equal(baseline.raw, 'NotificationCenter', '真实前台记录不被改写');
+  assert.equal(baseline.attempts, 1);
+  assert.ok(baseline.ignoredOverlays.includes('NotificationCenter'));
+});
+
+test('sampleFrontBaseline：基线不稳 → 重试 3 次；仍不稳返回 stable=false（调用方按 envSkip）', async () => {
+  let i = 0;
+  const seq = ['Safari', 'Google Chrome', 'Safari', 'TextEdit', 'Finder', 'Preview'];
+  const deps = { frontName: async () => seq[i++] || 'X', sleep: async () => {} };
+  const baseline = await sampleFrontBaseline(deps);
+  assert.equal(baseline.stable, false);
+  assert.equal(baseline.attempts, 3);
+  assert.equal(i, 6, '每次尝试采样 2 次，3 次共 6 次');
+  assert.match(baseline.reason, /基线不稳定/);
+});
+
+test('sampleFrontBaseline：第 2 次尝试稳定 → 立即返回（不带病重试）', async () => {
+  let i = 0;
+  const seq = ['Safari', 'Google Chrome', 'Safari', 'Safari'];
+  const deps = { frontName: async () => seq[i++] || 'Safari', sleep: async () => {} };
+  const baseline = await sampleFrontBaseline(deps);
+  assert.equal(baseline.stable, true);
+  assert.equal(baseline.baseline, 'Safari');
+  assert.equal(baseline.attempts, 2);
+});
+
+test('流程：动作后出现通知横幅 → exit0，unchanged=true，输出 ignoredOverlays', async () => {
+  const seq = ['Safari', 'Safari', 'Safari', 'NotificationCenter'];
+  let i = 0;
+  const { deps } = fakeDeps({
+    frontName: async () => seq[i++] || 'Safari',
+    readState: async () => BUTTON_TREE,
+  });
+  const { exitCode, report } = await runAdapterDemo({ app: 'Safari' }, deps);
+  assert.equal(exitCode, 0, JSON.stringify(report.steps));
+  assert.equal(report.front.unchanged, true);
+  assert.equal(report.front.before, 'Safari');
+  assert.equal(report.front.after, 'NotificationCenter');
+  assert.deepEqual(report.ignoredOverlays, ['NotificationCenter']);
+  assert.ok(report.steps.some((s) => s.step === 'front-baseline' && s.ok === true));
+  const frontStep = report.steps.find((s) => s.step === 'front-unchanged');
+  assert.match(frontStep.detail, /忽略系统浮层/);
+});
+
+test('流程：基线不稳（连续采样不一致）→ 环境跳过 exit0，不判 FAIL', async () => {
+  const seq = ['Safari', 'Google Chrome', 'Safari', 'TextEdit', 'Finder', 'Preview', 'Safari'];
+  let i = 0;
+  const { deps, calls } = fakeDeps({ frontName: async () => seq[i++] || 'Safari' });
+  const { exitCode, report } = await runAdapterDemo({ app: 'Safari' }, deps);
+  assert.equal(exitCode, 0, '环境问题不能判 FAIL');
+  assert.equal(report.envSkip, true);
+  assert.match(report.reason, /基线不稳定/);
+  assert.equal(calls.readState, 0, '基线不稳就不该继续读界面树');
+  assert.ok(report.steps.some((s) => s.step === 'front-baseline' && s.ok === false));
+});
+
+test('流程：横幅作基线 + 动作后真实前台一致 → exit0（不改真实前台记录）', async () => {
+  const seq = ['Safari', 'NotificationCenter', 'Safari', 'Safari'];
+  let i = 0;
+  const { deps } = fakeDeps({ frontName: async () => seq[i++] || 'Safari' });
+  const { exitCode, report } = await runAdapterDemo({ app: 'Safari' }, deps);
+  assert.equal(exitCode, 0, JSON.stringify(report.steps));
+  assert.equal(report.front.baseline, 'Safari');
+  assert.equal(report.front.before, 'NotificationCenter', 'front.before 记录真实（可能是浮层）');
+  assert.equal(report.front.unchanged, true);
+  assert.ok(report.ignoredOverlays.includes('NotificationCenter'));
 });
