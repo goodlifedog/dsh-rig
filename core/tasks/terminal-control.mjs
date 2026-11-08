@@ -6,7 +6,8 @@
  *
  * 只敲 echo，不执行任何有副作用的命令。
  */
-import { frontName, state, find, typeText, readSafe, frontRiskGate } from '../background.mjs';
+import { frontName, state, find, typeText, readSafe, frontRiskGate, isAppRunning } from '../background.mjs';
+import { requireAppRunning, reportAppPresence } from '../app-presence.mjs';
 import { restoreFront, hidIdleMs } from '../front-watch.mjs';
 import { decideTerminalType, lastNonEmptyLine } from '../terminal-guard.mjs';
 import { isScreenLocked } from '../platform.mjs';
@@ -33,6 +34,15 @@ async function pressEnter(app) {
 async function main() {
   if (await isScreenLocked()) {
     console.log('环境跳过：屏幕已锁，键盘与 AX 通路不可用，等解锁后再跑');
+    return;
+  }
+
+  // ocu 对未运行的应用会把它启动并顶到前台：先确认在运行，再碰任何 ocu 接口。
+  // 判定/探测收在 core/app-presence.mjs（纯函数 + 注入 isAppRunning），与 P0 批次B 用同一套闸门。
+  const presence = await requireAppRunning(APP, { isAppRunning });
+  if (reportAppPresence(presence)) {
+    console.log(JSON.stringify({ ok: true, skipped: true, reason: 'app-not-running', app: APP }));
+    await closeOcuMcp().catch(() => {});
     return;
   }
 

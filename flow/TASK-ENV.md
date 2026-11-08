@@ -76,7 +76,6 @@
 | `MATRIX_APPS_JSON` | — | `core/tasks/app-matrix.mjs` |
 | `MATRIX_DISMISS` | — | `core/tasks/app-matrix.mjs` |
 | `MATRIX_PRESET` | — | `core/tasks/app-matrix.mjs` |
-| `MATRIX_QUIT` | — | `core/tasks/app-matrix.mjs` |
 | `MAX_JOB_LOGS` | 50 | `core/tasks/boss-scan.mjs` |
 | `MIN_JOBS` | 10 | `core/tasks/boss-scan.mjs` |
 | `MONITOR_FAST` | （开关，设 1 开启） | `scripts/monitor.mjs` |

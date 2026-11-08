@@ -7,6 +7,7 @@
 import { execFile } from 'node:child_process';
 import { isMac, isWindows, controlBackend } from '../platform.mjs';
 import * as uia from '../backends/uia.mjs';
+import { requireAppRunning, reportAppPresence } from '../app-presence.mjs';
 
 const OCU = process.env.OCU_BIN || '';
 
@@ -42,8 +43,14 @@ async function main() {
       console.log(JSON.stringify({ ok: true, backend: 'ocu', app: target, skipped: true, reason: 'screen-locked' }));
       return;
     }
-    // 读 Chrome 界面树可能让它自己跳前台：走前台风险名单 + 读后还原
     const bg = await import('../background.mjs');
+    // 目标应用没在跑就跳过：cua.getApp 会把未运行的应用拉起来并顶到前台（保持本 demo 只读语义）
+    const presence = await requireAppRunning(target, { isAppRunning: bg.isAppRunning });
+    if (reportAppPresence(presence)) {
+      console.log(JSON.stringify({ ok: true, backend: 'ocu', app: target, skipped: true, reason: 'app-not-running' }));
+      return;
+    }
+    // 读 Chrome 界面树可能让它自己跳前台：走前台风险名单 + 读后还原
     const risk = bg.frontRiskGate();
     if (risk.shouldSkip(target)) {
       console.log('环境跳过：' + target + ' 读取会抢前台（前台风险名单），先不读它的界面树');

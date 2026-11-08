@@ -4,9 +4,14 @@
 import { execFile } from 'node:child_process';
 import { getOcuMcp, closeOcuMcp } from '../core/ocu-mcp.mjs';
 import { resolveOcu, bundledOcu } from '../core/platform.mjs';
+import { isAppRunning } from '../core/background.mjs';
+import { requireAppRunning, reportAppPresence } from '../core/app-presence.mjs';
 
 const ROUNDS = Number(process.argv[2] || 5);
 const APP = process.env.TARGET_APP || 'Google Chrome';
+// 默认目标就是用户的 Chrome：没在跑时绝不代劳启动（会带登录 profile 并抢前台）。
+// 确实要用一个当前没运行的应用做基线，显式加 --allow-launch。
+const ALLOW_LAUNCH = process.argv.includes('--allow-launch');
 
 function spawnCli(args, timeout = 60000) {
   return new Promise((resolve) => {
@@ -26,6 +31,13 @@ function stats(values) {
 async function main() {
   console.log('ocu:', resolveOcu());
   console.log('bundled:', bundledOcu() || '(未附带运行时，用全局安装)');
+
+  // 0. 目标应用在不在跑：没在跑就跳过（exit 0），不为了测基线把用户的 Chrome 拉起来
+  const presence = await requireAppRunning(APP, { isAppRunning, allowLaunch: ALLOW_LAUNCH });
+  if (reportAppPresence(presence)) {
+    console.log('（确实要用一个当前没运行的应用做基线：node scripts/bench-ocu.mjs ' + ROUNDS + ' --allow-launch）');
+    return;
+  }
 
   // 1. CLI 每次 spawn
   const cliList = [], cliState = [];

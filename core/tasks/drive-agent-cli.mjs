@@ -17,6 +17,8 @@ import { execFileSync } from 'node:child_process';
 import { getOcuMcp, closeOcuMcp } from '../ocu-mcp.mjs';
 import { restoreFront } from '../front-watch.mjs';
 import { isScreenLocked } from '../platform.mjs';
+import { isAppRunning } from '../background.mjs';
+import { requireAppRunning, reportAppPresence } from '../app-presence.mjs';
 import { tokenHeadersFor } from '../local-token.mjs';
 
 const APP = process.env.CLI_TERM_APP || 'Ghostty';
@@ -56,6 +58,15 @@ function stripAnsi(text) {
 async function main() {
   if (await isScreenLocked()) {
     console.log('环境跳过：屏幕已锁，键盘通路不可用，等解锁后再跑');
+    return;
+  }
+
+  // ocu 对未运行的应用会把它启动并顶到前台：先确认在运行，再碰任何 ocu 接口。
+  // 判定/探测收在 core/app-presence.mjs（纯函数 + 注入 isAppRunning），与 P0 批次B 用同一套闸门。
+  const presence = await requireAppRunning(APP, { isAppRunning });
+  if (reportAppPresence(presence)) {
+    console.log(JSON.stringify({ ok: true, skipped: true, reason: 'app-not-running', app: APP }));
+    await closeOcuMcp().catch(() => {});
     return;
   }
 

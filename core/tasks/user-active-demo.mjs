@@ -10,12 +10,48 @@
  *   3. 每一步都断言前台仍然是 F
  *   4. 顺带记录 F 的界面树有没有被我们改动（如果读得到）
  */
-import { frontName, state, find, click } from '../background.mjs';
+import { frontName, state, find, click, isAppRunning } from '../background.mjs';
 import { isScreenLocked, lockedSkipNotice } from '../platform.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const ACTIONS = Math.max(1, Number(process.env.USER_ACTIVE_ACTIONS) || 6);
+
+// 候选目标应用：必须本来就在运行才允许读/点（审计 #1：绝不为这个任务自动启动应用）。
+export const CANDIDATES = [
+  { name: '计算器', bundleId: 'com.apple.calculator', appName: '计算器', processName: 'Calculator' },
+  { name: '备忘录', bundleId: 'com.apple.Notes', appName: '备忘录', processName: 'Notes' },
+  { name: '文本编辑', bundleId: 'com.apple.TextEdit', appName: '文本编辑', processName: 'TextEdit' },
+];
+
+/**
+ * 逐个探测候选应用是否在运行（依赖注入 isRunning，便于单测 mock）。
+ * 探测抛错按"没运行"处理：宁可跳过，也不冒险拉起/读取。
+ *
+ * @param {Array<object>} candidates
+ * @param {(candidate: object) => boolean|Promise<boolean>} isRunning
+ * @returns {Promise<Array<object>>} 保持原顺序的运行中候选
+ */
+export async function pickRunningCandidates(candidates, isRunning) {
+  if (!Array.isArray(candidates) || typeof isRunning !== 'function') return [];
+  const running = [];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    let ok = false;
+    try {
+      ok = Boolean(await isRunning(candidate));
+    } catch {
+      ok = false;
+    }
+    if (ok) running.push(candidate);
+  }
+  return running;
+}
+
+/** 所有候选都没运行（或没有候选）→ 环境跳过，不自动启动。 */
+export function shouldSkipNotRunning(runningCandidates) {
+  return !Array.isArray(runningCandidates) || runningCandidates.length === 0;
+}
 
 function displayValue(tree) {
   const m = /文本\s*[\u200e]?\s*(-?[\d.,]+)/.exec(tree || '');
@@ -32,10 +68,19 @@ async function main() {
   const userApp = await frontName();
   console.log('用户当前前台:', userApp);
 
-  // 选一个不同于用户前台的目标
-  const candidates = ['计算器', '备忘录', '文本编辑'];
-  const target = candidates.find((a) => a !== userApp) || '计算器';
-  console.log('后台目标:', target, '（用户前台是 ' + userApp + '）');
+  // P0（审计 #1）：候选应用必须本来就在运行；不自动启动，否则这个"验证不打扰"的任务自己先拉起窗口。
+  const candidates = CANDIDATES.filter((c) => c.name !== userApp);
+  const running = await pickRunningCandidates(candidates, (candidate) => isAppRunning({
+    bundleId: candidate.bundleId,
+    appName: candidate.appName,
+    processName: candidate.processName,
+  }));
+  if (shouldSkipNotRunning(running)) {
+    console.log('环境跳过：候选应用（计算器/备忘录/文本编辑）没有已运行且不同于用户前台的，不自动启动；请先手动打开一个候选应用再跑');
+    return;
+  }
+  const target = running[0].name;
+  console.log('后台目标:', target, '（用户前台是 ' + userApp + '；已运行候选: ' + running.map((c) => c.name).join('、') + '）');
 
   const beforeUserTree = await state(userApp).catch(() => '');
   const beforeTarget = displayValue(await state(target).catch(() => ''));
@@ -79,6 +124,8 @@ async function main() {
     userTreeNote: userAppIsHost ? '用户应用是 DSH 宿主，界面树由本轮对话驱动，跳过树比对' : '',
     userApp,
     target,
+    targetWasRunning: true,
+    runningCandidates: running.map((c) => c.name),
     actions: steps.length,
     frontSteals,
     frontStart: userApp,
@@ -105,4 +152,7 @@ async function main() {
   if (!report.ok) process.exitCode = 1;
 }
 
-main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
+const invokedDirectly = Boolean(process.argv[1]) && process.argv[1].endsWith('user-active-demo.mjs');
+if (invokedDirectly) {
+  main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
+}

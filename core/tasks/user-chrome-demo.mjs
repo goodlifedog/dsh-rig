@@ -25,7 +25,9 @@ async function main() {
   console.log('操作前前台:', before);
 
   const ensure = await ensureUserChrome();
-  console.log('Chrome 就绪:', ensure.ok, ensure.started ? '(本次启动)' : '(已在运行)');
+  // 审计建议：显式启动用户 Chrome 是任务语义（不改），但输出/报告必须写清这次是否由任务拉起。
+  const chromeStarted = ensure.started === true;
+  console.log('Chrome 就绪:', ensure.ok, '| started=' + chromeStarted + (chromeStarted ? '（本次由任务启动）' : '（已在运行，未启动）'));
 
   const t0 = Date.now();
   const state = await readState({ maxNodes: 3000 });
@@ -49,7 +51,16 @@ async function main() {
   console.log('前台是否保持不变:', focusKept);
 
   await closeOcuMcp();
-  console.log(JSON.stringify({ ok: ensure.ok && focusKept && readMs > 0, readMs, focusKept, clicked: clickInfo, before, after }));
+  console.log(JSON.stringify({
+    ok: ensure.ok && focusKept && readMs > 0,
+    started: chromeStarted,
+    chrome: { ok: ensure.ok, started: chromeStarted },
+    readMs,
+    focusKept,
+    clicked: clickInfo,
+    before,
+    after,
+  }));
 }
 
 main().catch(async (e) => { await closeOcuMcp(); console.error('FAIL:', e.message); process.exit(1); });

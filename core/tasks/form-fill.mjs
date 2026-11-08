@@ -14,6 +14,8 @@ const FRAG = 'zhipin.com/web/geek/jobs';
 import { resolveOcu, isScreenLocked, lockedSkipNotice } from '../platform.mjs';
 import { hidIdleMs } from '../front-watch.mjs';
 import { shouldDeferForActiveUser } from '../user-activity.mjs';
+import { isAppRunning } from '../background.mjs';
+import { requireAppRunning, reportAppPresence } from '../app-presence.mjs';
 
 import { isMac } from '../platform.mjs';
 if (!isMac) {
@@ -250,6 +252,10 @@ async function main() {
     console.log(lockedSkipNotice('form-fill.mjs'));
     return;
   }
+  // 运行检查放在最前面（比后面的「Chrome 是前台就拒绝」更早）：Chrome 没运行就直接环境跳过，
+  // 因为 ocu 的 get_app_state/snapshot 会把未运行的 Chrome 拉起来（带登录 profile）并顶到前台。
+  const presence = await requireAppRunning(APP, { isAppRunning });
+  if (reportAppPresence(presence)) return;
   // 这个任务会往你 Chrome 的 BOSS 页面里改搜索框：你正在用电脑时不做，免得打断输入
   const activity = shouldDeferForActiveUser(await hidIdleMs());
   if (activity.defer) {

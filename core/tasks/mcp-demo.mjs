@@ -4,8 +4,18 @@
 'use strict';
 // MCP 常驻连接演示：对比「每次 spawn CLI」与「一次握手后连续调用」。
 import { getOcuMcp, closeOcuMcp } from '../ocu-mcp.mjs';
+import { isAppRunning } from '../background.mjs';
+import { requireAppRunning, reportAppPresence } from '../app-presence.mjs';
 
 async function main() {
+  // 目标应用没在跑就跳过：get_app_state 对未运行的应用会把它拉起来并顶到前台。
+  // 检查放在握手之前——连 ocu 进程都不必起（本 demo 只读，绝不为测试启动应用）。
+  const target = process.env.TARGET_APP || 'Google Chrome';
+  const presence = await requireAppRunning(target, { isAppRunning });
+  if (reportAppPresence(presence)) {
+    console.log(JSON.stringify({ ok: true, skipped: true, reason: 'app-not-running', app: target }));
+    return;
+  }
   const started = Date.now();
   const mcp = await getOcuMcp();
   const handshakeMs = Date.now() - started;
@@ -21,7 +31,6 @@ async function main() {
   const appCount = (apps.text || '').split('\n').filter((l) => l.trim()).length;
   console.log('list_apps:', listMs, 'ms, 应用数:', appCount);
 
-  const target = process.env.TARGET_APP || 'Google Chrome';
   const t2 = Date.now();
   const state = await mcp.callTool('get_app_state', { app: target, include_screenshot: false }, 45000);
   const stateMs = Date.now() - t2;

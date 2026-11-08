@@ -20,6 +20,8 @@ import { overlay } from '../agentd.mjs';
 import { readChatItems, diffChat } from './greet-verify.mjs';
 import { hidIdleMs } from '../front-watch.mjs';
 import { shouldDeferForActiveUser } from '../user-activity.mjs';
+import { isAppRunning } from '../background.mjs';
+import { requireAppRunning, reportAppPresence } from '../app-presence.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
@@ -112,6 +114,10 @@ async function main() {
     console.log(lockedSkipNotice('boss-greet.mjs'));
     return;
   }
+  // 外层保底：目标应用没在跑就直接跳过，不碰基线读取（readChatItems 走 ocu，会把未运行的 Chrome 拉起来）。
+  // 内层 greet-inner.mjs 不改：外层已经拦住，未运行的 Chrome 根本走不到内层。
+  const presence = await requireAppRunning(APP, { isAppRunning });
+  if (reportAppPresence(presence)) return;
   // 这个任务会真的发消息：你正在用电脑时不做，避免发出的瞬间切走你的输入焦点
   const activity = shouldDeferForActiveUser(await hidIdleMs());
   if (activity.defer) {

@@ -7,7 +7,7 @@ import { overlayBase } from '../ports.mjs';
  *
  * 结论以 JSON 输出：每个动作都带「操作前后前台是否一致」的证据。
  */
-import { ensureAppRunning, frontName, state, find, click, setValue, smartType, smartTypeWithCache, clickByText, quitApp } from '../background.mjs';
+import { ensureAppRunning, isAppRunning, frontName, state, find, click, setValue, smartType, smartTypeWithCache, clickByText, quitApp } from '../background.mjs';
 import { checkTextEditWritable } from '../text-edit-guard.mjs';
 import { decideNoteWrite } from '../note-write-guard.mjs';
 import { hidIdleMs } from '../front-watch.mjs';
@@ -185,19 +185,26 @@ async function main() {
   }
 
   // 6. 文本编辑：后台设值
-  const textAreas = await find('文本编辑', { role: 'AXTextArea', limit: 5 });
-  if (textAreas[0]) {
-    // set_value 是覆盖语义：用户开着有内容的文稿时，写进去就等于把人家内容盖掉。
-    // 只允许写「未命名且内容为空」的文稿，否则跳过（评审 P0）。
-    const guard = await checkTextEditWritable();
-    if (!guard.ok) {
-      recordSkipped('后台写入文本编辑（AX set_value）', '文本编辑里有用户内容，跳过写入以免覆盖：' + guard.reason);
-    } else {
-      const w = await setValue('文本编辑', textAreas[0].index, '后台写入：' + new Date().toLocaleTimeString('zh-CN'));
-      record('后台写入文本编辑（AX set_value）', w.ok && w.frontUnchanged, { frontUnchanged: w.frontUnchanged, detail: w.error || '' });
-    }
+  // P0（审计 #10）：TextEdit 没运行就跳过——不在没运行的情况下 find/读 AX，更不自动启动，
+  // 否则这一步会把 TextEdit 拉起来并可能留在前台（收尾只关 Notes/Calculator）。
+  const textEditRunning = await isAppRunning({ bundleId: 'com.apple.TextEdit', appName: '文本编辑', processName: 'TextEdit' });
+  if (!textEditRunning) {
+    recordSkipped('后台写入文本编辑（AX set_value）', '文本编辑未运行，跳过（不自动启动，避免拉起窗口）');
   } else {
-    recordSkipped('后台写入文本编辑（AX set_value）', '文本编辑冷启动是打开面板，没有文稿窗口');
+    const textAreas = await find('文本编辑', { role: 'AXTextArea', limit: 5 });
+    if (textAreas[0]) {
+      // set_value 是覆盖语义：用户开着有内容的文稿时，写进去就等于把人家内容盖掉。
+      // 只允许写「未命名且内容为空」的文稿，否则跳过（评审 P0）。
+      const guard = await checkTextEditWritable();
+      if (!guard.ok) {
+        recordSkipped('后台写入文本编辑（AX set_value）', '文本编辑里有用户内容，跳过写入以免覆盖：' + guard.reason);
+      } else {
+        const w = await setValue('文本编辑', textAreas[0].index, '后台写入：' + new Date().toLocaleTimeString('zh-CN'));
+        record('后台写入文本编辑（AX set_value）', w.ok && w.frontUnchanged, { frontUnchanged: w.frontUnchanged, detail: w.error || '' });
+      }
+    } else {
+      recordSkipped('后台写入文本编辑（AX set_value）', '文本编辑冷启动是打开面板，没有文稿窗口');
+    }
   }
 
   const frontAtEnd = await frontName();

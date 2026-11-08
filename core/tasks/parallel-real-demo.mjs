@@ -9,13 +9,40 @@ import { overlayBase } from '../ports.mjs';
  * 全程只用后台通路（AX 语义 / sky_key），不切前台；小窗画面来自 screencapture -l。
  */
 import { execFileSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import { ocu, withAppLock } from '../agentd.mjs';
+import { isAppRunning } from '../background.mjs';
 import { tokenHeadersFor } from '../local-token.mjs';
 
 const OVERLAY = overlayBase();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const S_A = 'real-calc';
 const S_B = 'real-text';
+
+// 演示目标：没在运行的绝不为了测试去启动/激活（ocu 的 get_app_state 会把没运行的应用拉起并带出窗口）。
+const DEMO_TARGETS = [
+  { key: 'calc', app: '计算器', appName: 'Calculator', processName: 'Calculator' },
+  { key: 'text', app: '文本编辑', appName: 'TextEdit', processName: 'TextEdit' },
+];
+
+/**
+ * 纯函数：按「是否在运行」把目标分成要跑的和要跳过的（保持原顺序，方便日志与单测）。
+ * @param {Array<{app:string}>} targets
+ * @param {Iterable<string>} runningApps 正在运行的应用名集合（Set / 数组均可）
+ * @returns {{run: Array, skipped: Array}}
+ */
+function pickRunningTargets(targets, runningApps) {
+  const running = runningApps instanceof Set ? runningApps : new Set(runningApps || []);
+  const run = [];
+  const skipped = [];
+  for (const target of targets || []) {
+    if (running.has(target.app)) run.push(target);
+    else skipped.push(target);
+  }
+  return { run, skipped };
+}
+
+export { DEMO_TARGETS, pickRunningTargets };
 
 const getJson = async (url) => {
   try { return await (await fetch(url, { headers: tokenHeadersFor(url), signal: AbortSignal.timeout(3000) })).json(); } catch { return null; }
@@ -80,54 +107,74 @@ async function main() {
     console.log(lockedSkipNotice('parallel-real-demo.mjs'));
     return;
   }
+  // P0 批次D #11：ocu 的 get_app_state 会把没运行的应用启动起来并带出窗口。
+  // 所以任何 raw ocu 调用之前，先确认目标本来就在运行；没运行就跳过，绝不为了测试去启动/激活。
+  const running = new Set();
+  for (const target of DEMO_TARGETS) {
+    if (await isAppRunning({ appName: target.appName, processName: target.processName })) running.add(target.app);
+  }
+  const picked = pickRunningTargets(DEMO_TARGETS, running);
+  for (const target of picked.skipped) {
+    console.log('环境跳过：' + target.app + ' 没在运行，不为了测试去启动/激活它');
+  }
+  if (!picked.run.length) {
+    console.log('环境跳过：计算器和文本编辑都没在运行，不启动任何应用，退出');
+    return;
+  }
+
   const dshTitle = (await getJson(OVERLAY + '/health?session=__none__'))?.dshTitle || '';
   const list = await getJson(OVERLAY + '/windows');
   const windows = (list && list.windows) || [];
-  const calcWin = windows.find((w) => /计算器/.test(w.owner || w.title || ''));
-  const textWin = windows.find((w) => /文本编辑/.test(w.owner || w.title || ''));
-  if (!calcWin || !textWin) {
-    console.error('找不到计算器/文本编辑窗口：', windows.map((w) => w.owner + ':' + w.title).join(' | '));
-    process.exit(1);
+  const winOf = (re) => windows.find((w) => re.test(w.owner || w.title || ''));
+  const windowByKey = { calc: winOf(/计算器/), text: winOf(/文本编辑/) };
+  const plan = [];
+  for (const target of picked.run) {
+    const win = windowByKey[target.key];
+    if (!win) {
+      console.log('环境跳过：' + target.app + ' 窗口不可见（可能最小化/不在当前 Space），不为了找窗口去激活它');
+      continue;
+    }
+    plan.push({ target, session: target.key === 'calc' ? S_A : S_B, win });
+  }
+  if (!plan.length) {
+    console.log('环境跳过：没有可回显的窗口，退出');
+    return;
   }
 
   const before = frontName();
   console.log('开始前前台:', before);
-  console.log('回显目标:', '计算器#' + calcWin.windowId, '| 文本编辑#' + textWin.windowId);
+  console.log('回显目标:', plan.map((p) => p.target.app + '#' + p.win.windowId).join(' | '));
+  if (picked.skipped.length) console.log('本次跳过:', picked.skipped.map((s) => s.app).join('、'));
 
-  // 两路小窗各自绑定一个真实应用窗口
-  await post('/status', { session: S_A, text: '计算器：准备后台操作', titleHint: dshTitle });
-  await post('/status', { session: S_B, text: '文本编辑：准备后台操作', titleHint: dshTitle });
-  await post('/window', { session: S_A, windowId: calcWin.windowId });
-  await post('/window', { session: S_B, windowId: textWin.windowId });
-  await post('/visible', { session: S_A, visible: true });
-  await post('/visible', { session: S_B, visible: true });
+  // 每路小窗各自绑定一个真实应用窗口（只绑确认在运行且有窗口的目标）
+  for (const item of plan) await post('/status', { session: item.session, text: item.target.app + '：准备后台操作', titleHint: dshTitle });
+  for (const item of plan) await post('/window', { session: item.session, windowId: item.win.windowId });
+  for (const item of plan) await post('/visible', { session: item.session, visible: true });
   await sleep(1500);
 
-  // 同时操作两个应用
+  // 同时操作（只操作确认在运行的应用）
   const t0 = Date.now();
-  await post('/status', { session: S_A, text: '计算器：后台输入算式…', titleHint: dshTitle });
-  await post('/status', { session: S_B, text: '文本编辑：后台输入文字…', titleHint: dshTitle });
-  const results = await Promise.allSettled([runCalc(), runText()]);
+  for (const item of plan) await post('/status', { session: item.session, text: item.target.app + '：后台操作中…', titleHint: dshTitle });
+  const results = await Promise.allSettled(plan.map((item) => (item.target.key === 'calc' ? runCalc() : runText())));
   const elapsed = Date.now() - t0;
 
   const detail = results.map((r) => (r.status === 'fulfilled' ? r.value : { ok: false, error: String(r.reason).slice(0, 120) }));
   const after = frontName();
 
-  await post('/status', {
-    session: S_A,
-    text: detail[0] && detail[0].ok ? '计算器：完成 ' + detail[0].got : '计算器：未通过',
-    titleHint: dshTitle,
-  });
-  await post('/status', {
-    session: S_B,
-    text: detail[1] && detail[1].ok ? '文本编辑：完成' : '文本编辑：未通过',
-    titleHint: dshTitle,
-  });
+  for (let i = 0; i < plan.length; i += 1) {
+    const d = detail[i] || {};
+    const text = d.ok
+      ? (plan[i].target.key === 'calc' ? '计算器：完成 ' + d.got : '文本编辑：完成')
+      : plan[i].target.app + '：未通过';
+    await post('/status', { session: plan[i].session, text, titleHint: dshTitle });
+  }
 
   const overlap = Math.max(0, Math.min(...detail.map((d) => d.ms || 0)));
   const out = {
     ok: detail.every((d) => d.ok) && before === after,
     apps: detail,
+    ranApps: plan.map((p) => p.target.app),
+    skippedApps: picked.skipped.map((s) => s.app),
     concurrentMs: elapsed,
     bothRunningMs: overlap,
     frontmostUnchanged: before === after,
@@ -141,14 +188,19 @@ async function main() {
   const keepMs = Number(process.env.PARALLEL_KEEP_MS || 8000);
   if (keepMs > 0) await sleep(keepMs);
 
-  await post('/window', { session: S_A, windowId: null });
-  await post('/window', { session: S_B, windowId: null });
+  for (const item of plan) await post('/window', { session: item.session, windowId: null });
   await post('/clear', {}).catch(() => {});
-  await post('/status', { session: S_A, clear: true });
-  await post('/status', { session: S_B, clear: true });
-  await post('/visible', { session: S_A, visible: false });
-  await post('/visible', { session: S_B, visible: false });
+  for (const item of plan) await post('/status', { session: item.session, clear: true });
+  for (const item of plan) await post('/visible', { session: item.session, visible: false });
   console.log('完成（小窗已收起）');
 }
 
-main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
+// 只有直接执行本文件才跑 main：被单测 import 时不能有副作用（不能去碰应用/小窗）。
+const invokedDirectly = (() => {
+  try {
+    return Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
+  } catch {
+    return false;
+  }
+})();
+if (invokedDirectly) main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });

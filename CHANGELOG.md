@@ -2,6 +2,8 @@
 
 ## 0.7.0（未发布）
 
+- ocu 调用审计（`flow/OCU-CALL-AUDIT.md`）的 11 处高危调用点全部加上运行门禁并补单测：以前这些任务对**没在运行**的应用直接调 ocu 读取/输入（`snapshot/get_app_state/state/find/readSafe/typeText`），ocu 会把应用启动并可能顶到前台——等于「验证不打扰」的任务自己先打扰了用户。现在统一走 `core/app-presence.mjs`（纯函数 `decideAppPresence` + 注入 `isAppRunning` 的 `requireAppRunning`/`reportAppPresence`，判错一律按没运行处理），未运行即环境跳过（exit 0、不算失败、不启动/不关闭/不改用户应用）；覆盖 user-active-demo / terminal-control / drive-agent / drive-agent-cli / boss-scan / form-fill / boss-greet / mcp-demo / platform-demo / background-control（文本编辑步骤）/ parallel-real-demo，脚本层 `bench-ocu` 也门禁（要测冷读必须显式 `--allow-launch`）。新增 4 个测试文件，全量 903 项 / 902 过 / 1 跳过 / 0 失败。
+
 - 完整验收抓出并修复两个「前台污染」真 bug（子 agent 执行、Lead 核验提交）：
   ① multi-app 对未运行的应用直接 ocu.snapshot，会把应用拉起来并顶到前台（实测计算器被拉起、任务结束不关）；现在只探测正在运行的应用，未运行环境跳过，probe 前后前台变化会还原，并兜底收掉「跑前没运行、跑后却在运行」的应用（task-34）；
   ② app-matrix 收尾还原用「计算器」比对前台「Calculator」大小写/命名不一致，判 leave-user 没还回去；现在 front-restore 大小写/分隔符/别名不敏感，矩阵补 process 名、autoQuit 后立即还原（task-35）；

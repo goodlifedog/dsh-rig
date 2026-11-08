@@ -7,6 +7,8 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { ocu, overlay, guard, parseJobs, countElements } from '../agentd.mjs';
+import { isAppRunning } from '../background.mjs';
+import { requireAppRunning, reportAppPresence } from '../app-presence.mjs';
 
 const APP = process.env.TARGET_APP || 'Google Chrome';
 const TARGET_FRAGMENT = 'zhipin.com/web/geek/jobs';
@@ -191,6 +193,10 @@ async function main() {
     console.log(lockedSkipNotice('boss-scan.mjs'));
     return;
   }
+  // 目标应用没在跑就跳过：ocu.snapshot 对未运行的应用会把 Chrome 拉起来（带登录 profile）并顶到前台，
+  // 所以碰它之前先确认它在跑；没跑就环境跳过，不为了测试去启动用户的浏览器。
+  const presence = await requireAppRunning(APP, { isAppRunning });
+  if (reportAppPresence(presence)) return 0;
   const t0 = Date.now();
   const evidence = { steps: [] };
 
