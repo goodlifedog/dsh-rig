@@ -132,6 +132,15 @@ Ghostty、ChatGPT 读界面树会把应用顶到前台（连不截图也发生�
 有就报 `needs-confirm` 并且绝不强杀（强杀会丢用户没保存的内容），没有才按进程 TERM。
 探测完自动收尾，不留窗口。
 
+**9. 读一个"没运行"的应用 = 把它启动起来**
+ocu 的读取接口（`snapshot` / `get_app_state` / `state` / `find` / `readSafe`）对没在运行的应用不是"读失败"，
+而是**先把应用拉起来再读**，多数还会带出窗口、抢前台——这已经不是只读操作。
+审计里 11 处任务就是因此把用户自己的 Chrome / 终端 / 聊天客户端拉起来的（其中还有发消息类任务）。
+对策：碰具体应用之前先 `isAppRunning`（`core/app-presence.mjs` 的 `requireAppRunning` / `reportAppPresence`），
+没运行就**环境跳过**（exit 0、不算失败），绝不"为了演示"启动；
+确需启动的验收任务才 `ensureAppRunning` + 登记 `launchedByUs` + 结束 `quitApp`。
+逐文件清单、修复状态与修复边界见 `flow/OCU-CALL-AUDIT.md`。
+
 ## 四、实测记录（2026-11-07，同一台机器）
 
 | 应用 | 类别 | 读界面 | 按钮 | 画面 | 前台影响 | 备注 |

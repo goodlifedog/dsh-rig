@@ -273,8 +273,9 @@ export async function requireRunning(app) {
 - **P4 静态回归检查**：待做——要把「对具体应用调 ocu 前必须有 `isAppRunning/ensureApp*/requireAppRunning`
   之一或 `// audit-ok:` 豁免」加进 `scripts/safety-audit.mjs` + 两个 fixture 单测，做成常驻测试而不是一次性人工审计。
 - **P5 单测**：已补 4 个测试文件（见上）；纯逻辑、不碰真实应用。
-- **P6 文档**：`docs/SECURITY.md` 待补一条硬约束（ocu 读未运行应用 = 启动 + 抢前台；raw 读取前必须
-  `isAppRunning`，未运行一律环境跳过，不允许「为了演示」启动）。
+- **P6 文档**：已完成——`docs/SECURITY.md` 加了硬约束（「不为了读一个应用把它启动起来」：raw 读取前必须
+  `isAppRunning` / `requireAppRunning`，未运行一律环境跳过，不允许「为了演示」启动，唯一启动路径是显式启动器四件套）；
+  `docs/MAC-APPS.md` 第 9 条同步并指向本文。
 
 ### 8.1 修复边界（防止「修成新的洞」）
 

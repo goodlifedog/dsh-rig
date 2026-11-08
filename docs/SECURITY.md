@@ -36,6 +36,23 @@
   认不出来的弹窗默认不动。
 - **不控制正在使用的应用**：探测完只关"本轮自己拉起来的"应用；用户已经在跑的应用不重启、不强退。
   清理脚本同样只关本次自己启动的应用；用户最近 2 分钟动过键鼠时，连笔记清理都不跑（等用户离开再清残留）。
+- **不为了读一个应用把它启动起来（硬约束）**：ocu 对**没在运行**的应用调读取/输入接口
+  （`snapshot` / `get_app_state` / `query` / `state` / `find` / `readSafe` / `typeText` 等）会**先把应用启动起来**，
+  多数还会带出窗口、顶到前台——这已经不是"读"，而是一次有副作用的启动，而且收尾未必关得掉。
+  所以规则是硬的：
+  - 任何对**具体应用**的 raw 读取之前，必须先判它在不在运行（`isAppRunning`）；
+    任务里统一走 `core/app-presence.mjs` 的 `requireAppRunning()` / `reportAppPresence()`
+    （纯判定 `decideAppPresence`，`isAppRunning` 由调用方注入，便于单测）。
+  - 没在运行一律**环境跳过**：`exit 0`、不算 FAIL、不 quit、不 hide、不写数据、不改前台，
+    并在输出里留一行「环境跳过：<应用> 没在运行，不为了测试去启动/激活它」，便于日志审计。
+  - **不允许"为了演示 / 为了通过测试"启动用户应用**：`open -g -a`、`ensureApp*`、直接让 ocu 去读，都算启动。
+  - 唯一允许启动的路径是验收类任务的**显式启动器**，必须四件套齐全：
+    `ensureAppRunning()` → 登记 `launchedByUs` → 装 `installEmergencyAppCleanup` → 结束 `quitApp()`（只关自己拉起的）；
+    用户键鼠活跃时默认跳过（`shouldDeferForActiveUser`）。
+  - 修复边界（防止修成新的洞）：**门禁只跳过、不启动**，修复后的路径里不许新增"为了过测试而 open/ensureApp"的调用；
+    `isAppRunning` 抛错 / 超时一律按 `false` 处理（fail-closed），只认"已经在运行"，不认"也许马上会运行"。
+  - 现状与逐文件清单见 `flow/OCU-CALL-AUDIT.md` 第 8 节：11 处高危调用点已全部加门禁，
+    单测见 `test/app-presence.test.mjs`、`test/task-app-presence-gate.test.mjs`。
 - **不做不可逆操作**：发送、删除、支付这类动作需要任务显式声明，脚本里默认不碰。
 - **不用全局指针兜底**：不通过移动系统指针来点击。
 
