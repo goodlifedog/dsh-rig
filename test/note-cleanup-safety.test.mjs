@@ -19,21 +19,24 @@ import {
   LEGACY_TEST_WORDS,
 } from '../core/note-cleanup.mjs';
 
+// 单测用假探测：默认已授权，绝不发真实 AppleEvent（真实预检走 AEDeterminePermissionToAutomateTarget）
+const granted = async () => ({ status: 'granted' });
+
 test('countNotes 解析数字，失败返回 -1', async () => {
-  assert.equal(await countNotes({ deps: { exec: async () => ({ stdout: '3\n' }) } }), 3);
-  assert.equal(await countNotes({ deps: { exec: async () => { throw new Error('boom'); } } }), -1);
+  assert.equal(await countNotes({ deps: { checkAutomationPermission: granted, exec: async () => ({ stdout: '3\n' }) } }), 3);
+  assert.equal(await countNotes({ deps: { checkAutomationPermission: granted, exec: async () => { throw new Error('boom'); } } }), -1);
 });
 
 test('deleteTopNotes：条数为 0 时不执行任何命令', async () => {
   let calls = 0;
-  assert.equal(await deleteTopNotes(0, { deps: { exec: async () => { calls += 1; return { stdout: '0' }; } } }), 0);
+  assert.equal(await deleteTopNotes(0, { deps: { checkAutomationPermission: granted, exec: async () => { calls += 1; return { stdout: '0' }; } } }), 0);
   assert.equal(calls, 0, '不给条数就不许删');
 });
 
 test('deleteTopNotes：把条数传进脚本并解析结果', async () => {
   let seen = '';
   const n = await deleteTopNotes(2, {
-    deps: { exec: async (bin, args) => { seen = args.join(' '); return { stdout: '2' }; } },
+    deps: { checkAutomationPermission: granted, exec: async (bin, args) => { seen = args.join(' '); return { stdout: '2' }; } },
   });
   assert.equal(n, 2);
   assert.ok(seen.includes('repeat with kk from 1 to 2'), '脚本里应带上明确条数');
@@ -41,7 +44,7 @@ test('deleteTopNotes：把条数传进脚本并解析结果', async () => {
 
 test('deleteTestNotes 旧名也要求显式条数，默认不删', async () => {
   let calls = 0;
-  assert.equal(await deleteTestNotes({ deps: { exec: async () => { calls += 1; return { stdout: '0' }; } } }), 0);
+  assert.equal(await deleteTestNotes({ deps: { checkAutomationPermission: granted, exec: async () => { calls += 1; return { stdout: '0' }; } } }), 0);
   assert.equal(calls, 0, '没有 count 时不许删');
 });
 
@@ -98,15 +101,15 @@ test('生成的删除脚本能通过 AppleScript 编译（保留字/语法错会
 });
 
 test('按标记删除：解析 removed/readable；条数为 0 不执行', async () => {
-  assert.deepEqual(await deleteMarkedTestNotes(0, { deps: { exec: async () => { throw new Error('不该执行'); } } }),
+  assert.deepEqual(await deleteMarkedTestNotes(0, { deps: { checkAutomationPermission: granted, exec: async () => { throw new Error('不该执行'); } } }),
     { removed: 0, readable: 0, attempted: false });
-  const r = await deleteMarkedTestNotes(2, { deps: { exec: async () => ({ stdout: 'removed=1 readable=5\n' }) } });
+  const r = await deleteMarkedTestNotes(2, { deps: { checkAutomationPermission: granted, exec: async () => ({ stdout: 'removed=1 readable=5\n' }) } });
   assert.deepEqual(r, { removed: 1, readable: 5, attempted: true });
   // 传 words 时要体现在脚本里（--force-all 的放宽路径）
   let seen = '';
   await deleteMarkedTestNotes(1, {
     words: LEGACY_TEST_WORDS,
-    deps: { exec: async (bin, args) => { seen = args.join(' '); return { stdout: 'removed=0 readable=3' }; } },
+    deps: { checkAutomationPermission: granted, exec: async (bin, args) => { seen = args.join(' '); return { stdout: 'removed=0 readable=3' }; } },
   });
   assert.ok(seen.includes('后台控制验证'), '显式放宽词必须进脚本');
 });
@@ -115,7 +118,7 @@ test('deleteTestNotes 优先按标记删；标题读不到时默认不退回（H
   const calls = [];
   const byMarker = await deleteTestNotes({
     count: 2,
-    deps: {
+    deps: { checkAutomationPermission: granted,
       exec: async (bin, args) => {
         calls.push(args.join(' '));
         return { stdout: 'removed=2 readable=7' };
@@ -129,7 +132,7 @@ test('deleteTestNotes 优先按标记删；标题读不到时默认不退回（H
   const fallbackCalls = [];
   const fallback = await deleteTestNotes({
     count: 1,
-    deps: {
+    deps: { checkAutomationPermission: granted,
       exec: async (bin, args) => {
         fallbackCalls.push(args.join(' '));
         return { stdout: fallbackCalls.length === 1 ? 'removed=0 readable=0' : '1' };
@@ -145,7 +148,7 @@ test('deleteTestNotes 优先按标记删；标题读不到时默认不退回（H
   const forced = await deleteTestNotes({
     count: 1,
     allowTopFallback: true,
-    deps: {
+    deps: { checkAutomationPermission: granted,
       exec: async (bin, args) => {
         forcedCalls.push(args.join(' '));
         return { stdout: forcedCalls.length === 1 ? 'removed=0 readable=0' : '1' };

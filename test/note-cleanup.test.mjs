@@ -4,9 +4,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { deleteTestNotes } from '../core/note-cleanup.mjs';
 
+// 单测用假探测：默认已授权，绝不发真实 AppleEvent（真实预检走 AEDeterminePermissionToAutomateTarget）
+const granted = async () => ({ status: 'granted' });
+
 function makeDeps(script) {
   const calls = [];
   const deps = {
+    checkAutomationPermission: granted,
     sleep: async () => {},
     exec: async (bin, args) => {
       calls.push(args.join(' '));

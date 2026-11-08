@@ -12,8 +12,15 @@
  */
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { checkAutomationPermission as defaultCheckAutomationPermission } from './applescript-driver.mjs';
 
 const exec = promisify(execFile);
+
+/**
+ * 清理脚本实际发 AppleEvent 的目标是 System Events（UI 脚本 process "Notes"），
+ * 不是 Notes 本身——自动化授权按「发起方 → target」成对授权，所以预检要查 System Events。
+ */
+export const SYSTEM_EVENTS_BUNDLE_ID = 'com.apple.systemevents';
 
 /**
  * 测试笔记的显式标记：写的时候放在第一行，Notes 会把它当标题。
@@ -27,6 +34,53 @@ export const LEGACY_TEST_WORDS = ['后台控制验证', '后台写入', '后台�
 
 /** 测试笔记标题特征（用于任务自检、日志与删除时的行文本匹配） */
 export const TEST_NOTE_RE = /\[\s*AGENT-TEST\s*\]|后台控制验证|后台写入|后台测试|pta 测试/i;
+
+/**
+ * 自动化授权状态 → 是否允许发 AppleEvent（纯函数，便于单测）。
+ *
+ * denied / needs-consent 明确未授权 → 跳过；unknown / app-not-running / timeout 等
+ * 「拿不到结论」的情况也按不允许处理——宁可这次不清理，也不要冒险触发系统授权框。
+ * @param {string} status checkAutomationPermission 的 status
+ * @returns {{allow:boolean, skipped:boolean, status:string, reason:string}}
+ */
+export function decideAutomationGate(status) {
+  const s = String(status == null ? '' : status).trim() || 'unknown';
+  if (s === 'granted') return { allow: true, skipped: false, status: s, reason: '' };
+  const denied = s === 'denied' || s === 'needs-consent';
+  return {
+    allow: false,
+    skipped: true,
+    status: s,
+    reason: '环境跳过：' + (denied ? '未授权自动化' : '查不到自动化授权状态') + '（' + s +
+      '），不发送 Apple Event 以免弹授权框',
+  };
+}
+
+/**
+ * 发 Notes 的 AppleEvent 之前先静默预检（AEDeterminePermissionToAutomateTarget + askUserIfNeeded=false，不弹框）。
+ * 未授权时返回 allow:false + 可读原因，调用方据此按「环境跳过」返回，不抛错。
+ *
+ * @param {{deps?:{checkAutomationPermission?:Function}, bundleId?:string}} [options]
+ * @returns {Promise<{allow:boolean, skipped:boolean, status:string, reason:string}>}
+ */
+export async function checkNotesAutomation(options = {}) {
+  const opts = options || {};
+  const deps = opts.deps || {};
+  const check = deps.checkAutomationPermission || defaultCheckAutomationPermission;
+  let status = 'unknown';
+  try {
+    const result = await check({ bundleId: opts.bundleId || SYSTEM_EVENTS_BUNDLE_ID }, opts);
+    status = (result && result.status) || 'unknown';
+  } catch {
+    status = 'unknown';
+  }
+  return decideAutomationGate(status);
+}
+
+/** 内部：已经预检过的调用方可以传 skipAutomationGate 避免重复探测 */
+function gateSkipped(options) {
+  return Boolean(options && options.skipAutomationGate === true);
+}
 
 export function isTestNoteTitle(title) {
   return TEST_NOTE_RE.test(String(title || ''));
@@ -84,6 +138,12 @@ export async function countNotes(options = {}) {
   const opts = options || {};
   const run = (opts.deps && opts.deps.exec) || exec;
   const sleep = (opts.deps && opts.deps.sleep) || ((ms) => new Promise((r) => setTimeout(r, ms)));
+  // 发 AppleEvent 之前先静默查自动化授权：未授权/查不到 → 不发送（避免首次调用弹系统授权框）
+  const gate = gateSkipped(opts) ? { allow: true, reason: '' } : await checkNotesAutomation(opts);
+  if (!gate.allow) {
+    console.warn(gate.reason);
+    return -1;
+  }
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       const { stdout } = await run('/usr/bin/osascript', ['-e', COUNT_SCRIPT], { timeout: 40000 });
@@ -144,6 +204,11 @@ export async function deleteTopNotes(count, options = {}) {
   if (!n) return 0;
   const run = (opts.deps && opts.deps.exec) || exec;
   const sleep = (opts.deps && opts.deps.sleep) || ((ms) => new Promise((r) => setTimeout(r, ms)));
+  const gate = gateSkipped(opts) ? { allow: true, reason: '' } : await checkNotesAutomation(opts);
+  if (!gate.allow) {
+    console.warn(gate.reason);
+    return 0;
+  }
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const { stdout } = await run('/usr/bin/osascript', ['-e', DELETE_TOP_SCRIPT.replace('TIMES_TOK', String(n))], { timeout: 150000 });
@@ -254,6 +319,11 @@ export async function deleteMarkedTestNotes(limit, options = {}) {
   if (!n) return { removed: 0, readable: 0, attempted: false };
   const run = (opts.deps && opts.deps.exec) || exec;
   const sleep = (opts.deps && opts.deps.sleep) || ((ms) => new Promise((r) => setTimeout(r, ms)));
+  // 未授权时一条都不删，但也不抛错：结构化返回 skipped，让调用方按「环境跳过」报告
+  const gate = gateSkipped(opts) ? { allow: true, reason: '', status: 'granted' } : await checkNotesAutomation(opts);
+  if (!gate.allow) {
+    return { removed: 0, readable: 0, attempted: false, skipped: true, permission: gate.status, reason: gate.reason };
+  }
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const { stdout } = await run('/usr/bin/osascript', ['-e', buildMarkedDeleteScript(n, opts.words)], { timeout: 150000 });
@@ -277,11 +347,17 @@ export async function deleteTestNotes(options = {}) {
   const opts = options || {};
   const count = Number.isFinite(opts.count) ? opts.count : 0;
   if (!count) return 0;
-  const marked = await deleteMarkedTestNotes(count, opts);
+  // 先预检一次，后面的两条删除路径共用结论（skipAutomationGate 避免重复探测/重复编译 helper）
+  const gate = gateSkipped(opts) ? { allow: true, reason: '' } : await checkNotesAutomation(opts);
+  if (!gate.allow) {
+    console.warn(gate.reason);
+    return 0;
+  }
+  const marked = await deleteMarkedTestNotes(count, { ...opts, skipAutomationGate: true });
   if (marked.readable > 0) return marked.removed;
   // 标题一条都读不到：默认 fail-closed，宁可留下测试笔记，也不能按条数删掉用户的笔记。
   if (opts.allowTopFallback === true) {
-    return deleteTopNotes(count, opts);
+    return deleteTopNotes(count, { ...opts, skipAutomationGate: true });
   }
   console.warn('无法识别测试笔记，未删除（需要显式 --force-all/allowTopFallback）');
   return 0;

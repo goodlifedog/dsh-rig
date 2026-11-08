@@ -16,6 +16,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { countSdefCommands } from './app-runtime.mjs';
 import { executableTrust } from './safety.mjs';
+import { isAppRunning } from './background.mjs';
 
 const exec = promisify(execFile);
 
@@ -68,6 +69,54 @@ export function classifySafariJsError(text) {
   return 'error';
 }
 
+/** Safari 的固定标识（探测/门禁都用这一份，避免两处写错） */
+export const SAFARI_APP = Object.freeze({ appName: 'Safari', bundleId: 'com.apple.Safari' });
+/** 未授权时提示用户去哪里授权 */
+export const AUTOMATION_SETTINGS_HINT = '系统设置 → 隐私与安全性 → 自动化';
+
+/**
+ * AppleScript 通道是否该真的跑（纯函数，便于单测；H3）。
+ *
+ * 两个硬前提，缺一不可：
+ *   1. 应用在运行——AppleScript 的 tell 会把未运行的应用**启动**，不能为了探测去拉起它；
+ *   2. 自动化已授权（permission === 'granted'）——没授权就发 AppleEvent 会弹系统授权框。
+ * needJs 只影响文案（说明这次要的是页面 JS 注入通道），不改变放行条件。
+ *
+ * @param {{running?:boolean, permission?:string, needJs?:boolean}} [input]
+ * @returns {{action:'run'|'skip', reason:string, permission?:string, message:string}}
+ */
+export function applescriptChannelPlan(input = {}) {
+  const opts = input || {};
+  const running = opts.running === true;
+  const needJs = opts.needJs === true;
+  const permission = String(opts.permission == null ? 'unknown' : opts.permission);
+  const target = needJs ? 'Safari 页面 JS 通道' : 'AppleScript 通道';
+  if (!running) {
+    return {
+      action: 'skip',
+      reason: 'not-running',
+      permission,
+      message: '环境跳过：Safari 没在运行，不为了测试去启动它（AppleScript 的 tell 会把未运行的应用拉起来）',
+    };
+  }
+  if (permission !== 'granted') {
+    return {
+      action: 'skip',
+      reason: 'not-authorized',
+      permission,
+      message: '环境跳过：没有自动化授权（' + permission + '），不发送 Apple 事件以免弹授权框；需要时到 ' + AUTOMATION_SETTINGS_HINT + ' 授权',
+    };
+  }
+  return {
+    action: 'run',
+    reason: '',
+    permission,
+    message: needJs
+      ? target + '前置条件满足（Safari 在运行、自动化已授权）；JS 是否开启由实际探测决定'
+      : target + '前置条件满足（应用在运行、自动化已授权）',
+  };
+}
+
 /**
  * 探测 Safari 的页面级 JS 通道（只执行 1+1，不碰用户数据）。
  *
@@ -80,13 +129,57 @@ export function classifySafariJsError(text) {
  */
 export async function checkSafariJavaScript(options = {}) {
   const opts = options || {};
-  const run = opts.exec || exec;
+  const deps = Object.assign({
+    exec: opts.exec || exec,
+    isAppRunning,
+    checkAutomationPermission,
+  }, opts.deps || {});
+  // 调用方可以把已经探测过的结果传进来复用（任务里复用 rows 的结果，避免重复探测）
+  let running = typeof opts.running === 'boolean' ? opts.running : null;
+  if (running == null) {
+    try {
+      running = Boolean(await deps.isAppRunning(SAFARI_APP));
+    } catch {
+      running = false; // 探测失败按"没在运行"处理：宁可跳过，也不冒风险去 tell Safari
+    }
+  }
+  let permission = typeof opts.permission === 'string' ? opts.permission : null;
+  let permissionDetail = '';
+  if (running && permission == null) {
+    try {
+      const perm = await deps.checkAutomationPermission({ bundleId: SAFARI_APP.bundleId }, opts);
+      permission = perm && perm.status ? perm.status : 'unknown';
+      permissionDetail = perm && perm.error ? String(perm.error).slice(0, 160) : '';
+    } catch (e) {
+      permission = 'unknown';
+      permissionDetail = String((e && e.message) || e).slice(0, 160);
+    }
+  }
+  // H3：未运行 / 未授权一律不发 AppleEvent（否则会拉起 Safari、或第一次弹系统授权框）
+  const plan = applescriptChannelPlan({ running, permission: permission || 'unknown', needJs: true });
+  if (plan.action === 'skip') {
+    return {
+      available: false,
+      reason: plan.reason,
+      skipped: true,
+      running: Boolean(running),
+      permission: permission || 'unknown',
+      detail: permissionDetail || plan.message,
+      message: plan.message,
+    };
+  }
   try {
-    const { stdout } = await run('/usr/bin/osascript', ['-e', 'tell application "Safari" to do JavaScript "1+1" in front document'], { timeout: opts.timeoutMs || 5000 });
-    return { available: true, reason: '', result: String(stdout || '').trim() };
+    const { stdout } = await deps.exec('/usr/bin/osascript', ['-e', 'tell application "Safari" to do JavaScript "1+1" in front document'], { timeout: opts.timeoutMs || 5000 });
+    return { available: true, reason: '', result: String(stdout || '').trim(), running: true, permission: 'granted' };
   } catch (error) {
     const text = String((error && (error.stderr || error.message)) || error);
-    return { available: false, reason: classifySafariJsError(text), detail: text.split('\n')[0].slice(0, 160) };
+    return {
+      available: false,
+      reason: classifySafariJsError(text),
+      detail: text.split('\n')[0].slice(0, 160),
+      running: true,
+      permission: 'granted',
+    };
   }
 }
 

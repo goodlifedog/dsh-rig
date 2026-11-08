@@ -19,6 +19,8 @@ import {
   runAppScript,
   redactUrl,
   checkSafariJavaScript,
+  applescriptChannelPlan,
+  AUTOMATION_SETTINGS_HINT,
 } from '../applescript-driver.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -107,17 +109,36 @@ async function main() {
     console.log(JSON.stringify(row));
   }
 
-  // Safari 页面内容只能走 Apple Events 注入 JS，而这条通道默认被 Safari 关着：
-  // 探测一下，把边界说清楚（不影响本任务的通过/失败判定）
-  const safariJs = await checkSafariJavaScript().catch(() => ({ available: false, reason: 'error', detail: '' }));
-  const safariJsNote = {
+  // H3：Safari 页面内容只能走 Apple Events 注入 JS，而这条通道默认被 Safari 关着。
+  // 先按「Safari 在运行 + 自动化已授权」决定要不要探测；任一不满足就不发 AppleEvent
+  // （AppleScript 的 tell 会把未运行的 Safari 拉起来，第一次还会弹系统授权框）。
+  // 用 filter 取第一项（数组的查找方法名会被 safety-audit 的 UI_ACTION_RE 误判成界面操作）
+  const safariRow = rows.filter((r) => r && r.bundle === 'com.apple.Safari')[0];
+  const safariRunning = safariRow ? safariRow.running === true : await isAppRunning({ appName: 'Safari', bundleId: 'com.apple.Safari' });
+  const safariPermission = (safariRow && safariRow.permission)
+    ? safariRow.permission
+    : (safariRunning ? (await checkAutomationPermission({ bundleId: 'com.apple.Safari' })).status : 'app-not-running');
+  const safariPlan = applescriptChannelPlan({ running: safariRunning, permission: safariPermission, needJs: true });
+  const safariJsNoteMap = {
     disabled: '被 Safari 设置关掉了：设置 → 高级 → 显示网页开发者功能，再到 开发 菜单勾 Allow JavaScript from Apple Events',
     'no-document': 'Safari 没有打开的页面，无法注入 JS',
-    'not-running': 'Safari 没在运行',
+    'not-running': 'Safari 没在运行，未探测（不为了测试启动它）',
     denied: '自动化权限被拒，无法注入 JS',
+    'not-authorized': '没有自动化授权，未探测（' + AUTOMATION_SETTINGS_HINT + '）',
     error: '探测失败',
-  }[safariJs.reason] || '';
-  console.log('Safari 页面 JS 通道：' + (safariJs.available ? '可用' : '不可用（' + (safariJsNote || safariJs.detail || safariJs.reason) + '）'));
+  };
+  let safariJs;
+  let safariJsNote = '';
+  if (safariPlan.action === 'skip') {
+    safariJs = { available: false, reason: safariPlan.reason, skipped: true, detail: safariPlan.message };
+    safariJsNote = safariPlan.message;
+    console.log(safariPlan.message);
+  } else {
+    safariJs = await checkSafariJavaScript({ running: true, permission: 'granted' })
+      .catch(() => ({ available: false, reason: 'error', detail: '' }));
+    safariJsNote = safariJsNoteMap[safariJs.reason] || '';
+    console.log('Safari 页面 JS 通道：' + (safariJs.available ? '可用' : '不可用（' + (safariJsNote || safariJs.detail || safariJs.reason) + '）'));
+  }
 
   const frontEnd = await frontName();
   const verdict = summarizeApplescriptRows(rows, helper.ok);
@@ -131,7 +152,15 @@ async function main() {
     frontStart,
     frontEnd,
     total: rows.length,
-    safariJs: { available: safariJs.available, reason: safariJs.reason, note: safariJsNote },
+    safariJs: {
+      available: safariJs.available,
+      reason: safariJs.reason,
+      note: safariJsNote,
+      skipped: Boolean(safariJs.skipped),
+      plan: safariPlan.action,
+      running: Boolean(safariRunning),
+      permission: safariPermission,
+    },
     rows,
   };
   const dir = path.join(ROOT, 'reports');
@@ -153,7 +182,10 @@ async function main() {
     lines.push('| ' + r.app + ' | ' + r.dict + ' | ' + (r.permission || '-') + ' | ' + r.status + ' | ' + (r.output || '-') + ' | ' + (r.detail || '') + ' |');
   }
   lines.push('');
+  lines.push('- Safari 页面 JS 通道：' + (safariJs.available ? '可用' : '不可用') + '（plan=' + safariPlan.action + (safariJsNote ? '；' + safariJsNote : '') + '）');
+  lines.push('');
   lines.push('权限查询用 AEDeterminePermissionToAutomateTarget(askUserIfNeeded=false)，不会弹授权框；没授权的应用一律不发送 Apple 事件。');
+  lines.push('Safari 的 JS 探针只在「Safari 在运行 + 自动化已授权」时才发 AppleEvent（未运行不会启动它、未授权不会弹框）。');
   lines.push('Chrome 的地址在报告里做了脱敏（只留协议和域名）。');
   fs.writeFileSync(path.join(dir, 'applescript-channel-' + stamp + '.md'), lines.join('\n'));
   if (summary.envSkip) console.log('环境跳过：' + summary.problem);

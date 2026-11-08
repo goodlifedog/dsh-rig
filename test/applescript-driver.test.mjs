@@ -175,14 +175,82 @@ test('Safari JS 通道错误分类：设置没开要说清楚，不能笼统报�
 });
 
 test('Safari JS 通道探测：可用时返回结果，不可用时带分类', async () => {
-  const ok = await checkSafariJavaScript({ exec: async () => ({ stdout: '2\n' }) });
+  const ok = await checkSafariJavaScript({ running: true, permission: 'granted', exec: async () => ({ stdout: '2\n' }) });
   assert.equal(ok.available, true);
   assert.equal(ok.result, '2');
 
   const err = new Error('Command failed');
   err.stderr = "You must enable 'Allow JavaScript from Apple Events' in the Developer section of Safari Settings";
-  const disabled = await checkSafariJavaScript({ exec: async () => { throw err; } });
+  const disabled = await checkSafariJavaScript({ running: true, permission: 'granted', exec: async () => { throw err; } });
   assert.equal(disabled.available, false);
   assert.equal(disabled.reason, 'disabled');
   assert.ok(/Apple Events/.test(disabled.detail));
+});
+
+test('Safari JS 探针：Safari 没在运行 → not-running 跳过，绝不执行 osascript（H3）', async () => {
+  const probes = [];
+  let execCalls = 0;
+  const r = await checkSafariJavaScript({
+    deps: {
+      isAppRunning: async (app) => { probes.push(app); return false; },
+      checkAutomationPermission: async () => { throw new Error('不该查授权'); },
+      exec: async () => { execCalls += 1; return { stdout: '2' }; },
+    },
+  });
+  assert.equal(r.available, false);
+  assert.equal(r.reason, 'not-running');
+  assert.equal(r.skipped, true);
+  assert.equal(r.running, false);
+  assert.equal(execCalls, 0, 'Safari 没在运行就不许发 AppleEvent（tell 会启动它）');
+  assert.deepEqual(probes, [{ appName: 'Safari', bundleId: 'com.apple.Safari' }]);
+});
+
+test('Safari JS 探针：未授权 → not-authorized 跳过，绝不执行 osascript（H3）', async () => {
+  let execCalls = 0;
+  const r = await checkSafariJavaScript({
+    deps: {
+      isAppRunning: async () => true,
+      checkAutomationPermission: async () => ({ status: 'needs-consent', code: -1744 }),
+      exec: async () => { execCalls += 1; return { stdout: '2' }; },
+    },
+  });
+  assert.equal(r.available, false);
+  assert.equal(r.reason, 'not-authorized');
+  assert.equal(r.skipped, true);
+  assert.equal(r.permission, 'needs-consent');
+  assert.equal(execCalls, 0, '没授权就不许发 AppleEvent（会弹 TCC 授权框）');
+  assert.match(r.message, /自动化/);
+  assert.match(r.message, /隐私与安全性/);
+});
+
+test('Safari JS 探针：已运行且已授权才执行 osascript', async () => {
+  let execCalls = 0;
+  const r = await checkSafariJavaScript({
+    deps: {
+      isAppRunning: async () => true,
+      checkAutomationPermission: async () => ({ status: 'granted', code: 0 }),
+      exec: async (bin, args) => {
+        execCalls += 1;
+        assert.ok(bin.includes('osascript'));
+        assert.ok(args.join(' ').includes('Safari'));
+        return { stdout: '2\n' };
+      },
+    },
+  });
+  assert.equal(r.available, true);
+  assert.equal(r.result, '2');
+  assert.equal(execCalls, 1);
+});
+
+test('Safari JS 探针：运行探测抛错时按未运行处理（不冒进）', async () => {
+  let execCalls = 0;
+  const r = await checkSafariJavaScript({
+    deps: {
+      isAppRunning: async () => { throw new Error('probe failed'); },
+      exec: async () => { execCalls += 1; return { stdout: '2' }; },
+    },
+  });
+  assert.equal(r.available, false);
+  assert.equal(r.reason, 'not-running');
+  assert.equal(execCalls, 0);
 });
