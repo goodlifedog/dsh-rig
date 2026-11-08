@@ -32,7 +32,7 @@
 | `BG_KEEP_MS` | 10000 / 6000 | `core/tasks/background-control.mjs`<br>`core/tasks/browser-background.mjs` |
 | `BG_KEEP_NOTE` | （开关，设 1 开启） | `core/tasks/background-control.mjs` |
 | `BG_VERIFY_TIMEOUT_MS` | — | `scripts/bg-verify.mjs` |
-| `CDP_PORT` | 9333 | `core/cdp.mjs` |
+| `CDP_PORT` | 9333 | `core/cdp.mjs`<br>`scripts/cdp-probe.mjs` |
 | `CHROME_APP` | Google Chrome | `core/user-chrome.mjs` |
 | `CHROME_BIN` | /Applications/Google Chrome.app/Contents/MacOS/Google Chrome | `core/browser.mjs` |
 | `CLEANUP_ALLOW_LARGE` | （开关，设 1 开启） | `scripts/cleanup-test-data.mjs` |
@@ -76,7 +76,7 @@
 | `MONITOR_FAST` | （开关，设 1 开启） | `scripts/monitor.mjs` |
 | `MONITOR_FPS_SECONDS` | 12 | `scripts/monitor.mjs` |
 | `NOTES_CLEANUP_FORCE` | （开关，设 1 开启） | `scripts/cleanup-test-data.mjs` |
-| `OCU_BIN` | — | `core/daemon.mjs`<br>`core/platform.mjs`<br>`core/tasks/headless-demo.mjs`<br>`core/tasks/platform-demo.mjs` |
+| `OCU_BIN` | — | `core/daemon.mjs`<br>`core/tasks/headless-demo.mjs`<br>`core/tasks/platform-demo.mjs` |
 | `OPEN_COMPUTER_USE_VISUAL_CURSOR` | — | `core/tasks/headless-demo.mjs` |
 | `OVERLAY_ATTACH_DSH` | — | `overlay/main.js` |
 | `OVERLAY_ATTACH_FAST_MS` | — | `overlay/main.js` |

@@ -201,10 +201,10 @@ node desktop-agent/core/cdp.mjs shot --port=9333 --out=/tmp/cdp-probe-shot.png
 
 ### 3.9 一条命令跑完验收
 
-验收脚本：`desktop-agent/flow/cdp-probe.mjs`（前置：overlay 带 9333 启动）。
+验收脚本：`desktop-agent/scripts/cdp-probe.mjs`（前置：overlay 带 9333 启动）。
 
 ~~~bash
-node desktop-agent/flow/cdp-probe.mjs 9333
+node desktop-agent/scripts/cdp-probe.mjs 9333
 ~~~
 
 实测输出（13/13 全过）：
@@ -424,7 +424,7 @@ node desktop-agent/core/cdp.mjs shot     --port=9333 --out=/tmp/a.png
 如果以后换成浏览器自带的 WebSocket 客户端（会带 Origin），需要给应用补 `--remote-allow-origins=*`。
 ## 7. CDP vs 坐标点击（sky_click）：怎么选
 
-对照 `flow/RECIPE.md` 里的实测：`accessibility` 元素点击最稳；`sky_click` 时灵时不灵、要先截图、
+对照历史实测（原 `flow/RECIPE.md`，已归档）：`accessibility` 元素点击最稳；`sky_click` 时灵时不灵、要先截图、
 坐标是窗口内坐标、窗口一动就失效；`global` 会移动真实指针，禁用。
 
 | 场景 | 首选 | 兜底 | 理由 |
@@ -440,12 +440,12 @@ node desktop-agent/core/cdp.mjs shot     --port=9333 --out=/tmp/a.png
 2. 已经在带调试端口的模式下运行？是 → 直接 CDP。
 3. AX 树里能定位到目标控件？能 → AX（不需要重启，零打扰）。
 4. 用户接受重启目标应用？能 → CDP（先完全退出，再带参数启动，随机端口，用完关端口）。
-5. 都不行 → AX 定位 + `sky_click` 坐标点击 + **读回状态校验**（沿用 RECIPE 的轮询校验策略）。
+5. 都不行 → AX 定位 + `sky_click` 坐标点击 + **读回状态校验**（动作后轮询读回，确认真的生效）。
 
 两条硬建议：
 
 - **任何兜底动作之后都必须读回校验**（CDP 用 `evaluate` 读 DOM/状态，AX 用重新 snapshot），
-  不要因为「命令返回成功」就当动作生效了——RECIPE 里已经记录过点击被吞的情况。
+  不要因为「命令返回成功」就当动作生效了——实测里记录过点击被吞的情况。
 - **CDP 用完就关**：端口只在任务期间开放，任务结束 kill 或让应用退出；不要让调试端口长期常驻。
 
 ## 8. 复现步骤（照抄可跑）
@@ -472,7 +472,7 @@ node desktop-agent/core/cdp.mjs eval --port=9333 \
   --expr="document.getElementById('logs').className"
 
 # 5. 一条命令跑完整验收
-node desktop-agent/flow/cdp-probe.mjs 9333
+node desktop-agent/scripts/cdp-probe.mjs 9333
 
 # 6. 清理
 pkill -f "desktop-agent/overlay"
@@ -495,7 +495,7 @@ pkill -f "desktop-agent/overlay"
 ## 10. 文件
 
 - `desktop-agent/core/cdp.mjs` —— 零依赖 CDP 客户端（HTTP 发现、RFC6455 最小实现、evaluate/click/insertText/screenshot、命令行）
-- `desktop-agent/flow/cdp-probe.mjs` —— 13 项验收脚本（在带端口的 overlay 上跑）
+- `desktop-agent/scripts/cdp-probe.mjs` —— 13 项验收脚本（在带端口的 overlay 上跑）
 - `desktop-agent/core/electron-task.mjs` —— 任务层封装（启动/连接/等就绪/生命周期，见第 11 节）
 - `desktop-agent/core/tasks/electron-demo.mjs` —— 离屏 Electron 实例 + CDP 的自证任务（10 项检查）
 - `desktop-agent/flow/CDP-FALLBACK.md` —— 本文件

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // 外部评审用的巡检脚本：一条命令看清「现在项目健康不健康」。
 // 只读：不跑验收、不启动应用、不改任何文件。
-//   node flow/review-watch.mjs
+//   node scripts/review-watch.mjs
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -53,8 +53,8 @@ safe('孤儿任务', () => {
     }
   };
   walk(ROOT);
-  // 排除评审文档自身：它会在正文里提到这些任务名，否则会把孤儿误判成“被引用”
-  const texts = files.filter((p) => !p.includes('core/tasks/') && !/flow\/REVIEW-/.test(p)).map((p) => fs.readFileSync(p, 'utf8'));
+  // 只统计“真正引用任务名”的文档/脚本：任务注册目录本身不算引用
+  const texts = files.filter((p) => !p.includes('core/tasks/')).map((p) => fs.readFileSync(p, 'utf8'));
   const orphans = tasks.filter((t) => !texts.some((x) => x.includes(t)));
   return orphans.length ? orphans.length + ' 个：' + orphans.slice(0, 6).join(', ') : '0';
 });

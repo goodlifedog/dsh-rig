@@ -51,8 +51,8 @@
     用户键鼠活跃时默认跳过（`shouldDeferForActiveUser`）。
   - 修复边界（防止修成新的洞）：**门禁只跳过、不启动**，修复后的路径里不许新增"为了过测试而 open/ensureApp"的调用；
     `isAppRunning` 抛错 / 超时一律按 `false` 处理（fail-closed），只认"已经在运行"，不认"也许马上会运行"。
-  - 现状与逐文件清单见 `flow/OCU-CALL-AUDIT.md` 第 8 节：11 处高危调用点已全部加门禁，
-    单测见 `test/app-presence.test.mjs`、`test/task-app-presence-gate.test.mjs`。
+  - 现状：11 处高危调用点已全部加运行门禁，单测见 `test/app-presence.test.mjs`、`test/task-app-presence-gate.test.mjs`。
+    （逐文件清单在仓库外归档的调用审计里，不随仓库发布。）
 - **不做不可逆操作**：发送、删除、支付这类动作需要任务显式声明，脚本里默认不碰。
 - **不用全局指针兜底**：不通过移动系统指针来点击。
 

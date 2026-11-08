@@ -121,6 +121,8 @@ npm run accept     # 需要本机服务在跑，输出 reports/acceptance-*.md
 会跑：overlay 在线、小窗显隐、scan、multi-app、form-fill、platform-demo、browser-demo、electron-demo。
 环境不具备时记 SKIP 并写原因。
 
+只读巡检（不起应用、不跑验收、不改文件）：`node scripts/review-watch.mjs`，一条命令看清服务/端口/安全边界/孤儿任务。
+
 ## 七、锁屏时哪些指标不能信
 
 锁屏后系统不让访问窗口服务，这些会失真，不要当成回归：

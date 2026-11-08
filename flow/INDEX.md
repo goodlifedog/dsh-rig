@@ -1,75 +1,45 @@
 # 文档索引（按「想做什么」找）
 
-> `flow/` 里文档多，先看这张表，最多十条。找不到再从 [README](../README.md) 的目录进。
+> `flow/` 只放**长期规范**：能回答「怎么做」的文档。一次性过程记录（评审/复盘/交接/台账/任务单/已收口的审计）
+> 已移出仓库归档，不在这里。找入口也可从 [README](../README.md) 的目录进。
 
 | 我想… | 看这份 |
 | --- | --- |
 | 让它控制某个应用（能做什么、怎么控、有什么坑） | [BACKGROUND-CONTROL.md](BACKGROUND-CONTROL.md) + [../docs/MAC-APPS.md](../docs/MAC-APPS.md) |
 | 知道它为什么能支持一大类软件（运行时/通道/驱动链） | [../docs/APP-SUPPORT-ARCHITECTURE.md](../docs/APP-SUPPORT-ARCHITECTURE.md) |
-| 加一个新应用或新门类进适配 | [../docs/MAC-APPS.md](../docs/MAC-APPS.md) 第七节 + `core/app-presets.mjs` |
-| 下一批该适配哪些应用（候选、通道、风险、不建议名单） | [APP-ADAPTER-PLAN.md](APP-ADAPTER-PLAN.md) |
-| 看它现在健康不健康、验收跑什么 | [MONITORING.md](MONITORING.md) + [COVERAGE.md](COVERAGE.md) |
-| 查安全边界（能防什么、还差什么） | [../docs/SECURITY.md](../docs/SECURITY.md) |
+| 加一个新应用或新门类进适配 | [../docs/MAC-APPS.md](../docs/MAC-APPS.md) + [../docs/ADAPTERS.md](../docs/ADAPTERS.md) |
 | 搞 Chrome / 浏览器后台控制 | [CDP-FALLBACK.md](CDP-FALLBACK.md) |
 | 哪些应用能走 CDP（实测/理论/不支持三档） | [CDP-READINESS.md](CDP-READINESS.md) |
-| 团队分工与监督规则（固定 8 个成员） | [TEAM-BOARD.md](TEAM-BOARD.md) |
-| 安全评审发现了什么（高危/中危/已确认安全） | [../docs/SECURITY-REVIEW-2026-11-08.md](../docs/SECURITY-REVIEW-2026-11-08.md) |
-| 哪些任务会把没运行的应用偷偷拉起、现在怎么修的 | [OCU-CALL-AUDIT.md](OCU-CALL-AUDIT.md) |
-| 哪些通道要什么系统权限、缺权限会怎样 | [PERMISSIONS-AUDIT.md](PERMISSIONS-AUDIT.md) |
-| 这些测试到底能证明什么、证明不了什么 | [TEST-BOUNDARIES.md](TEST-BOUNDARIES.md) |
-| 看 ocu（底层能力）怎么接进来的 | [OCU-INTEGRATION.md](OCU-INTEGRATION.md) |
+| 看它现在健康不健康、验收跑什么 | [MONITORING.md](MONITORING.md) + [COVERAGE.md](COVERAGE.md) |
+| 查安全边界（能防什么、还差什么） | [../docs/SECURITY.md](../docs/SECURITY.md) |
+| 看 ocu（底层能力）怎么接进来、怎么跟进上游 | [OCU-INTEGRATION.md](OCU-INTEGRATION.md) + [OCU-SYNC.md](OCU-SYNC.md) |
 | 打包、发布、CI | [PACKAGING.md](PACKAGING.md) + [PUBLISH.md](PUBLISH.md) |
-| Windows 上跑（未实机验证） | [WINDOWS-TESTING.md](WINDOWS-TESTING.md) + [CROSS-PLATFORM.md](CROSS-PLATFORM.md) |
-| 写入/投递类任务的规则 | [WRITE.md](WRITE.md) + [WRITE.md](WRITE.md) |
+| Windows / 跨平台怎么跑 | [WINDOWS-TESTING.md](WINDOWS-TESTING.md) + [CROSS-PLATFORM.md](CROSS-PLATFORM.md) |
+| 写写入/投递类任务（不碰用户数据） | [WRITE.md](WRITE.md) |
+| 写任务时日志怎么标（PASS / FAIL / 环境跳过 / ❌） | [TASK-OUTPUT.md](TASK-OUTPUT.md) |
+| 代码风格与工程约定 / 技术选型 | [CODEX-STANDARD.md](CODEX-STANDARD.md) + [CODEX-TECH-STACK.md](CODEX-TECH-STACK.md) |
+| 外部监控侧现在看到什么（评审侧维护的日志） | [SUPERVISION.md](SUPERVISION.md) |
 
-## 发布与协作（新加的，放这里免得找不到）
+## 自动生成的清单（别手改，跑命令重新生成）
 
-> **只想看一页？→ [START-HERE.md](START-HERE.md)**
->
-> **通宵收尾的结论 → [FINAL-REPORT.md](FINAL-REPORT.md)**
->
-> **总任务（对外化 + 自主适配 + 协作约定）→ [TASK-MASTER-PLAN.md](TASK-MASTER-PLAN.md)**
->
->
-> **待执行任务单：改名 + 内置 ocu + 可搜索性 → [TASK-RENAME-TO-RIG.md](TASK-RENAME-TO-RIG.md)**
-
-
-| 我想… | 看这份 |
-| --- | --- |
-| 现在到底能不能发（Go/No-Go + 实测证据） | [PUBLISH-VERDICT.md](PUBLISH-VERDICT.md) |
-| 把它公开出去（GitHub / npm）的步骤 | [PUBLISH-CHECKLIST.md](PUBLISH-CHECKLIST.md) |
-| 外部评审留的补丁怎么打 | [PATCHES.md](PATCHES.md) |
-| 写任务时日志该怎么标（PASS/FAIL/环境跳过/❌） | [TASK-OUTPUT.md](TASK-OUTPUT.md) |
-| 多会话 / 多 agent 一起用这个仓库 | [AGENT-COORDINATION.md](AGENT-COORDINATION.md) |
-| 看外部评审提过什么、还剩什么 | [REVIEW-ACTIONS.md](REVIEW-ACTIONS.md) + [REVIEW-RETRO.md](REVIEW-RETRO.md) |
+- 有哪些任务、各自做什么：[TASKS.md](TASKS.md)（`npm run tasks:doc`）
+- 有哪些环境变量、默认值多少：[TASK-ENV.md](TASK-ENV.md)（`npm run env:doc`）
 
 ## 常用命令
 
 ```bash
-npm run verify        # 语法检查 + 单测 + 仓库体检（提交前跑；不含端到端验收和打包检查）
-npm run accept        # 端到端验收（含新通道；你在用电脑时会被拒绝，加 ACCEPT_FORCE=1 可强跑）
-npm run apps:inventory   # 本机装的应用里哪些已适配、哪些没测
+npm run verify         # 语法检查 + 单测 + 仓库体检（提交前跑）
+npm run verify:safe    # 不碰屏幕的验收（用户在场也能跑）
+npm run accept         # 端到端验收（会切窗口；你在用电脑时会被拒绝，ACCEPT_FORCE=1 强跑）
+npm run apps:inventory # 本机装的应用里哪些已适配、哪些没测
 npm run app:resolve -- Finder   # 某个应用现在能用哪条通道
-npm run cleanup:test  # 清测试数据（默认只报告；--force 只删 [AGENT-TEST] 标记的笔记；--force-all 才放开历史测试词与按条数删）
-npm run prune         # 日志/报告轮转（默认演练，--apply 真删）
-npm run service:status   # 服务是否由 launchd 管理、有没有游离进程占端口
-npm run verify:safe      # 不碰屏幕的验收（用户在场也能跑）
-npm run away:maintain    # 用户离开时一条龙：verify:live → 新门类矩阵 → 重清点（自带离开/回来守卫，--dry-run 只打印）
+npm run cleanup:test   # 清测试数据（默认只报告，--force 只删带 [AGENT-TEST] 标记的笔记）
+npm run prune          # 日志/报告轮转（默认演练，--apply 真删）
+npm run service:status # 服务是否由 launchd 管理、有没有游离进程占端口
 ```
-
-## 其它资料（上面表格放不下，但有用）
-
-- 有哪些任务、各自做什么：[TASKS.md](TASKS.md)（`npm run tasks:doc` 生成）
-- 有哪些环境变量、默认值多少：[TASK-ENV.md](TASK-ENV.md)（`npm run env:doc` 生成）
-- 写任务/验收判据：[TASK-OUTPUT.md](TASK-OUTPUT.md)（PASS / FAIL / 环境跳过 / ❌ 的语义）
-- 代码风格与工程约定：[CODEX-STANDARD.md](CODEX-STANDARD.md)；技术选型：[CODEX-TECH-STACK.md](CODEX-TECH-STACK.md)
-- 底层 ocu 怎么同步进来：[OCU-SYNC.md](OCU-SYNC.md)
-- 外部评审留下的补丁：[PATCHES.md](PATCHES.md)；发版文案草稿：[RELEASE-NOTES-DRAFT.md](RELEASE-NOTES-DRAFT.md)
-- 方法论与历史记录：[RECIPE.md](RECIPE.md)（踩坑总结）、[SCAN.md](SCAN.md)（扫描类任务）
-- 外部监控日志（评审侧维护、执行侧按需读取）：[SUPERVISION.md](SUPERVISION.md)
-- 外部评审收尾结论：[FINAL-REPORT.md](FINAL-REPORT.md)（工程可发、剩下的是主人的决定）
 
 ## 维护约定
 
-- 新增能力要同时更 [CHANGELOG.md](../CHANGELOG.md) 和对应文档；`npm run repo:check` 会检查后台 API 是否有文档。
-- 评测/外部评审记录放 `flow/REVIEW-*.md`（详细过程在 `REVIEW-2026-11-07.md`，结论与待办在 `REVIEW-ACTIONS.md`），只读巡检脚本是 `flow/review-watch.mjs`。
+- 新增能力要同时更新 [CHANGELOG.md](../CHANGELOG.md) 和对应规范文档；`npm run repo:check` 会检查后台 API 是否有文档、文档引用是否失效。
+- `flow/` 只收规范；评审/复盘/交接/一次性任务单请放仓库外归档目录，不要提交进来。
+- 新增/移动流程脚本放 `scripts/`（不要放 `flow/`）。

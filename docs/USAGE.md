@@ -35,7 +35,7 @@
 | `core/` | daemon、任务运行器、平台层、浏览器/CDP、ocu 封装 |
 | `core/tasks/` | 所有任务，一个文件一个任务，文件名就是任务名 |
 | `overlay/` | Electron 小窗（端口 7788） |
-| `flow/` | 方法论与踩坑记录（RECIPE / CDP-FALLBACK / PACKAGING …） |
+| `flow/` | 长期规范文档（控制/通道/打包/发布/跨平台，入口见 `flow/INDEX.md`） |
 | `logs/` | 运行日志（不进 git） |
 | `reports/` | 验收报告（不进 git） |
 

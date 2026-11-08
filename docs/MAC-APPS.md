@@ -139,7 +139,7 @@ ocu 的读取接口（`snapshot` / `get_app_state` / `state` / `find` / `readSaf
 对策：碰具体应用之前先 `isAppRunning`（`core/app-presence.mjs` 的 `requireAppRunning` / `reportAppPresence`），
 没运行就**环境跳过**（exit 0、不算失败），绝不"为了演示"启动；
 确需启动的验收任务才 `ensureAppRunning` + 登记 `launchedByUs` + 结束 `quitApp`。
-逐文件清单、修复状态与修复边界见 `flow/OCU-CALL-AUDIT.md`。
+逐文件清单与修复状态见仓库外归档（该审计已收口）；门禁规则边界见 [SECURITY.md](SECURITY.md)。
 
 ## 四、实测记录（2026-11-07，同一台机器）
 
