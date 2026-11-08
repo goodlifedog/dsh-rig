@@ -5,7 +5,7 @@
 - 主要输入（均只读）：
   - reports/app-inventory-2026-11-08T13-54-57-858Z.md（最新清点，38 个应用）
   - core/app-presets.mjs（门类预设）
-  - flow/APP-ADAPTER-PLAN.md、flow/CDP-READINESS.md、flow/COVERAGE.md
+  - flow/CDP-READINESS.md、flow/COVERAGE.md（适配总览见本文与 docs/MAC-APPS.md）
   - docs/MAC-APPS.md（第六~十节：覆盖情况、边界、前台风险名单）
   - reports/app-matrix-*.json、reports/applescript-channel-*.json、reports/cdp-driver-*.json（历史实测）
 - 证据标记：**S = 有实测证据**（AX 读数 / AppleScript 通道 / CDP 实测 / 真任务通过）；**P = 预判**（包结构、运行时族、历史报告推断，尚未实测）；**画面级** = 读不到结构化树，只能回显画面。
@@ -117,7 +117,7 @@
 ## 6. 证据索引与建议 INDEX 行
 
 - 最新清点：reports/app-inventory-2026-11-08T13-54-57-858Z.md
-- 适配方案：flow/APP-ADAPTER-PLAN.md
+- 应用手册与风险名单：docs/MAC-APPS.md
 - CDP 三档：flow/CDP-READINESS.md
 - AX 覆盖率：flow/COVERAGE.md
 - 应用手册/风险名单：docs/MAC-APPS.md 第六~十节

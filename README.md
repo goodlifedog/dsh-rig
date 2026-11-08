@@ -1,14 +1,40 @@
-# Desktop Agent
+# DSH Rig
 
-[![CI](https://github.com/USER/desktop-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/USER/desktop-agent/actions/workflows/ci.yml)
+**后台控制真实的 macOS 应用，全程不抢你的焦点。**
+*Drive real macOS apps in the background — without stealing your focus.*
 
-> 后台电脑控制 + 小窗回显。所有操作在你的真实应用里完成，不动你的鼠标、不切你的窗口。
-> 实测：你正在操作电脑时跑一次 27 秒并发验证（隐藏应用 + headless 浏览器两族都在干活），**273 次前台采样全是你的应用、0 次被抢、屏幕上没有新窗口**。
-> **边界**：不是物理上"绝对零闪动"——实测会自己抢前台的应用（Telegram/ChatGPT/QQ/Gemini/Ghostty/WPS 等）已进风险名单，默认跳过读取不再触发；
-> 名单外的新应用第一次被读时若有闪动会立刻还原并自动记入名单。会动屏幕的完整验收只在长时间无操作时跑，且你一碰键鼠 1-2 秒内停。
+[![CI](https://github.com/goodlifedog/dsh-rig/actions/workflows/ci.yml/badge.svg)](https://github.com/goodlifedog/dsh-rig/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/dsh-rig.svg)](https://www.npmjs.com/package/dsh-rig)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![node](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](package.json)
 
-一个**看得见、验得准**的后台控制层：**控制层**用 Accessibility 语义树驱动真实应用，**展示层**用一个贴在 DSH 窗口里的小窗实时回显它在干什么，**调度层**是常驻后台的 daemon 加任务运行器。
-多通道（AX / CDP / AppleScript / 画面）和运行时归类是**实现手段**；项目真正的卖点是小窗回显、后台调度和可验证的结论，不是"又一个自动化框架"。
+> **Demo（GIF 占位）**：`docs/assets/demo.gif` 目前还没录。录一段 6–10 秒的
+> 「后台操作真实应用、前台始终是你自己的窗口」的录屏，存成 `docs/assets/demo.gif`，
+> 再按 [docs/assets/README.md](docs/assets/README.md) 里的两行说明把这一段替换掉，首屏就会显示动图。
+> 录制方法、推荐分辨率/帧率/体积上限也写在那份文件里。
+
+**关键词**：macos · accessibility · computer-use · background-automation · no-focus-steal · overlay · electron · screenshot · cdp · devtools-protocol · ai-agent · cli · nodejs · task-runner · verification
+
+**一句话安装**：`npm i -g dsh-rig`，然后 `dsh-rig start`。
+
+**它是什么**：一个**看得见、验得准**的后台控制层——**控制层**用 Accessibility 语义树驱动真实应用，
+**展示层**是贴在你窗口里的小窗（实时回显它在干什么），**调度层**是常驻 daemon + 任务运行器。
+多通道（AX / CDP / AppleScript / 画面）与按运行时归类都只是**实现手段**；卖点是
+**小窗回显、后台调度、可验证的结论**，不是又一个自动化框架。
+
+**clone 就能用**：
+
+```bash
+git clone https://github.com/goodlifedog/dsh-rig.git && cd dsh-rig
+npm run setup      # 装依赖（根目录 + overlay）
+npm run doctor     # 环境自检：ocu / 权限 / 小窗 / daemon
+npm run daemon     # 起后台服务
+```
+
+> 实测边界：你正在操作电脑时跑并发验证（隐藏应用 + headless 浏览器两族同时干活），
+> **273 次前台采样全部是你的应用、0 次被抢、屏幕上没有新窗口**。
+> 不是物理上"绝对零闪动"——实测会自己抢前台的应用（Telegram/ChatGPT/QQ/Gemini/Ghostty/WPS 等）已在风险名单里默认跳过；
+> 名单外的应用第一次被读时若有闪动会立刻还原并自动记入名单。会动屏幕的完整验收只在长时间无操作时跑，且你一碰键鼠 1–2 秒内就停。
 
 ## 它解决什么问题
 
@@ -124,14 +150,14 @@ await mcp.callTool('get_app_state', { app: 'Google Chrome' });
 
 | 模块 | 行数 | 内容 |
 | --- | --- | --- |
-| `core/` | 12500+ | daemon、任务队列、平台抽象、MCP 客户端、CDP 客户端、拟人输入、验收框架、31 个任务 |
+| `core/` | 12500+ | daemon、任务队列、平台抽象、MCP 客户端、CDP 客户端、拟人输入、验收框架、26 个任务 |
 | `overlay/` | 4000+ | Electron 多会话小窗主进程、HTTP 服务、渲染层、会话门控、点击穿透 |
 | `scripts/` | 2300+ | 仓库体检、重启自检、版本同步、效率基准、打包、清理、巡检 |
 | `test/` + `tools/` | 4000+ | 500+ 项单元/集成测试、Windows UIA 桥 |
 
 其中**完全自主设计的部分**：
 
-1. **可验证执行**：任务的成功判据不靠脚本自证，而是读外部事实（消息列表差集）。这条抓出过一次 8 连假报。
+1. **可验证执行**：任务的成功判据不靠脚本自证，而是读外部事实（读回真实值 / 操作前后差集）。这条抓出过一次连续 8 次误报。
 2. **多会话小窗**：会话标题门控、点击穿透、按画面比例放大、空闲自愈隐藏规则。
 3. **平台抽象**：同一套代码按平台切换（macOS 已实机验证；Windows 分支照 Win32 API 写好但未实机验证），随包运行时与全局安装自动适配。
 4. **调度与护栏**：应用级文件锁、前台守卫、连续失败自动停。

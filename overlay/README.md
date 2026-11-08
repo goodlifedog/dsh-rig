@@ -258,7 +258,7 @@ GET /health 关键字段：
 
     curl -s -X POST http://127.0.0.1:7788/status \
       -H 'Content-Type: application/json' \
-      -d '{"text":"正在筛选 BOSS 直聘职位","state":"running"}'
+      -d '{"text":"正在后台操作应用","state":"running"}'
 
     # 多会话：alpha、beta 各自一个窗口
     curl -s -X POST http://127.0.0.1:7788/status \

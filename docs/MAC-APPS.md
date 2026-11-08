@@ -280,7 +280,7 @@ npm run apps:inventory                     # 刷新清点
 | 清理脚本 dry-run | 通过 | 用户在用电脑时跳过笔记清理、不动 TextEdit/ChatGPT 数据，前台不变 |
 | 后台操作稳定性 | 15 轮 0 失败 | 0 次前台抢占、前台始终 DeepSeek Harness；单轮 944–1028ms（中位 973ms） |
 | 并发验证（你正在操作时） | 通过 | 27 秒里 273 次前台采样全是 DeepSeek Harness、0 次被抢、屏幕上计算器窗口数 0；期间检测到你的键鼠输入（最小空闲 10ms）——AI 干活与用户操作同时进行、互不影响 |
-| 端到端验收（acceptance） | 10 PASS / 3 SKIP / 0 FAIL | boss-scan、multi-app、platform-demo、browser-demo、electron-demo、cdp-channel、applescript-channel 全 PASS；form-fill 环境跳过；background-control、app-matrix 因用户回到电脑前被立刻停下（标跳过） |
+| 端到端验收（acceptance） | 10 PASS / 3 SKIP / 0 FAIL | multi-app、platform-demo、browser-demo、electron-demo、cdp-channel、applescript-channel 全 PASS；form-fill 环境跳过；background-control、app-matrix 因用户回到电脑前被立刻停下（标跳过） |
 
 ## 九、已知边界
 

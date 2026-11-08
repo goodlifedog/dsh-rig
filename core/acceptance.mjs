@@ -79,7 +79,8 @@ export function runTaskProcess(cmd, args, opts = {}) {
   const idleFn = typeof opts.idleFn === 'function' ? opts.idleFn : hidIdleSec;
   return new Promise((resolve) => {
     const env = opts.env ? { ...process.env, ...opts.env } : process.env;
-    const child = spawn(cmd, args, { cwd: ROOT, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    const spawnFn = typeof opts.spawn === 'function' ? opts.spawn : spawn;
+    const child = spawnFn(cmd, args, { cwd: ROOT, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
     registerActiveTask(child);
     let stdout = '';
     let stderr = '';
@@ -109,6 +110,48 @@ export function runTaskProcess(cmd, args, opts = {}) {
       resolve({ code: code == null ? 1 : code, stdout, stderr, aborted, timedOut });
     });
   });
+}
+
+/**
+ * 分类「示例脚本」的结果（纯函数）：example 脚本自报 SKIP + exit 0 时算环境跳过，不算 PASS。
+ * 超时=FAIL（环境问题除外），用户回来被中止=环境跳过；输出原样带回 RESULTS/日志。
+ *
+ * @param {{code?:number, stdout?:string, stderr?:string, timedOut?:boolean, aborted?:boolean}} [result]
+ * @returns {{ok:boolean, skipped:boolean, detail:string, output:string}}
+ */
+export function classifyExampleResult(result = {}) {
+  const r = result || {};
+  const output = String(r.stdout || '') + String(r.stderr || '');
+  if (r.aborted) {
+    return { ok: true, skipped: true, detail: '环境跳过（用户回到电脑前，已立刻停止示例，不再动屏幕）', output };
+  }
+  if (r.timedOut) {
+    return { ok: false, skipped: false, detail: '超时（示例未在限定时间内结束）', output };
+  }
+  // 脚本自己打印 SKIP 且 exit 0 = 环境不具备，不是能力失败；JSON 里的 envSkip=true 同样认。
+  const selfSkip = /^\s*SKIP\b/m.test(output)
+    || /"envSkip"\s*:\s*true/.test(output)
+    || Boolean(envSkipReason(output));
+  if (r.code === 0) {
+    if (selfSkip) {
+      return { ok: true, skipped: true, detail: '环境跳过（示例自报 SKIP，不算 PASS）', output };
+    }
+    return { ok: true, skipped: false, detail: '', output };
+  }
+  const tail = output.trim().split('\n').slice(-4).join(' ').slice(-200);
+  return { ok: false, skipped: false, detail: tail || ('exit=' + r.code), output };
+}
+
+/** 跑 examples/web-click 示例（不走 runner；注入 spawn 便于单测，不真启动 Chrome） */
+export async function runExampleWebClick(options = {}) {
+  const opts = options || {};
+  const timeoutMs = Number(opts.timeoutMs) || 120000;
+  const r = await runTaskProcess(process.execPath, ['examples/web-click/run.mjs'], {
+    timeout: timeoutMs,
+    spawn: opts.spawn,
+    idleFn: opts.idleFn,
+  });
+  return classifyExampleResult(r);
 }
 
 /**
@@ -642,6 +685,9 @@ async function main() {
   const TASK_PLAN = [
     { name: 'multi-app' },
     { name: 'form-fill' },
+    // 通用网页点击示例：替代已删除的 boss-scan，证明「任意页面按文字找按钮→后台点击→读回结果」。
+    // 它不是 runner 任务，直接 spawn 示例脚本；自己打印 SKIP + exit 0 时算环境跳过。
+    { name: 'web-click', example: 'examples/web-click/run.mjs', timeoutMs: 120000 },
     { name: 'platform-demo' },
     { name: 'browser-demo' },
     { name: 'electron-demo' },
@@ -673,10 +719,22 @@ async function main() {
     if (abortReason) {
       // 用户回来了：先把已经弹出来的小窗收掉，再跳过后续任务（别留一屏幕窗口给用户）
       if (!tidiedForAbort) { tidiedForAbort = true; await tidyOverlayWindows(); }
-      record('任务 ' + task.name, true, '环境跳过（' + abortReason + '），本轮不再继续', true);
+      record(task.example ? '示例 ' + task.name : '任务 ' + task.name, true,
+        '环境跳过（' + abortReason + '），本轮不再继续', true);
       continue;
     }
-    await runTask(task.name, task.timeoutMs, task.env);
+    if (task.example) {
+      const r = await runExampleWebClick({ timeoutMs: task.timeoutMs });
+      record('示例 ' + task.name, r.ok, r.detail, r.skipped);
+      // 输出留在 RESULTS 并打到日志里（示例脚本的 PASS/SKIP/JSON 是排障证据）
+      const last = RESULTS[RESULTS.length - 1];
+      if (last) last.output = r.output;
+      if (r.output.trim()) console.log(r.output.trim().split('\n').map((line) => '  | ' + line).join('\n'));
+      await cleanupUnexpectedApps('示例 ' + task.name + ' 之后');
+      if (await restoreUserFront()) console.log('  （已把前台还给 ' + FRONT_AT_START + '）');
+    } else {
+      await runTask(task.name, task.timeoutMs, task.env);
+    }
   }
 
   // 收尾再还原一次（正常情况下每个任务之后已经还过了）

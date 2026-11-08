@@ -16,8 +16,22 @@ extraResources:
     to: core
     filter:
       - "**/*"
-  - from: ../third_party
-    to: third_party
+  # ocu 运行时与许可：从 npm 依赖（node_modules/open-computer-use）拷，只拷这一个包。
+  # 不要把整个 node_modules 打进 app —— 体积和攻击面都不该背这个。
+  # 运行时落到 Resources/third_party/open-computer-use/bin/ocu，正是 core/platform.mjs#bundledOcu() 找的位置。
+  - from: ../node_modules/open-computer-use
+    to: third_party/open-computer-use
+    filter:
+      - "bin/**"
+      - "dist/**"
+      - "LICENSE"
+      - "NOTICE.md"
+      - "THIRD_PARTY_NOTICES.md"
+      - "README.md"
+      - "package.json"
+  # 本仓库用 scripts/bundle-ocu.mjs 生成的第三方声明（依赖包里没有这一份）
+  - from: ../third_party/open-computer-use/NOTICE.md
+    to: third_party/open-computer-use/NOTICE.md
   - from: ../flow
     to: flow
 mac:

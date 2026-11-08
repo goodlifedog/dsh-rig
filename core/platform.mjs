@@ -13,9 +13,12 @@ import { execFile } from 'node:child_process';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
-/** 随包附带的 ocu（打包成单 App 时用） */
-export function bundledOcu() {
-  const cand = path.join(HERE, '..', 'third_party', 'open-computer-use', 'bin', 'ocu');
+const PROJECT_ROOT = path.join(HERE, '..');
+
+/** 随包附带的 ocu（打包成单 App 时用；install 时由 bundle-ocu.mjs 放到 third_party） */
+export function bundledOcu(options = {}) {
+  const root = (options && options.root) || PROJECT_ROOT;
+  const cand = path.join(root, 'third_party', 'open-computer-use', 'bin', 'ocu');
   return existsSync(cand) ? cand : null;
 }
 
@@ -34,30 +37,47 @@ export function controlBackend() {
 
 /** ocu 可执行文件路径（macOS 与 Windows 都有 npm 全局安装） */
 /** npm 依赖装出来的那份 ocu（npm install 后直接可用，不需要用户全局装） */
-export function dependencyOcu() {
-  const cand = path.join(HERE, '..', 'node_modules', 'open-computer-use', 'bin', 'ocu');
+export function dependencyOcu(options = {}) {
+  const root = (options && options.root) || PROJECT_ROOT;
+  const cand = path.join(root, 'node_modules', 'open-computer-use', 'bin', 'ocu');
   return existsSync(cand) ? cand : null;
 }
 
-export function resolveOcu() {
-  if (process.env.OCU_BIN) return process.env.OCU_BIN;
-  const dep = dependencyOcu();
+/**
+ * ocu 可执行文件的查找顺序（克隆即用的关键）：
+ *   1. OCU_BIN 环境变量（显式指定优先）
+ *   2. node_modules/open-computer-use/bin/ocu ← npm install 装出来的，默认路径
+ *   3. third_party/open-computer-use/bin/ocu  ← bundle-ocu.mjs 随包附带的（打包 .app 用）
+ *   4. ~/.local/bin/ocu（macOS 全局安装）／%APPDATA%/npm/ocu.cmd（Windows 全局安装）
+ * 前两步任一命中就直接返回，所以新装用户不需要先 npm i -g。
+ *
+ * options 只用于单测注入（root/env/homedir/platform），不传就是真实环境。
+ */
+export function resolveOcu(options = {}) {
+  const opts = options || {};
+  const env = opts.env || process.env;
+  const root = opts.root || PROJECT_ROOT;
+  const home = opts.homedir || os.homedir();
+  const plat = opts.platform || process.platform;
+  if (env.OCU_BIN) return env.OCU_BIN;
+  const dep = dependencyOcu({ root });
   if (dep) return dep;
-  const bundled = bundledOcu();
+  const bundled = bundledOcu({ root });
   if (bundled) return bundled;
-  if (isMac) return path.join(os.homedir(), '.local/bin/ocu');
-  if (isWindows) {
-    const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+  if (plat === 'darwin') return path.join(home, '.local/bin/ocu');
+  if (plat === 'win32') {
+    const appData = env.APPDATA || path.join(home, 'AppData', 'Roaming');
     const cand = path.join(appData, 'npm', 'ocu.cmd');
     return existsSync(cand) ? cand : 'ocu.cmd'; // 退回 PATH 查找
   }
   return null;
 }
 
-export function requireOcu() {
-  const bin = resolveOcu();
+export function requireOcu(options = {}) {
+  const bin = resolveOcu(options);
   if (!bin) {
-    throw new Error('当前平台（' + process.platform + '）没有 ocu 控制后端；macOS/Windows 请先 npm i -g open-computer-use，见 flow/CROSS-PLATFORM.md');
+    throw new Error('当前平台（' + process.platform + '）没有 ocu 控制后端；'
+      + '在项目里跑 npm i open-computer-use 即可（已内置依赖），或全局装 npm i -g open-computer-use；见 flow/CROSS-PLATFORM.md');
   }
   return bin;
 }

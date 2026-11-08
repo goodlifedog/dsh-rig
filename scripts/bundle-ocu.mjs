@@ -14,14 +14,23 @@ const ROOT = path.join(__dirname, '..');
 const DEST = path.join(ROOT, 'third_party', 'open-computer-use');
 const withBinary = process.argv.includes('--with-binary');
 
+/**
+ * 找 open-computer-use 的安装位置（按优先级）：
+ *   1. 本项目的 node_modules —— 0.8.0 起它是普通依赖，npm install 就在，不需要用户全局装；
+ *   2. npm 全局 root；
+ *   3. 当前 node 自带的前缀（~/.local/opt/node-* 这类自装 node 的全局目录）。
+ */
 function findOcuRoot() {
   const candidates = [];
+  // 1) 项目依赖（首选：克隆 → npm install 即可，来源和运行时一致）
+  candidates.push(path.join(ROOT, 'node_modules', 'open-computer-use'));
+  // 2) npm 全局
   try {
     const globalRoot = execFileSync('npm', ['root', '-g'], { encoding: 'utf8' }).trim();
     candidates.push(path.join(globalRoot, 'open-computer-use'));
   } catch {}
-  const home = process.env.HOME || process.env.USERPROFILE || '';
-  candidates.push(path.join(home, '.local/opt/node-v20.18.0-darwin-arm64/lib/node_modules/open-computer-use'));
+  // 3) 当前 node 的全局前缀（不写死版本号，换 node 版本也不会失效）
+  candidates.push(path.join(path.dirname(path.dirname(process.execPath)), 'lib', 'node_modules', 'open-computer-use'));
   return candidates;
 }
 
@@ -63,7 +72,10 @@ export function buildNotice(pkg, options = {}) {
 async function main() {
   let src = null;
   for (const c of findOcuRoot()) { if (await exists(c)) { src = c; break; } }
-  if (!src) { console.error('没找到已安装的 open-computer-use，请先 npm i -g open-computer-use'); process.exit(1); }
+  if (!src) {
+    console.error('没找到 open-computer-use：先在项目里 npm install（它已是 dependencies），或 npm i -g open-computer-use');
+    process.exit(1);
+  }
 
   const pkg = JSON.parse(await fsp.readFile(path.join(src, 'package.json'), 'utf8'));
   await fsp.mkdir(DEST, { recursive: true });

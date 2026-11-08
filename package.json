@@ -19,7 +19,12 @@
     "overlay",
     "acceptance-testing",
     "open-computer-use",
-    "agent"
+    "agent",
+    "electron",
+    "cli",
+    "automation",
+    "ui-automation",
+    "ax"
   ],
   "scripts": {
     "status": "node core/status.mjs",
@@ -83,13 +88,16 @@
     "env:doc": "node scripts/env-doc.mjs",
     "away:maintain": "node scripts/away-maintenance.mjs"
   },
-  "homepage": "https://github.com/goodlifedog",
+  "homepage": "https://github.com/goodlifedog/dsh-rig#readme",
   "bin": {
     "dsh-rig": "./core/cli.mjs"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/goodlifedog/dsh-rig.git"
+  },
+  "bugs": {
+    "url": "https://github.com/goodlifedog/dsh-rig/issues"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org",
@@ -101,6 +109,7 @@
   "files": [
     "core/",
     "overlay/",
+    "scripts/",
     "examples/",
     "README.md",
     "ARCHITECTURE.md",
@@ -112,7 +121,6 @@
     "docs/MAC-APPS.md",
     "docs/SECURITY.md",
     "docs/ADAPTERS.md",
-    "docs/OVERLAY-SHOW-PATHS.md",
     "docs/APP-SUPPORT-ARCHITECTURE.md",
     "third_party/open-computer-use/LICENSE",
     "third_party/open-computer-use/NOTICE.md",
