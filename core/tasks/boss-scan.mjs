@@ -5,7 +5,6 @@ import { execFile } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { ocu, overlay, guard, parseJobs, countElements } from '../agentd.mjs';
 import { isAppRunning } from '../background.mjs';
@@ -22,9 +21,9 @@ import { createAppleEventPreflight, runAppleEventGuarded } from '../appleevent-p
 import { classifyOsascriptError } from '../applescript-driver.mjs';
 
 import { isMac } from '../platform.mjs';
+import { isDirectRun } from '../direct-run.mjs';
 // 只有直接运行时才按平台退出：单测会 import 本模块，不能在 import 时 process.exit
-const invokedDirectly = Boolean(process.argv[1])
-  && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const invokedDirectly = isDirectRun(import.meta.url);
 if (!isMac && invokedDirectly) {
   console.error('此任务依赖 osascript 或 sky_key（macOS 专属），Windows 版待移植；跨平台通路验证请跑 platform-demo');
   process.exit(2);

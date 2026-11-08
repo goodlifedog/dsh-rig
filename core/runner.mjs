@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { overlay } from './agentd.mjs';
 import { signalProcessTree } from './orphan-cleanup.mjs';
 import { evaluateTaskPermissionGate, overrideFromEnv, permissionSkipLines } from './permission-gate.mjs';
+import { isDirectRun } from './direct-run.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TASKS_DIR = path.join(__dirname, 'tasks');
@@ -221,8 +222,7 @@ async function runTask(name, { retries = 1, timeoutMs = 300000 } = {}) {
 
 // ---------- CLI ----------
 // 被测试 import 时不能执行 CLI（否则会按 argv 直接 process.exit）
-const invokedDirectly = Boolean(process.argv[1])
-  && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const invokedDirectly = isDirectRun(import.meta.url);
 const argv = process.argv.slice(2);
 const cmd = argv[0];
 const opt = (key, dflt) => {

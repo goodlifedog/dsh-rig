@@ -16,6 +16,7 @@ import { shouldDeferForActiveUser } from '../user-activity.mjs';
 import { installEmergencyAppCleanup } from '../task-emergency-cleanup.mjs';
 import { quitAppSync } from '../sync-quit.mjs';
 import { checkAutomationPermission as defaultCheckAutomationPermission } from '../applescript-driver.mjs';
+import { isDirectRun } from '../direct-run.mjs';
 
 const exec = promisify(execFile);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -192,8 +193,7 @@ async function main() {
 }
 
 // 导入本模块（单测拿纯函数/预检）时不要执行任务本体；runner 直接跑文件时照常执行。
-const invokedDirectly = Boolean(process.argv[1])
-  && (await import('node:path')).resolve(process.argv[1]) === (await import('node:url')).fileURLToPath(import.meta.url);
+const invokedDirectly = isDirectRun(import.meta.url);
 
 if (invokedDirectly) {
   main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });

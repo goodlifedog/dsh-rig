@@ -29,6 +29,7 @@ import { classifyOsascriptError } from '../applescript-driver.mjs';
 import { createRiskGate } from '../front-risk.mjs';
 import { installEmergencyAppCleanup } from '../task-emergency-cleanup.mjs';
 import { quitAppSync } from '../sync-quit.mjs';
+import { isDirectRun } from '../direct-run.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ACCEPTANCE_LOCK = fileURLToPath(new URL('../../reports/.acceptance.lock', import.meta.url));
@@ -558,8 +559,7 @@ async function main() {
   if (!summary.ok && !summary.envSkip) process.exitCode = 1;
 }
 
-const invokedDirectly = Boolean(process.argv[1])
-  && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const invokedDirectly = isDirectRun(import.meta.url);
 
 if (invokedDirectly) {
   main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });

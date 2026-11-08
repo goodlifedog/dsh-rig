@@ -14,6 +14,7 @@ import { resolveOcu, isScreenLocked, lockedSkipNotice } from '../platform.mjs';
 import { frontName as sharedFrontName } from '../background.mjs';
 
 import { isMac } from '../platform.mjs';
+import { isDirectRun } from '../direct-run.mjs';
 if (!isMac) {
   console.error('此任务依赖 osascript 或 sky_key（macOS 专属），Windows 版待移植；跨平台通路验证请跑 platform-demo');
   process.exit(2);
@@ -390,8 +391,7 @@ async function main() {
 }
 
 // 导入本模块（单测拿薄包装）时不要执行任务本体；runner/daemon 仍然是 spawn node <file>。
-const invokedDirectly = Boolean(process.argv[1])
-  && (await import('node:path')).resolve(process.argv[1]) === (await import('node:url')).fileURLToPath(import.meta.url);
+const invokedDirectly = isDirectRun(import.meta.url);
 
 if (invokedDirectly) {
   main()

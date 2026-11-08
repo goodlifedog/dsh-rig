@@ -15,6 +15,7 @@ import { overlayBase } from './ports.mjs';
 import { tokenHeadersFor } from './local-token.mjs';
 import { createAppleEventPreflight, runAppleEventGuarded, SYSTEM_EVENTS_BUNDLE_ID } from './appleevent-preflight.mjs';
 import { frontName } from './background.mjs';
+import { isDirectRun } from './direct-run.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -728,8 +729,7 @@ async function main() {
   process.exit(failed ? 1 : 0);
 }
 
-const invokedDirectly = Boolean(process.argv[1])
-  && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const invokedDirectly = isDirectRun(import.meta.url);
 
 if (invokedDirectly) {
   main().catch((e) => {

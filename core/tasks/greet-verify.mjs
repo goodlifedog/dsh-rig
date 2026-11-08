@@ -6,6 +6,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launch } from '../browser.mjs';
+import { isDirectRun } from '../direct-run.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROFILE = process.env.AGENT_CHROME_PROFILE || (process.env.HOME + '/.desktop-agent/chrome-profile');
@@ -95,7 +96,7 @@ export function diffChat(before, after) {
 }
 
 // 直接运行：打印当前会话列表
-const isMain = process.argv[1] && process.argv[1].endsWith('greet-verify.mjs');
+const isMain = isDirectRun(import.meta.url);
 if (isMain) {
   readChatItems(12)
     .then((list) => { console.log(JSON.stringify(list, null, 1)); })

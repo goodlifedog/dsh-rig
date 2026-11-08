@@ -1,6 +1,7 @@
 import { isScreenLocked, lockedSkipNotice } from '../platform.mjs';
 import { ocu, overlay, guard, withAppLock, countElements } from '../agentd.mjs';
 import { isAppRunning, quitApp, frontName, settleFront } from '../background.mjs';
+import { isDirectRun } from '../direct-run.mjs';
 
 // 同时控制两个应用：每个应用独立加锁，互不阻塞。
 const TARGETS = (process.env.TARGETS || 'Finder,Calculator')
@@ -189,8 +190,7 @@ async function main() {
   }
 }
 
-const invokedDirectly = Boolean(process.argv[1])
-  && (await import('node:path')).resolve(process.argv[1]) === (await import('node:url')).fileURLToPath(import.meta.url);
+const invokedDirectly = isDirectRun(import.meta.url);
 
 if (invokedDirectly) {
   main().catch((e) => {

@@ -12,6 +12,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isAppRunning, quitApp, frontName, settleFront } from '../background.mjs';
 import { launchWithDebug, attachPage, readPage, debugPortFor } from '../cdp-driver.mjs';
+import { isDirectRun } from '../direct-run.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
@@ -171,8 +172,7 @@ async function main() {
   if (!summary.ok) process.exitCode = 1;
 }
 
-const invokedDirectly = Boolean(process.argv[1])
-  && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const invokedDirectly = isDirectRun(import.meta.url);
 
 if (invokedDirectly) {
   main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });

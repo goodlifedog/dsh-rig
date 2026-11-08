@@ -11,11 +11,11 @@
 import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { launch } from '../browser.mjs';
 import { overlay } from '../agentd.mjs';
 import { checkAutomationPermission as defaultCheckAutomationPermission } from '../applescript-driver.mjs';
+import { isDirectRun } from '../direct-run.mjs';
 
 // ocu 绝对不能画假光标（否则用户屏幕上会飘一个虚拟光标）
 process.env.OPEN_COMPUTER_USE_VISUAL_CURSOR = '0';
@@ -341,9 +341,8 @@ async function main() {
 }
 
 // 导入本模块（单测拿纯函数/预检）时不要真的启动 headless Chrome；
-// runner 直接 spawn 本文件时 process.argv[1] 就是它，照常执行任务本体。
-const invokedDirectly = Boolean(process.argv[1])
-  && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+// runner 直接 spawn 本文件时 argv[1] 指向它（isDirectRun 会 realpath 归一后比较），照常执行任务本体。
+const invokedDirectly = isDirectRun(import.meta.url);
 if (invokedDirectly) {
   main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
 }

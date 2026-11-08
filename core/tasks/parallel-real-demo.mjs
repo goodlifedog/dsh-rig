@@ -8,10 +8,10 @@ import { overlayBase } from '../ports.mjs';
  *
  * 全程只用后台通路（AX 语义 / sky_key），不切前台；小窗画面来自 screencapture -l。
  */
-import { pathToFileURL } from 'node:url';
 import { ocu, withAppLock } from '../agentd.mjs';
 import { frontName as sharedFrontName, isAppRunning } from '../background.mjs';
 import { tokenHeadersFor } from '../local-token.mjs';
+import { isDirectRun } from '../direct-run.mjs';
 
 const OVERLAY = overlayBase();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -204,11 +204,5 @@ async function main() {
 }
 
 // 只有直接执行本文件才跑 main：被单测 import 时不能有副作用（不能去碰应用/小窗）。
-const invokedDirectly = (() => {
-  try {
-    return Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
-  } catch {
-    return false;
-  }
-})();
+const invokedDirectly = isDirectRun(import.meta.url);
 if (invokedDirectly) main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });

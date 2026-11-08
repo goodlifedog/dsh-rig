@@ -14,8 +14,6 @@
  * Chrome 标签页 / 聊天记录只报告不删除。
  */
 import { execFile, execFileSync } from 'node:child_process';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { ensureAppRunning, frontName, isAppRunning, quitApp } from '../core/background.mjs';
 import { closeOcuMcp } from '../core/ocu-mcp.mjs';
@@ -24,6 +22,7 @@ import { shouldQuitApp, shouldRunNoteCleanup } from '../core/cleanup-policy.mjs'
 import { resolveMaxTop, resolveTopDelete } from '../core/cleanup-limits.mjs';
 import { isDisposableTestDocument } from '../core/text-edit-guard.mjs';
 import { createAppleEventPreflight } from '../core/appleevent-preflight.mjs';
+import { isDirectRun } from '../core/direct-run.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const dryRun = process.argv.includes('--dry-run');
@@ -432,9 +431,8 @@ async function main() {
 }
 
 // 导入本模块（单测拿纯函数/带预检的清理函数）时不要真的跑清理；
-// npm run cleanup:test 直接执行本脚本时 process.argv[1] 就是它，照常执行。
-const invokedDirectly = Boolean(process.argv[1])
-  && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+// npm run cleanup:test 直接执行本脚本时 argv[1] 指向它（isDirectRun 会 realpath 归一后比较），照常执行。
+const invokedDirectly = isDirectRun(import.meta.url);
 if (invokedDirectly) {
   main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
 }

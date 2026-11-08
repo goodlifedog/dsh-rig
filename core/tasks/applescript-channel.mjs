@@ -22,6 +22,7 @@ import {
   applescriptChannelPlan,
   AUTOMATION_SETTINGS_HINT,
 } from '../applescript-driver.mjs';
+import { isDirectRun } from '../direct-run.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..', '..');
@@ -195,8 +196,7 @@ async function main() {
   if (!summary.ok && !summary.envSkip) process.exitCode = 1;
 }
 
-const invokedDirectly = Boolean(process.argv[1])
-  && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const invokedDirectly = isDirectRun(import.meta.url);
 
 if (invokedDirectly) {
   main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });

@@ -15,6 +15,7 @@ import { frontName as sharedFrontName } from '../background.mjs';
 import { launch } from '../browser.mjs';
 import { isScreenLocked } from '../platform.mjs';
 import { tokenHeadersFor } from '../local-token.mjs';
+import { isDirectRun } from '../direct-run.mjs';
 
 const OVERLAY = overlayBase();
 const SESSION = 'bg-browser';
@@ -151,8 +152,7 @@ async function main() {
 }
 
 // 导入本模块（单测拿薄包装）时不要执行任务本体；runner/daemon 仍然是 spawn node <file>。
-const invokedDirectly = Boolean(process.argv[1])
-  && (await import('node:path')).resolve(process.argv[1]) === (await import('node:url')).fileURLToPath(import.meta.url);
+const invokedDirectly = isDirectRun(import.meta.url);
 
 if (invokedDirectly) {
   main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });

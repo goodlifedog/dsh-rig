@@ -13,6 +13,7 @@
 import { frontName, state, find, click, isAppRunning } from '../background.mjs';
 import { isScreenLocked, lockedSkipNotice } from '../platform.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
+import { isDirectRun } from '../direct-run.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const ACTIONS = Math.max(1, Number(process.env.USER_ACTIVE_ACTIONS) || 6);
@@ -152,7 +153,7 @@ async function main() {
   if (!report.ok) process.exitCode = 1;
 }
 
-const invokedDirectly = Boolean(process.argv[1]) && process.argv[1].endsWith('user-active-demo.mjs');
+const invokedDirectly = isDirectRun(import.meta.url);
 if (invokedDirectly) {
   main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
 }
