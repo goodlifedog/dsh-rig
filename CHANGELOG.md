@@ -2,6 +2,7 @@
 
 ## 未发布
 
+- 修任务被中途杀掉会留残窗：验收中止/Ctrl-C 时任务进程直接被 SIGTERM 杀掉，`finally` 里的清理来不及跑（实测留下一只计算器）。新增 `core/task-emergency-cleanup.mjs` + `core/sync-quit.mjs`：信号处理里**同步**优雅退出自己拉起的应用（阻塞等它真退，避开 ocu-mcp 退出钩子的立即 process.exit 竞态），四个会拉应用的任务（background-control / cold-launch / app-matrix / concurrent-demo）都接上；实测 SIGTERM 后计算器被关干净、前台未变。补 6 项单测
 - BOSS 投递中途也会让你：每条投递前复查键鼠空闲，你中途回来就停止后续（不再发下一条），布局文档同步
 - 写类任务让路范围扩大：`boss-greet`（会真的发消息）和 `form-fill`（会改你 Chrome 里的搜索框）也在入口查 `shouldDeferForActiveUser`，你正在操作时直接环境跳过，不打断输入焦点
 - 用户正在操作时写类任务主动让路：新增 `core/user-activity.mjs`（`shouldDeferForActiveUser`，键鼠 5 秒内动过就 defer）；`background-control`（会点新建备忘录/写文本区）和 `cold-launch`（会先退出备忘录等应用）在入口检查，宁可不跑也不打断用户输入；4 项单测
@@ -240,5 +241,3 @@
 - 小窗外部帧零解码、帧字节数改为真实值、点击波纹动画补齐
 
 ## 0.6.0 (2026-11-06)
-
-- 控制层改为 MCP 常驻连接（`core/ocu-mcp.mjs`）：握手 41ms，单动作 40–140ms，元素索引可复用

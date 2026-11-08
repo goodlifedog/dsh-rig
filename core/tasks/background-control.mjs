@@ -12,6 +12,8 @@ import { checkTextEditWritable } from '../text-edit-guard.mjs';
 import { decideNoteWrite } from '../note-write-guard.mjs';
 import { hidIdleMs } from '../front-watch.mjs';
 import { shouldDeferForActiveUser } from '../user-activity.mjs';
+import { installEmergencyAppCleanup } from '../task-emergency-cleanup.mjs';
+import { quitAppSync } from '../sync-quit.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
 import { countNotes, deleteTestNotes } from '../note-cleanup.mjs';
 import { isScreenLocked } from '../platform.mjs';
@@ -76,6 +78,8 @@ async function main() {
   const launchedByUs = [];
   if (launch.launched) launchedByUs.push({ bundleId: 'com.apple.Notes', appName: '备忘录', processName: 'Notes' });
   if (calcLaunch.launched) launchedByUs.push({ bundleId: 'com.apple.calculator', appName: '计算器', processName: 'Calculator' });
+  // 被中途杀掉（验收中止/Ctrl-C）时，也把自己拉起的应用关掉，别留给用户
+  installEmergencyAppCleanup({ list: () => launchedByUs, quit: (app) => quitApp(app), quitSync: quitAppSync });
   record('后台启动备忘录（open -g，不激活）', launch.frontUnchanged !== false && !launch.error, {
     frontUnchanged: launch.frontUnchanged !== false,
     detail: launch.launched ? '冷启动成功，前台仍是 ' + launch.front : '本来就在运行',

@@ -13,6 +13,8 @@ import { ensureAppRunning, frontName, isAppRunning } from '../background.mjs';
 import { isScreenLocked } from '../platform.mjs';
 import { hidIdleMs } from '../front-watch.mjs';
 import { shouldDeferForActiveUser } from '../user-activity.mjs';
+import { installEmergencyAppCleanup } from '../task-emergency-cleanup.mjs';
+import { quitAppSync } from '../sync-quit.mjs';
 
 const exec = promisify(execFile);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -55,6 +57,9 @@ async function main() {
   const locked = await isScreenLocked();
   if (locked) console.log('提示：屏幕已锁 —— 前台断言跳过，只验证后台启动是否成功');
   const rows = [];
+  // 被中途杀掉时，把已经拉起来的应用关掉
+  const launchedApps = [];
+  installEmergencyAppCleanup({ list: () => launchedApps, quit: (app) => quitApp(app), quitSync: quitAppSync });
   const frontStart = await frontName();
   console.log('起点前台:', frontStart);
 
@@ -75,6 +80,7 @@ async function main() {
     const launch = await ensureAppRunning({ bundleId: app.bundle, appName: app.name, processName: app.process });
     await sleep(800);
     row.launched = Boolean(launch.launched || launch.running);
+    if (launch.launched) launchedApps.push({ bundleId: app.bundle, appName: app.name, processName: app.process });
     row.frontAfterLaunch = await frontName();
     row.launchFrontUnchanged = locked ? true : row.frontAfterLaunch === row.frontAfterQuit;
     row.running = await isAppRunning({ appName: app.name, processName: app.process });

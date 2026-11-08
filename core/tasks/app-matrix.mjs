@@ -25,6 +25,8 @@ import { closeOcuMcp } from '../ocu-mcp.mjs';
 import { localHeaders } from '../local-token.mjs';
 import { decideRestore } from '../front-restore.mjs';
 import { createRiskGate } from '../front-risk.mjs';
+import { installEmergencyAppCleanup } from '../task-emergency-cleanup.mjs';
+import { quitAppSync } from '../sync-quit.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ACCEPTANCE_LOCK = fileURLToPath(new URL('../../reports/.acceptance.lock', import.meta.url));
@@ -188,6 +190,9 @@ async function main() {
   } catch {}
   const frontStart = await frontName();
   const rows = [];
+  // 被中途杀掉时，把自己拉起来还没关的应用关掉（验收中止实测会留一只计算器）
+  const launchedApps = [];
+  installEmergencyAppCleanup({ list: () => launchedApps, quit: (app) => quitApp(app), quitSync: quitAppSync });
   let seq = 0;
   // 前台风险名单：之前实测「一读就把自己顶到前台」的应用直接跳过，
   // 否则每跑一次矩阵就把用户的屏幕闪一遍。AGENT_FRONT_RISK=off 可强制全部重测。
@@ -225,6 +230,11 @@ async function main() {
     );
     steps.launch = await frontName();
     row.launch = launch.error ? 'error' : (launch.launched ? 'launched' : 'running');
+    if (launch.launched) launchedApps.push({ bundleId: app.bundle, appName: app.name, processName: app.process });
+    const removeLaunched = (bundle) => {
+      const i = launchedApps.findIndex((a) => a.bundleId === bundle);
+      if (i >= 0) launchedApps.splice(i, 1);
+    };
     row.launchFrontUnchanged = launch.frontUnchanged !== false;
     // 刚启动时窗口可能还没建好：等它出现再探测，否则会得到"没有窗口"的假结论
     const ready = await waitForWindow(app.name, { timeoutMs: 12000, altNames: [app.process] });
@@ -314,6 +324,7 @@ async function main() {
       const quit = await quitApp({ bundleId: app.bundle, appName: app.name, processName: app.process });
       row.autoQuit = quit.mode;
       row.autoQuitOk = quit.quit;
+      if (quit.quit) removeLaunched(app.bundle);
       if (!quit.quit) row.autoQuitDetail = quit.detail;
     }
     rows.push(row);

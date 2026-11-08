@@ -21,6 +21,8 @@ import { ensureAppRunning, isAppRunning, frontName, state, find, click, quitApp,
 import { isScreenLocked, isMac } from '../platform.mjs';
 import { restoreFront } from '../front-watch.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
+import { installEmergencyAppCleanup } from '../task-emergency-cleanup.mjs';
+import { quitAppSync } from '../sync-quit.mjs';
 
 const exec = promisify(execFile);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -114,12 +116,16 @@ async function main() {
 
   const steps = [];
   let minIdleDuringHold = -1;
+  // 被中途杀掉时，把隐藏拉起的计算器关掉
+  const emergencyApps = [];
+  installEmergencyAppCleanup({ list: () => emergencyApps, quit: (app) => quitApp(app), quitSync: quitAppSync });
   const record = (name, ok, detail) => { steps.push({ name, ok, detail: detail || '' }); console.log((ok ? '  ✅ ' : '  ❌ ') + name + (detail ? '  ' + detail : '')); };
 
   try {
     const wasRunning = await isAppRunning(APP);
     const launch = await ensureAppRunning(APP, { waitMs: 8000 });
     launchedByUs = Boolean(launch.launched);
+    if (launchedByUs) emergencyApps.push(APP);
     record('后台拉起计算器（-g -j，不激活）', !launch.error && (launch.launched || wasRunning), 'launched=' + Boolean(launch.launched));
     await sleep(800);
 
