@@ -131,6 +131,23 @@ function pickExec(options) {
   return (options && typeof options.exec === 'function') ? options.exec : execFileAsync;
 }
 
+/** 锁屏时 NSWorkspace 报的不是用户前台应用，而是登录窗口的占位名 */
+export const LOCKED_FRONT_NAMES = Object.freeze(['loginwindow']);
+
+/**
+ * 锁屏占位名判定（纯函数）。
+ *
+ * 实测（2026-11-08 锁屏期间）：ObjC 的 NSWorkspace.frontmostApplication 返回 "loginwindow"，
+ * 而老实现（System Events）返回的是「登录后仍然是前台的那个应用」（DeepSeek Harness）。
+ * 对前台保护来说后者才对：不然任务跑到一半锁屏，会把 front 从真实应用翻成 loginwindow，
+ * guard/还原/验收基线都会误判成「前台被换了」。
+ * 所以 auto 模式下遇到占位名要回退老实现；显式 mode=objc 时保留原值（排障用）。
+ */
+export function isLockedFrontName(name) {
+  const value = String(name == null ? '' : name).trim().toLowerCase();
+  return LOCKED_FRONT_NAMES.includes(value);
+}
+
 /**
  * 新实现：JXA + ObjC 读前台（不发 AppleEvent）。
  * 永不抛异常，失败返回 { ok:false, error }。
@@ -187,16 +204,22 @@ export async function readFrontNameDetailed(options = {}) {
   }
 
   const objc = await readViaObjc(opts);
-  if (objc.ok) return { name: objc.name, source: 'objc', mode, fallbackReason: '' };
-  if (mode === 'objc') return { name: '', source: '', mode, fallbackReason: objc.error };
+  const lockedFront = objc.ok && isLockedFrontName(objc.name);
+  if (objc.ok && !lockedFront) return { name: objc.name, source: 'objc', mode, fallbackReason: '' };
+  if (mode === 'objc') {
+    return objc.ok
+      ? { name: objc.name, source: 'objc', mode, fallbackReason: lockedFront ? 'locked-front-diagnostic' : '' }
+      : { name: '', source: '', mode, fallbackReason: objc.error };
+  }
 
-  // 不确定就回退：慢一点没关系，返回错名字才是事故
+  // 不确定就回退：慢一点没关系，返回错名字才是事故。
+  // 锁屏时的 "loginwindow" 也算「不可用」——它不代表用户真实前台，必须回退老实现取真实值。
   const apple = await readViaAppleScript(opts);
   return {
     name: apple.name,
     source: apple.ok ? 'applescript' : '',
     mode,
-    fallbackReason: objc.error || 'objc-unavailable',
+    fallbackReason: lockedFront ? 'locked-front' : (objc.error || 'objc-unavailable'),
   };
 }
 

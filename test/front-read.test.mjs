@@ -21,6 +21,7 @@ import {
   readFrontNameDetailed,
   readFrontName,
   compareReaders,
+  isLockedFrontName,
 } from '../core/front-read.mjs';
 
 const OBJC_OK = JSON.stringify({ name: 'Finder', localizedName: '访达', bundleId: 'com.apple.finder' });
@@ -289,18 +290,56 @@ test('compareReaders：一致 / 不一致 / 时间戳', async () => {
   assert.equal(mismatch.same, false, '名字字面不一致要如实报出来');
 });
 
+// ---------- 锁屏占位名（loginwindow）：auto 必须回退老实现取真实前台 ----------
+
+test('isLockedFrontName：只认 loginwindow（大小写/空白不敏感）', () => {
+  assert.equal(isLockedFrontName('loginwindow'), true);
+  assert.equal(isLockedFrontName('LoginWindow'), true);
+  assert.equal(isLockedFrontName('  loginwindow '), true);
+  assert.equal(isLockedFrontName('Finder'), false);
+  assert.equal(isLockedFrontName('DeepSeek Harness'), false);
+  assert.equal(isLockedFrontName(''), false);
+  assert.equal(isLockedFrontName(null), false);
+});
+
+test('auto：ObjC 报 loginwindow（锁屏）→ 回退老实现，返回真实前台而不是占位名', async () => {
+  const exec = fakeExec({
+    objc: () => ({ stdout: JSON.stringify({ name: 'loginwindow', localizedName: '登录窗口', bundleId: '' }) }),
+    applescript: () => ({ stdout: 'DeepSeek Harness\n' }),
+  });
+  const detail = await readFrontNameDetailed({ mode: 'auto', exec });
+  assert.equal(detail.name, 'DeepSeek Harness', '锁屏时必须返回真实前台应用');
+  assert.equal(detail.source, 'applescript');
+  assert.equal(detail.fallbackReason, 'locked-front');
+  assert.equal(exec.calls.length, 2, '先 objc 后 applescript 各一次');
+});
+
+test('mode=objc：loginwindow 原样返回（排障用，不触发回退）', async () => {
+  const exec = fakeExec({
+    objc: () => ({ stdout: JSON.stringify({ name: 'loginwindow' }) }),
+    applescript: () => ({ stdout: 'DeepSeek Harness\n' }),
+  });
+  const detail = await readFrontNameDetailed({ mode: 'objc', exec });
+  assert.equal(detail.name, 'loginwindow');
+  assert.equal(detail.source, 'objc');
+  assert.equal(detail.fallbackReason, 'locked-front-diagnostic');
+  assert.equal(exec.calls.length, 1, '排障模式不该跑老实现');
+});
+
 // ---------- 实机自检（默认跳过：会真的跑 osascript，只能在你确认已授权时手动开） ----------
 
-test('实机自检：两种实现采样 20 次并比较（FRONT_READ_LIVE=1 才跑）', { skip: process.env.FRONT_READ_LIVE !== '1' }, async () => {
+test('实机自检：auto 入口的结果必须与老实现一致（FRONT_READ_LIVE=1 才跑）', { skip: process.env.FRONT_READ_LIVE !== '1' }, async () => {
   const results = [];
   for (let i = 0; i < 20; i += 1) {
-    results.push(await compareReaders());
+    const auto = await readFrontNameDetailed({ mode: 'auto' });
+    const apple = await readViaAppleScript();
+    results.push({ auto, apple });
   }
-  const same = results.filter((r) => r.same).length;
-  const objcFail = results.filter((r) => r.objcError).length;
-  const appleFail = results.filter((r) => r.appleError).length;
-  assert.ok(objcFail === 0, '新实现不应失败：' + JSON.stringify(results.find((r) => r.objcError) || {}));
-  assert.ok(appleFail === 0, '旧实现不应失败：' + JSON.stringify(results.find((r) => r.appleError) || {}));
-  const avg = (key) => Math.round(results.reduce((s, r) => s + r[key], 0) / results.length);
-  assert.equal(same, 20, '20 次采样结果必须完全一致（objc 平均 ' + avg('objcMs') + 'ms / apple 平均 ' + avg('appleMs') + 'ms）');
+  const appleFail = results.filter((r) => !r.apple.ok).length;
+  assert.ok(appleFail === 0, '旧实现不应失败：' + JSON.stringify(results.find((r) => !r.apple.ok) || {}));
+  // 锁屏时 raw objc 会报 loginwindow（占位名），auto 必须已经回退成老实现的结果；
+  // 解锁时 auto 直接走 objc，也应该与老实现同名。两种情况都要求名字一致。
+  for (const r of results) {
+    assert.equal(r.auto.name, r.apple.name, 'auto 结果必须与老实现一致（auto=' + r.auto.name + ' apple=' + r.apple.name + ' fallback=' + r.auto.fallbackReason + '）');
+  }
 });
