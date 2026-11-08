@@ -38,6 +38,7 @@
     "service:uninstall": "node core/service.mjs uninstall",
     "test": "node --test test/",
     "demo:platform": "node core/runner.mjs run platform-demo",
+    "demo:concurrent": "node core/tasks/concurrent-demo.mjs",
     "setup": "npm install && npm install --prefix overlay",
     "repo:check": "node scripts/repo-check.mjs",
     "safety:audit": "node scripts/safety-audit.mjs",

@@ -19,6 +19,7 @@
 | `cdp-channel` | CDP 通道端到端验证：自己起一个 Chromium 实例，验证"读页面 / 按文字点 / 往输入框写"这三件事 |
 | `cdp-driver` | CDP 通道验证：对 Electron / Chromium 系应用开调试端口，看能不能连进去读页面 |
 | `cold-launch` | 冷启动验收：把应用彻底退掉，再用后台方式拉起，检查前台有没有跳转 |
+| `concurrent-demo` | 并发验证：AI 在后台干活时，用户还能不能用电脑 |
 | `coverage-probe` | （文件头没写用途说明） |
 | `drive-agent-cli` | ⚠️ 通过后台终端驱动 agent CLI（opencode / codex / claude 等），并把结果读回来 |
 | `drive-agent` | ⚠️ 驱动另一个 agent 工具：把一个提示词送进桌面 agent 应用，等它回复，再读回来 |

@@ -36,6 +36,7 @@
 | `CLI_PROMPT` | 只回复两个字：收到 | `core/tasks/drive-agent-cli.mjs` |
 | `CLI_TERM_APP` | Ghostty | `core/tasks/drive-agent-cli.mjs` |
 | `CLI_TIMEOUT_MS` | — | `core/tasks/drive-agent-cli.mjs` |
+| `CONCURRENT_HOLD_MS` | 5000 | `core/tasks/concurrent-demo.mjs` |
 | `COVERAGE_JSON` | /tmp/coverage-latest.json | `core/tasks/coverage-probe.mjs` |
 | `COVERAGE_NODES` | 6000 | `core/tasks/coverage-probe.mjs` |
 | `COVERAGE_RAW_DIR` | /tmp/coverage-raw | `core/tasks/coverage-probe.mjs` |
