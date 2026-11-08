@@ -181,6 +181,27 @@ export function createRiskGate(options = {}) {
   };
 }
 
+/**
+ * 把应用列表拆成「安全的 / 在风险名单里的」。
+ * 供探测脚本用：名单里的应用探测一次就会闪一次，干脆先跳过并提示怎么清。
+ *
+ * @param {Array<{name?:string, bundle?:string}>} apps
+ * @param {object} state 风险名单状态
+ * @param {number} [now]
+ * @returns {{safe:Array<object>, risky:Array<object>}}
+ */
+export function partitionRisky(apps, state, now = Date.now()) {
+  const list = Array.isArray(apps) ? apps : [];
+  const safe = [];
+  const risky = [];
+  for (const app of list) {
+    if (!app) continue;
+    if (isRisky(state, app.name, now) || isRisky(state, app.bundle, now)) risky.push(app);
+    else safe.push(app);
+  }
+  return { safe, risky };
+}
+
 /** 从历史矩阵报告里挖「抢过前台」的证据，用于一次性把已知应用种进名单（避免下次又闪一遍） */
 export function seedFromMatrixRows(rows, options = {}) {
   const now = Number.isFinite(options.now) ? options.now : Date.now();

@@ -17,6 +17,7 @@ import {
   loadRisk,
   createRiskGate,
   seedFromMatrixRows,
+  partitionRisky,
 } from '../core/front-risk.mjs';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -140,4 +141,21 @@ test('从历史矩阵报告补种：只认明确抢过前台的证据', () => {
   assert.equal(isRisky(state, 'iMovie', now), true);
   assert.equal(isRisky(state, 'Calculator', now), false);
   assert.equal(isRisky(state, 'Skipped', now), false);
+});
+test('拆分探测列表：风险名单里的挑出来（按名字或 bundle），其余保留', () => {
+  const now = Date.now();
+  let state = noteSteal(emptyRiskState(), 'Ghostty', now);
+  const { safe, risky } = partitionRisky([
+    { name: 'Ghostty', bundle: 'com.mitchellh.ghostty' },
+    { name: 'Calculator', bundle: 'com.apple.calculator' },
+    { name: 'WeChat', bundle: 'com.tencent.xinWeChat' },
+  ], state, now);
+  assert.deepEqual(risky.map((a) => a.name), ['Ghostty']);
+  assert.deepEqual(safe.map((a) => a.name), ['Calculator', 'WeChat']);
+});
+
+test('拆分为空/缺字段不崩', () => {
+  assert.deepEqual(partitionRisky(null, emptyRiskState()).safe, []);
+  const r = partitionRisky([null, { name: 'A' }], emptyRiskState());
+  assert.deepEqual(r.safe.map((a) => a.name), ['A']);
 });

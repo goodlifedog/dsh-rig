@@ -12,6 +12,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseProbeArgs, probeEnv } from '../core/app-probe-plan.mjs';
 import { scanDirs, matchAppByNames, userAppDirs, SYSTEM_APP_DIRS } from '../core/app-scan.mjs';
+import { loadRisk, partitionRisky } from '../core/front-risk.mjs';
+import { presetApps } from '../core/app-presets.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -76,6 +78,24 @@ async function main() {
       process.exit(1);
     }
     resolved = result.matched.map(({ name, bundle, process }) => ({ name, bundle, process }));
+  }
+
+  // 前台风险名单：这些应用探测一次就会闪一次，直接跳过并提示怎么清
+  const risk = loadRisk();
+  if (plan.mode === 'apps') {
+    const { safe, risky } = partitionRisky(resolved, risk);
+    if (risky.length) {
+      console.log('跳过（前台风险名单，读取会抢前台）：' + risky.map((a) => a.name).join('、'));
+      console.log('确认修好后：npm run front:risk -- --clear "应用名"，再探测');
+      resolved = safe;
+      if (!resolved.length) {
+        console.log('没有可探测的应用了。');
+        return;
+      }
+    }
+  } else if (plan.mode === 'preset') {
+    const { risky } = partitionRisky(presetApps(plan.preset), risk);
+    if (risky.length) console.log('提示：预设里有 ' + risky.length + ' 个应用在风险名单里（' + risky.map((a) => a.name).join('、') + '），矩阵会自动跳过读取');
   }
 
   const env = probeEnv(plan, resolved);

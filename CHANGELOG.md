@@ -2,6 +2,7 @@
 
 ## 未发布
 
+- `apps:probe` 也先查前台风险名单：要探测的应用在名单里就直接跳过并提示 `front:risk -- --clear`，不再为了探测闪一次屏；预设模式会提示有几个在名单里。实测 `apps:probe Ghostty --dry` 直接打印跳过、不启动矩阵。补 2 项单测
 - 中止处理覆盖到所有会跑 UI 子任务的脚本：`bg:verify`、`apps:probe`、`monitor` 现在把子进程起在独立进程组，自己收到 SIGINT/SIGTERM 时连子进程一起停（先 SIGTERM 让任务应急清理关应用，3 秒后强杀），不再留下孤儿继续动屏幕；`bg:verify` 单项超时也从直接 SIGKILL 改成先 SIGTERM
 - 修中止链条上的孤儿任务：任务是用独立进程组起的，验收被 SIGTERM 后只杀验收自己收不到任务，任务会变成孤儿继续控制应用。现在 acceptance 收到 SIGTERM/SIGINT 会先 `killActiveTask()` 把当前任务进程组一起杀掉再退出；`verify:live` 中止时等 1.5 秒让应急清理跑完再收小窗，并给 3 秒兜底 SIGKILL。补 2 项单测
 - 修任务被中途杀掉会留残窗：验收中止/Ctrl-C 时任务进程直接被 SIGTERM 杀掉，`finally` 里的清理来不及跑（实测留下一只计算器）。新增 `core/task-emergency-cleanup.mjs` + `core/sync-quit.mjs`：信号处理里**同步**优雅退出自己拉起的应用（阻塞等它真退，避开 ocu-mcp 退出钩子的立即 process.exit 竞态），四个会拉应用的任务（background-control / cold-launch / app-matrix / concurrent-demo）都接上；实测 SIGTERM 后计算器被关干净、前台未变。补 6 项单测
@@ -229,5 +230,3 @@
 - 新增 `npm run soak` 稳定性巡检：连跑多轮任务，量耗时、内存增长、有无有效帧（6 轮实测 +1MB、6/6 成功）
 - 非默认会话悬停时显示会话标题而不是内部 session id
 - 健康信息新增 `hostPoll`（最近轮询时间、当前间隔、是否正在轮询）
-- 修标题门控匹配 bug：`titleHint` 传完整窗口标题（带「— DeepSeek Harness」后缀）时永远匹配不上，小窗在该会话里也不出现
-- `npm run scope:check`：把「小窗只出现在召唤它的会话里」做成可重复断言，并量出切走/切回耗时（实测切走 ≤1000ms、切回 ≤1500ms）
