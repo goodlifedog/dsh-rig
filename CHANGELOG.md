@@ -2,6 +2,8 @@
 
 ## 0.7.0（未发布）
 
+- 隐私清理（用户要求）：项目里不再出现真实姓名与机器名——LICENSE/package.json/overlay 配置/发布文档统一改成 GitHub 虚拟身份 `goodlifedog`（打包 appId `com.goodlifedog.dsh-desktop-agent`，npm 包占位符 `@goodlifedog/*`）；测试 fixture 与本机路径改成 `tester` / `~/…`；本地 git 历史作者/提交者也统一重写为 `goodlifedog <goodlifedog@users.noreply.github.com>`（旧对象已 gc 清理）。`npm run repo:check` 新增动态隐私规则：用当前机器的用户名/主机名扫描所有 tracked 文本文件，出现即报错（不把真实姓名写进检查代码），并覆盖 yml/diff/plist/txt。旧的构建产物 `dist-app/`（gitignored，v0.5.0，含旧署名）已删除，需要时在 `overlay/` 里 `npm run dist` 重新打包。
+
 - ocu 调用审计（`flow/OCU-CALL-AUDIT.md`）的 11 处高危调用点全部加上运行门禁并补单测：以前这些任务对**没在运行**的应用直接调 ocu 读取/输入（`snapshot/get_app_state/state/find/readSafe/typeText`），ocu 会把应用启动并可能顶到前台——等于「验证不打扰」的任务自己先打扰了用户。现在统一走 `core/app-presence.mjs`（纯函数 `decideAppPresence` + 注入 `isAppRunning` 的 `requireAppRunning`/`reportAppPresence`，判错一律按没运行处理），未运行即环境跳过（exit 0、不算失败、不启动/不关闭/不改用户应用）；覆盖 user-active-demo / terminal-control / drive-agent / drive-agent-cli / boss-scan / form-fill / boss-greet / mcp-demo / platform-demo / background-control（文本编辑步骤）/ parallel-real-demo，脚本层 `bench-ocu` 也门禁（要测冷读必须显式 `--allow-launch`）。新增 4 个测试文件，全量 903 项 / 902 过 / 1 跳过 / 0 失败。
 - 把「对具体应用调 ocu 前必须有运行门禁」做成常驻静态检查（P4）：`npm run safety:audit` 新增规则 5，同一文件里没有 `isAppRunning/ensureAppRunning/ensureAppWindow/requireAppRunning` 又直接 `ocu.snapshot/readSafe/state/find/typeText/cua.getApp` 等就报错，逐点可用 `// audit-ok: <理由>` 豁免；根因封装层、CDP/AppleScript 通道、内嵌 JXA 脚本共 14 条文件级白名单（每条写理由，另有「白名单防腐烂」单测）。扫描范围扩到 `core/*.mjs`：120 个文件 / 103 处调用点 / 0 违规；同时修掉 open 规则把 CDP 状态字符串 `'open'` 误判成启动应用的问题，并把「打开系统设置隐私面板」列为必须可见的显式例外。
 - 适配第一批落地（按 `flow/APP-ADAPTER-PLAN.md` 候选）：新门类预设的 `name` 用**本地化显示名**（邮件/日历/提醒事项/预览/音乐/照片）——CGWindowList 的窗口 owner 是中文（实测 备忘录/文本编辑/Safari浏览器），用英文名匹配不到窗口，会把可读的应用误判成「找不到窗口」。bundle/process 保持 Info.plist 的英文值。
