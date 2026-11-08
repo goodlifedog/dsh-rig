@@ -30,7 +30,7 @@
 | `AWAY_ABORT_IDLE_SEC` | 20 | `scripts/away-maintenance.mjs` |
 | `AWAY_LOG_FILE` | latest.log | `scripts/away-maintenance.mjs` |
 | `AWAY_MIN_IDLE_SEC` | 900 | `scripts/away-maintenance.mjs` |
-| `AWAY_POLL_MS` | 5000 | `scripts/away-maintenance.mjs` |
+| `AWAY_POLL_MS` | 5 | `scripts/away-maintenance.mjs` |
 | `BG_KEEP_MS` | 10000 / 6000 | `core/tasks/background-control.mjs`<br>`core/tasks/browser-background.mjs` |
 | `BG_KEEP_NOTE` | （开关，设 1 开启） | `core/tasks/background-control.mjs` |
 | `BG_VERIFY_TIMEOUT_MS` | — | `scripts/bg-verify.mjs` |
