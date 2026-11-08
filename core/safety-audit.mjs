@@ -92,6 +92,9 @@ export function findOcuAppCalls(source) {
   const hits = [];
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];
+    // 纯注释行里的例子/说明（例如 JSDoc 写「按 callTool('get_app_state') 的语义」）不是真实调用，
+    // 不参与判定——否则为了过检查得把注释改得含糊，反而没人看得懂（规则 6 同样处理）。
+    if (COMMENT_LINE_RE.test(line)) continue;
     const hit = line.match(OCU_APP_CALL_RE);
     if (!hit) continue;
     hits.push({ line: i + 1, call: hit[0], text: line.trim().slice(0, 140) });

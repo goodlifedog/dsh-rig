@@ -94,6 +94,18 @@ test('fixture：// audit-ok: <理由> 生效（上一行/同一行），空理�
   });
 });
 
+test('纯注释行里的调用示例不算真实调用（别逼着大家把注释写含糊）', () => {
+  withFixture('fixture-comment.mjs', [
+    "// 说明：按 callTool('get_app_state') 的语义，读之前要确认应用在运行",
+    '* JSDoc：state(app) 会走到这里',
+    'const ok = 1;',
+    '',
+  ].join('\n'), ({ repoPath, source }) => {
+    const violations = auditSource({ file: repoPath, source }, { base: '', uiGuard: false });
+    assert.deepEqual(violations, []);
+  });
+});
+
 test('规则只作用于 core/ scripts/ 作用域，其它目录不误报', () => {
   assert.equal(OCU_PRESENCE_SCOPE_RE.test('core/tasks/x.mjs'), true);
   assert.equal(OCU_PRESENCE_SCOPE_RE.test('core/background.mjs'), true);
