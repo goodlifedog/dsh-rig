@@ -28,6 +28,8 @@
 >
 > **通宵收尾的结论 → [FINAL-REPORT.md](FINAL-REPORT.md)**
 >
+> **待执行总任务单（隐私/删 BOSS/结构/改名/ocu/发布）→ [TASK-EXTERNALIZE.md](TASK-EXTERNALIZE.md)**
+>
 > **待执行任务单：改名 + 内置 ocu + 可搜索性 → [TASK-RENAME-TO-RIG.md](TASK-RENAME-TO-RIG.md)**
 
 
