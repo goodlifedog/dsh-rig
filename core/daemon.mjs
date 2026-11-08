@@ -20,7 +20,7 @@ import { isLoopbackHost } from './safety.mjs';
 import { decideRetry } from './retry-policy.mjs';
 import { frontAppFast, startFrontWatch } from './front-watch.mjs';
 import { ensureToken, isAuthorized } from './local-token.mjs';
-import { parseProcessTable, findOrphanedAgents } from './orphan-cleanup.mjs';
+import { parseProcessTable, findOrphans, signalProcessTree, isProcessAlive, killTaskTree } from './orphan-cleanup.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -265,7 +265,12 @@ function runTask(name, attempt = 0) {
     child.stdout.on('data', keepTail);
     child.stderr.on('data', keepTail);
 
-    const timer = setTimeout(() => { try { child.kill('SIGTERM'); } catch {} }, 10 * 60 * 1000);
+    // 超时不能只杀任务本身：任务是以 detached 起的独立进程组，组里的 ocu/Chrome 只 kill(pid) 收不到。
+    // 统一走 killTaskTree：TERM 整组 -> 3 秒后还活着就 KILL 整组。
+    const timer = setTimeout(() => {
+      const sent = killTaskTree(child.pid, { graceMs: 3000 });
+      overlay.log('任务超时，已结束进程组 pid=' + child.pid + (sent.term && sent.term.group ? '（整组）' : '')).catch(() => {});
+    }, 10 * 60 * 1000);
 
     // 长时间任务期间每 4 秒喂一次状态，否则小窗 5 秒空闲就会自己消失，用户看不到进度
     const beat = setInterval(() => {
@@ -458,7 +463,11 @@ async function handleRequest(req, res) {
     state.queue = [];
     state.cancelled = hadTask;
     if (hadTask) {
-      try { process.kill(state.current.pid, 'SIGTERM'); } catch {}
+      // 必须按进程组收（负 pid）：只 kill(pid) 会留下任务拉起的 ocu/Chrome，
+      // 而 Chrome 带着无鉴权的 --remote-debugging-port 会一直开着。3 秒不退再 KILL。
+      const sent = killTaskTree(state.current.pid, { graceMs: 3000 });
+      const how = sent.term && sent.term.group ? '进程组' : '单进程';
+      overlay.log('已停止任务（SIGTERM ' + how + ' pid=' + state.current.pid + '）').catch(() => {});
     }
     return json(res, 200, { ok: true, stopped: hadTask, task: hadTask ? state.current.name : null });
   }
@@ -502,19 +511,22 @@ server.on('error', (error) => {
 });
 
 
-/** 启动时清一次孤儿 app-agent：只清 ppid=1、当前用户、且命令是本项目依赖名的进程 */
+/** 启动时清一次孤儿：只清 ppid=1、当前用户、且命令行属于本项目（ocu/app-agent 或本项目 Chrome profile）的进程 */
 async function cleanOrphanAgents() {
   try {
     const table = await new Promise((resolve) => {
       execFile('/bin/ps', ['-axo', 'pid=,ppid=,user=,command='], (err, stdout) => resolve(err ? '' : stdout));
     });
     const rows = parseProcessTable(table);
-    const pids = findOrphanedAgents(rows, { user: os.userInfo().username, selfPid: process.pid });
+    // 两类孤儿：本项目依赖（ocu / app-agent）+ 本项目 profile 的残留 Chrome。
+    // 后者带 --remote-debugging-port 却没人收：CDP 无鉴权，等于把已登录 profile 摊在同机任意进程面前。
+    const pids = findOrphans(rows, { user: os.userInfo().username, selfPid: process.pid });
     if (!pids.length) return 0;
+    // 孤儿是单个进程：这里只按 pid 杀，不用负 pid（它们的进程组可能已被回收/共用）
     for (const pid of pids) { try { process.kill(pid, 'SIGTERM'); } catch {} }
     await new Promise((r) => setTimeout(r, 1200));
     for (const pid of pids) { try { process.kill(pid, 'SIGKILL'); } catch {} }
-    console.log('[daemon] 清理孤儿 app-agent：' + pids.join(', '));
+    console.log('[daemon] 清理孤儿进程：' + pids.join(', '));
     return pids.length;
   } catch {
     return 0;
@@ -532,26 +544,25 @@ server.listen(PORT, '127.0.0.1', () => {
   overlay.log('守护进程启动，端口 ' + PORT).catch(() => {});
 });
 
-/** 按进程组结束正在跑的任务：先 TERM，5 秒不退再 KILL，然后退出 daemon */
+/** 按进程组结束正在跑的任务：先 TERM 整组，5 秒不退再 KILL 整组，然后退出 daemon */
 function shutdownWithRunningTask() {
   const current = state.current;
   const pid = current && current.pid;
-  const killGroup = (signal) => {
-    if (!pid) return;
-    try { process.kill(-pid, signal); } catch { try { process.kill(pid, signal); } catch {} }
-  };
-  killGroup('SIGTERM');
+  if (!pid) {
+    try { server.close(); } catch {}
+    process.exit(0);
+    return;
+  }
+  // 和 /stop、超时分支共用同一份「先整组 TERM、再整组 KILL」实现，避免三条路径各写一遍
+  signalProcessTree(pid, 'SIGTERM');
   const deadline = Date.now() + 5000;
   const tick = () => {
-    let alive = false;
-    if (pid) {
-      try { process.kill(pid, 0); alive = true; } catch {}
-    }
+    const alive = isProcessAlive(pid);
     if (alive && Date.now() < deadline) {
       setTimeout(tick, 200);
       return;
     }
-    if (alive) killGroup('SIGKILL');
+    if (alive) signalProcessTree(pid, 'SIGKILL');
     try { server.close(); } catch {}
     process.exit(0);
   };

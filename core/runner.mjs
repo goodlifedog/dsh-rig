@@ -14,6 +14,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { overlay } from './agentd.mjs';
+import { signalProcessTree } from './orphan-cleanup.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TASKS_DIR = path.join(__dirname, 'tasks');
@@ -82,18 +83,18 @@ export async function runOnce(task, options = {}) {
     child.stdout.on('data', (b) => onData(b, 'out'));
     child.stderr.on('data', (b) => onData(b, 'err'));
 
+    // 兜底 KILL 的定时器要能被 finish 清掉：任务正常退出后它还挂在事件循环里没有意义
+    let hardTimer = null;
     const timer = setTimeout(() => {
       record({ event: 'timeout', afterMs: timeoutMs });
-      // 先礼后兵：TERM 整组，5 秒后还在就 KILL 整组（卡在系统调用里的任务不理 TERM）
-      const killGroup = (signal) => {
-        try { process.kill(-child.pid, signal); } catch { try { child.kill(signal); } catch {} }
-      };
-      killGroup('SIGTERM');
-      const hardTimer = setTimeout(() => {
+      // 先礼后兵：TERM 整组，5 秒后还在就 KILL 整组（卡在系统调用里的任务不理 TERM）。
+      // 按组杀是因为任务是 detached 起的：只杀组长会把 ocu/Chrome 留在后台。
+      signalProcessTree(child.pid, 'SIGTERM');
+      hardTimer = setTimeout(() => {
         record({ event: 'timeout-kill', afterMs: timeoutMs + 5000 });
-        killGroup('SIGKILL');
+        signalProcessTree(child.pid, 'SIGKILL');
       }, 5000);
-      hardTimer.unref();
+      if (typeof hardTimer.unref === 'function') hardTimer.unref();
     }, timeoutMs);
 
     // spawn 失败（ENOENT/权限/资源不足）只会发 'error'，不保证发 'close'：
@@ -103,6 +104,7 @@ export async function runOnce(task, options = {}) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      if (hardTimer) clearTimeout(hardTimer);
       if (currentChild === child) currentChild = null;
       const durationMs = Date.now() - startedAt;
       record({ event: 'end', code: payload.code, signal: payload.signal, durationMs, stdoutBytes: stdout.length, stderrBytes: stderr.length, spawnError: payload.spawnError || undefined });
@@ -129,12 +131,8 @@ let currentChild = null;
 
 function forwardSignalToTask(signal) {
   if (!currentChild || !currentChild.pid) return false;
-  try {
-    process.kill(-currentChild.pid, signal);
-    return true;
-  } catch {
-    try { currentChild.kill(signal); return true; } catch { return false; }
-  }
+  // 任务自成进程组，负 pid 才收得全（ocu/Chrome 都在组里）
+  return signalProcessTree(currentChild.pid, signal).ok;
 }
 
 process.on('SIGTERM', () => {
