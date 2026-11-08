@@ -248,3 +248,61 @@ electron 族里：2 个应用侧限制（Antigravity、抖音）、1 个不接�
   两者其实不矛盾——它是「CDP 可用、AX 未测」，但现在的两种口径会让读者以为数据打架。
 - 建议：清点报告里给 ChatGPT 这种「通道实测过、矩阵没测过」的情况单独标注（例如状态写「CDP 已实测 / AX 未测」），
   或统一以清点报告为准、在 MAC-APPS 里说明统计口径。
+
+## 8. 新门类实测执行清单（等 verify 窗口，Lead 执行）
+
+> 前提：**屏幕解锁 + 键鼠空闲 ≥15 分钟 + 用户已离开**；辅助功能/屏幕录制/自动化均已授权。
+> 矩阵与 probe 都会**启动并关闭应用**，属于刻意启动器：必须走 ensureAppRunning → 登记 launchedByUs → 结束 quitApp，
+> 用户在场时绝不许跑（这条由 `flow/TEST-BOUNDARIES.md` 与 `npm run safety:audit` 兜着）。
+
+### 8.1 先决条件：首启引导（否则会被误判成「限制」）
+
+Mail / Calendar / Reminders / Music / Photos / Preview 首次打开可能弹：
+
+- 登录账号 / 新建邮箱向导（Mail）、iCloud 同步与通知权限（Calendar/Reminders/Photos/Music）、
+  媒体库选择（Music）、空壳窗口（Preview 没有文档时不建窗口）。
+
+矩阵**只读、绝不代点**这些引导，所以首启状态下的读数会是 `nodes=0`，容易被误记成「应用侧限制」。
+处理顺序二选一：
+
+1. 用户在场时由用户自己点完一次引导（最干净）；
+2. 或者接受首轮结果标成「待引导」，等用户过完引导后再跑一次矩阵覆盖结论。
+
+### 8.2 命令（按门类逐个跑，每跑完一个看报告）
+
+~~~bash
+# 0) 环境门槛自检（锁屏/空闲不对就别跑）
+npm run health | grep -E "锁屏|系统权限"
+
+# 1) 单门类矩阵（会启动该门类的应用、读界面树、结束后关掉自己拉起的）
+MATRIX_PRESET=reading  npm run matrix   # Preview
+MATRIX_PRESET=mail     npm run matrix   # Mail
+MATRIX_PRESET=calendar npm run matrix   # Calendar + Reminders
+MATRIX_PRESET=photos   npm run matrix   # Photos
+MATRIX_PRESET=media    npm run matrix   # iMovie / GarageBand / Music
+
+# 2) 重新清点，确认状态从「未测」变成 已适配 / 部分验证 / 可只用画面 / 限制
+npm run apps:inventory
+
+# 3) 单应用探测（想单独看某个应用时）
+npm run apps:probe -- Mail
+npm run app:resolve -- Mail     # 看通道协商结论（ax/cdp/applescript）
+~~~
+
+### 8.3 判定口径（与 `flow/TASK-OUTPUT.md` 一致）
+
+| 矩阵结果 | 归类 | 后续动作 |
+| --- | --- | --- |
+| 读到界面树（nodes > 0） | 已适配 | 更新 `docs/MAC-APPS.md` 覆盖表与数字 |
+| 读不到树但画面能回显 | 可只用画面 | 记录「只能坐标/快捷键」，不要硬等元素 |
+| 读不到树、也抓不到画面、或启动即退 | 限制 | 写清是应用侧限制还是首启引导未过 |
+| 应用没在运行 / 锁屏 / 缺权限 | 环境跳过 | **不算失败**，等条件具备再跑 |
+| CDP `cdp-ok` 但矩阵没读界面 | 部分验证 | 单独标注，不要写成已适配 |
+
+### 8.4 跑完要落的账
+
+1. `docs/MAC-APPS.md` 第六节：状态、数字、每个新门类的实机结论（读/点/画面/前台影响）。
+2. 根目录 `CHANGELOG.md`：适配结论与实测时间；若某应用首启引导没过，写明「待用户过引导」。
+3. `flow/COVERAGE.md`：把新应用加进覆盖率表（如果有读数）。
+4. 若矩阵发现新应用会抢前台：确认 `front-risk` 名单已记录（`npm run front:risk` 可看）。
+5. 清理：确认没有残留应用（`MATRIX_QUIT=1` 默认会关自己拉起的；验收收尾还有基线兜底）。
