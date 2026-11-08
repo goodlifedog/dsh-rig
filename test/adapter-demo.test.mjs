@@ -571,3 +571,27 @@ test('clearFieldByKeyboard：聚焦 → cmd+a → DELETE（AX 设值清不空字
   assert.equal(r.ok, true);
   assert.deepEqual(order, ['click:9', 'key:cmd+a', 'key:DELETE']);
 });
+
+test('parseArgs：--type-index 必须配 --allow-write 与 --type-text', () => {
+  const ok = parseArgs(['--app', 'Electron', '--type-text', 'x', '--allow-write', '--type-index', '9']);
+  assert.equal(ok.typeIndex, 9);
+  assert.deepEqual(ok.errors, []);
+  const noAllow = parseArgs(['--app', 'Electron', '--type-text', 'x', '--type-index', '9']);
+  assert.ok(noAllow.errors.some((e) => e.includes('--allow-write')), '缺 allow-write 应报错');
+  const noText = parseArgs(['--app', 'Electron', '--allow-write', '--type-index', '9']);
+  assert.ok(noText.errors.some((e) => e.includes('--type-text')), '缺 type-text 应报错');
+});
+
+test('显式 --type-index：跳过启发式，写入后恢复原值', async () => {
+  const tree = (v) => ['App=com.apple.TextEdit (pid 1)', 'Window: "s", App: TextEdit.', '0 标准窗口 s',
+    '	9 文本栏 (settable, string) 标题 Value: ' + v].join(String.fromCharCode(10));
+  let reads = 0;
+  const writes = [];
+  const { deps } = fakeDeps({
+    readState: async () => { reads += 1; if (reads === 3) return tree('AGENT-TEST'); return tree('USERDATA'); },
+    setValue: async (app, index, value) => { writes.push({ index, value }); return { ok: true }; },
+  });
+  const { exitCode, report } = await runAdapterDemo({ app: 'TextEdit', typeText: 'AGENT-TEST', allowWrite: true, typeIndex: 9, minIdleMs: 0 }, deps);
+  assert.equal(exitCode, 0, '应正常结束：' + JSON.stringify(report.steps.map((s) => s.step)));
+  assert.deepEqual(writes.map((w) => w.value), ['AGENT-TEST', 'USERDATA'], '写入后应恢复原值');
+});

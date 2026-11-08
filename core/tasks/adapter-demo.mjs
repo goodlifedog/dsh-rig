@@ -67,7 +67,7 @@ export const DEFAULT_WAIT_MS = 1200;
  */
 export function parseArgs(argv) {
   const args = Array.isArray(argv) ? argv.slice() : [];
-  const out = { app: '', file: '', clickText: '', typeText: '', allowLaunch: false, allowWrite: false, minIdleMs: 180000, help: false, errors: [] };
+  const out = { app: '', file: '', clickText: '', typeText: '', allowLaunch: false, allowWrite: false, minIdleMs: 180000, typeIndex: null, help: false, errors: [] };
   const valueOf = (flag, index) => {
     const value = args[index + 1];
     if (value === undefined || value.startsWith('--')) {
@@ -81,6 +81,7 @@ export function parseArgs(argv) {
     if (arg === '--help' || arg === '-h') out.help = true;
     else if (arg === '--allow-launch') out.allowLaunch = true;
     else if (arg === '--allow-write') out.allowWrite = true;
+    else if (arg === '--type-index') { out.typeIndex = Number(valueOf(arg, i)); i += 1; }
     else if (arg === '--min-idle') {
       const raw = valueOf(arg, i);
       i += 1;
@@ -94,6 +95,9 @@ export function parseArgs(argv) {
     else if (arg === '--type-text') { out.typeText = valueOf(arg, i); i += 1; }
     else if (arg.startsWith('--')) out.errors.push('未知参数：' + arg);
   }
+  if (out.typeIndex != null && !Number.isFinite(out.typeIndex)) out.errors.push('--type-index 需要数字');
+  if (out.typeIndex != null && !out.allowWrite) out.errors.push('--type-index 必须同时给 --allow-write（显式指定目标即视为授权写入）');
+  if (out.typeIndex != null && !out.typeText) out.errors.push('--type-index 需要配合 --type-text 使用');
   if (!out.help && !out.app) out.errors.push('缺少 --app <显示名>');
   return out;
 }
@@ -756,7 +760,9 @@ export async function runAdapterDemo(options = {}, depsInput = {}) {
       if (await userReturned()) return finish(0);
       const latestState = await deps.readState(app).catch(() => '');
       const latest = summarizeTree(latestState);
-      const target = pickTypeTarget(latest, { allowWrite: Boolean(options_.allowWrite) });
+      const target = options_.typeIndex != null
+        ? { found: true, index: String(options_.typeIndex), label: '(显式 --type-index)', kind: 'explicit' }
+        : pickTypeTarget(latest, { allowWrite: Boolean(options_.allowWrite) });
       if (!target.found) {
         // 找不到安全可写目标 = 环境/安全跳过（绝不在不确定的输入框里写用户数据）
         report.envSkip = true;
@@ -799,7 +805,7 @@ export async function runAdapterDemo(options = {}, depsInput = {}) {
       //  - 目标是 AXTextField/AXSearchField（搜索框/地址栏）→ 恢复成空，界面干净；
       //  - 目标是空的 AXTextArea（例如备忘录新建的空笔记）→ 保留本次写入，
       //    交给 cleanup:test --force 按 [AGENT-TEST] 标记清理（回填空串会让笔记失去标记、清不掉）。
-      const shouldRestore = decision.current !== '' || target.kind !== 'textArea';
+      const shouldRestore = target.kind === 'explicit' || decision.current !== '' || target.kind !== 'textArea';
       if (!shouldRestore) {
         addStep('restore', true, '目标是空 AXTextArea：保留本次 [AGENT-TEST] 写入，交由 cleanup:test --force 清理', {
           index: target.index,
