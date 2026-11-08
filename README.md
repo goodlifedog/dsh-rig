@@ -68,7 +68,7 @@ npm run status
 npm run run browser-demo
 
 # 5. 验证（都不碰屏幕的这组：你正在用电脑时也能跑）
-npm run verify:safe            # 8 项：语法/安全/健康/CDP/AppleScript/并发验证…
+npm run verify:safe            # 9 项：语法/安全/健康/CDP/AppleScript/稳定性/并发验证…
 npm run demo:concurrent        # 并发实证：后台干活时你照常切屏打字，结束时看有没有被抢
 ```
 

@@ -24,6 +24,7 @@ const STEPS = [
   { name: '应用清点', args: ['scripts/app-inventory.mjs'] },
   { name: 'CDP 通道（headless）', args: ['core/tasks/cdp-channel.mjs'], timeoutMs: 180000 },
   { name: 'AppleScript 只读通道', args: ['core/tasks/applescript-channel.mjs'], timeoutMs: 120000 },
+  { name: '后台操作稳定性（15 轮）', args: ['core/tasks/background-stability.mjs'], timeoutMs: 180000 },
   { name: '并发验证（隐藏应用 + headless 浏览器）', args: ['core/tasks/concurrent-demo.mjs'], timeoutMs: 180000 },
 ];
 
