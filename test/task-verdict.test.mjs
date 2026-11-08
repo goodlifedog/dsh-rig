@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { summarizeApplescriptRows } from '../core/tasks/applescript-channel.mjs';
-import { summarizeMatrixVerdict } from '../core/tasks/app-matrix.mjs';
+import { summarizeMatrixVerdict, collectTouchedAliases } from '../core/tasks/app-matrix.mjs';
 import { summarizeMultiApp } from '../core/tasks/multi-app.mjs';
 
 test('applescript：至少一个应用真的执行成功才算通道可用', () => {
@@ -98,4 +98,17 @@ test('多应用并行：有 rejected 就失败；空输入安全', () => {
 test('两条汇总结论对空/异常输入安全', () => {
   assert.doesNotThrow(() => summarizeApplescriptRows(null, true));
   assert.doesNotThrow(() => summarizeMatrixVerdict(null, true));
+});
+test('矩阵收尾候选别名：补上进程名，避免只有本地化名对不上', () => {
+  const aliases = collectTouchedAliases([
+    { app: '计算器', bundle: 'com.apple.calculator', process: 'Calculator' },
+    { app: 'FastZip', bundle: 'cn.better365.FastZip', process: 'FastZip' },
+  ]);
+  assert.ok(aliases.includes('计算器'));
+  assert.ok(aliases.includes('Calculator'), '必须包含可执行进程名 Calculator');
+  assert.ok(aliases.includes('calculator'));
+  assert.ok(aliases.includes('FastZip'));
+  // 去重：FastZip 同时来自 app/process/bundle 末段
+  assert.equal(aliases.filter((x) => x === 'FastZip').length, 1);
+  assert.doesNotThrow(() => collectTouchedAliases(null));
 });

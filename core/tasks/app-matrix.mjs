@@ -136,6 +136,28 @@ async function probeCapture(session, pattern, titleHint) {
 }
 
 /**
+ * 收尾还原的候选别名：应用名、可执行进程名、bundle 末段。
+ * 系统前台可能是本地化显示名（计算器）或进程名（Calculator），大小写也可能不同，
+ * 统一交给 decideRestore 做大小写不敏感匹配，避免「只有本地化名对不上」导致漏还原。
+ * @param {Array<{app?:string, process?:string, bundle?:string}>} rows
+ * @returns {string[]}
+ */
+export function collectTouchedAliases(rows = []) {
+  const aliases = [];
+  const add = (value) => {
+    const text = String(value || '').trim();
+    if (text && !aliases.includes(text)) aliases.push(text);
+  };
+  for (const row of rows || []) {
+    if (!row) continue;
+    add(row.app);
+    add(row.process);
+    if (row.bundle) add(String(row.bundle).split('.').pop());
+  }
+  return aliases;
+}
+
+/**
  * 矩阵结论（纯函数）：前台没被抢只是底线。所有应用都被跳过 = 没验证（环境跳过），
  * 有尝试但一个都读不出界面树 = 真失败；不能因为前台没变就报成功（评审 6acf775）。
  */
@@ -220,7 +242,9 @@ async function main() {
     const patternSource = [app.name, app.bundle.split('.').pop(), localName].filter(Boolean)
       .map((s) => s.replace(/[.*+?^$()|[\]\\]/g, '\\$&')).join('|');
     const pattern = new RegExp(patternSource, 'i');
-    const row = { app: app.name, bundle: app.bundle };
+    // 记录可执行进程名：系统前台返回的可能是「Calculator」而不是本地化名「计算器」，
+    // 收尾还原要用它做大小写不敏感的候选别名（M-2 实测漏还原的直接原因）。
+    const row = { app: app.name, bundle: app.bundle, process: app.process };
     const before = await frontName();
     const steps = {};
 
@@ -326,13 +350,28 @@ async function main() {
       row.autoQuitOk = quit.quit;
       if (quit.quit) removeLaunched(app.bundle);
       if (!quit.quit) row.autoQuitDetail = quit.detail;
+
+      // 退出应用常会把前台让给别的应用：立刻核对一次，别等到全部跑完。
+      // 只有前台偏离起点、且判定为「我们刚动过的应用」时才还回去（用户自己切走的仍不抢）。
+      const afterQuitFront = await frontName();
+      if (afterQuitFront !== frontStart) {
+        const restored = await restoreFrontChecked(
+          frontStart,
+          [app.name, app.process, localName, app.bundle && app.bundle.split('.').pop()],
+          2,
+        );
+        row.frontAfterQuit = afterQuitFront;
+        row.frontRestoredAfterQuit = restored.ok;
+        if (restored.ok) row.frontRestored = true;
+        else if (restored.leftUser) row.frontLeftToUser = true;
+      }
     }
     rows.push(row);
     console.log(JSON.stringify(row));
   }
 
   // 收尾再兜一次：只还原"我们动过的应用"，用户切走的别抢
-  const touchedAll = rows.flatMap((r) => [r.app, r.bundle && r.bundle.split('.').pop()]);
+  const touchedAll = collectTouchedAliases(rows);
   const finalRestore = await restoreFrontChecked(frontStart, touchedAll);
   const frontEnd = await frontName();
   // 判定口径：以"最终前台是否回到起点"为准；单步被抢但已还原的，如实留在行里当证据
