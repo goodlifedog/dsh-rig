@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { isDirectRun } from '../core/direct-run.mjs';
 import { planPrune } from '../core/prune.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -54,7 +55,7 @@ const reports = section('reports', path.join(ROOT, 'reports'), KEEP_REPORTS);
 const total = runs.bytes + daemon.bytes + reports.bytes;
 console.log((APPLY ? '已释放 ' : '可释放 ') + (total / 1024 / 1024).toFixed(2) + ' MB' + (APPLY ? '' : '（加 --apply 才会真删）'));
 
-const isMain = process.argv[1] && process.argv[1].endsWith('prune.mjs');
+const isMain = isDirectRun(import.meta.url);
 if (isMain && process.argv.includes('--self-test')) {
   const now = Date.now();
   const files = [

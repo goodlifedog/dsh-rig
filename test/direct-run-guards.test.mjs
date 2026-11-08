@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -34,15 +35,10 @@ const REQUIRED = [
   'core/tasks/greet-verify.mjs',
 ];
 
-// 仍是手写守卫、但不在本次写作用域内的文件（已知缺口，建议另开任务统一；修好后可从清单删）
-const KNOWN_GAPS = {
-  'core/cdp.mjs': '本地函数 isDirectRun() 仍在用 pathToFileURL(argv[1]) 比较；写作用域外',
-  'core/dialog-guard.mjs': '仍是 endsWith 名字守卫；写作用域外',
-  'scripts/tasks-doc.mjs': '手写 path.resolve(argv[1]) 比较；写作用域外',
-  'scripts/prune.mjs': '仍是 endsWith 名字守卫；写作用域外',
-  'scripts/away-maintenance.mjs': '手写 path.resolve(argv[1]) 比较；写作用域外',
-  'scripts/env-doc.mjs': '手写 path.resolve(argv[1]) 比较；写作用域外',
-};
+// 已知缺口清单（现在为空）：task-75 把最后 6 处也收口了（cdp / dialog-guard / tasks-doc / env-doc /
+// prune / away-maintenance）。保留这个机制是为了以后万一要留临时缺口时，必须显式登记并写理由，
+// 而不是悄悄绕过静态回归。
+const KNOWN_GAPS = {};
 
 // 手写入口守卫的三种典型写法
 const HAND_WRITTEN = [
@@ -92,7 +88,7 @@ test('core/tasks/*.mjs 不再手写 argv[1] 路径比较（新任务也必须统
   }
 });
 
-test('core 根部与 scripts/ 的剩余手写守卫只允许出现在已知缺口清单里', () => {
+test('core 根部与 scripts/ 不再出现手写入口守卫（确需留缺口必须登记）', () => {
   const files = [...listFiles('core', 'core'), ...listFiles('scripts', 'scripts')];
   for (const file of files) {
     const bad = handWritten(read(file));
@@ -110,4 +106,53 @@ test('core/direct-run.mjs 用 realpath 归一两边路径，而不是字符串�
   assert.match(src, /realpathSync\(/);
   assert.match(src, /fileURLToPath\(/);
   assert.match(src, /if \(!moduleUrl \|\| !argv1\) return false;/);
+});
+
+test('core/cdp.mjs 用共享 isDirectRun，本地同名函数已删除（避免重名遮蔽）', () => {
+  const src = read('core/cdp.mjs');
+  assert.match(src, /import \{ isDirectRun \} from '\.\/direct-run\.mjs';/);
+  assert.match(src, /if \(isDirectRun\(import\.meta\.url\)\)/);
+  // 本地同名函数必须删掉：否则 import 和 function 同名，行为会被本地实现盖掉
+  assert.doesNotMatch(src, /function isDirectRun\s*\(/);
+  assert.deepEqual(handWritten(src), []);
+});
+
+test('core/dialog-guard.mjs 的入口守卫也统一到 isDirectRun', () => {
+  const src = read('core/dialog-guard.mjs');
+  assert.match(src, /import \{ isDirectRun \} from '\.\/direct-run\.mjs';/);
+  assert.match(src, /const isMain = isDirectRun\(import\.meta\.url\);/);
+  assert.doesNotMatch(src, /\.endsWith\('dialog-guard\.mjs'\)/);
+  assert.deepEqual(handWritten(src), []);
+});
+
+test('scripts 的 CLI 入口（tasks-doc / env-doc / prune）都走 isDirectRun', () => {
+  for (const file of ['scripts/tasks-doc.mjs', 'scripts/env-doc.mjs', 'scripts/prune.mjs']) {
+    const src = read(file);
+    assert.match(src, /import \{ isDirectRun \} from '\.\.\/core\/direct-run\.mjs';/, file);
+    assert.match(src, /const isMain = isDirectRun\(import\.meta\.url\);/, file);
+    assert.deepEqual(handWritten(src), [], file);
+  }
+});
+
+test('import 这些 CLI 模块不执行 main（守卫在测试进程里是 false，与 node --test 场景一致）', async () => {
+  // 被 import 时守卫必须是 false：这些模块的 main 会读文件/删文件，import 阶段绝不能跑
+  const [cdp, dialog, tasksDoc, envDoc] = await Promise.all([
+    import('../core/cdp.mjs'),
+    import('../core/dialog-guard.mjs'),
+    import('../scripts/tasks-doc.mjs'),
+    import('../scripts/env-doc.mjs'),
+  ]);
+  assert.equal(typeof cdp.CDP, 'function');
+  assert.equal(typeof cdp.listTargets, 'function');
+  assert.equal(typeof dialog.runOnce, 'function');
+  assert.equal(typeof dialog.classifyDialog, 'function');
+  assert.equal(typeof tasksDoc.buildTaskCatalog, 'function');
+  assert.equal(typeof envDoc.buildEnvDoc, 'function');
+});
+
+test('CLI 直接执行仍然真的跑 main（prune --self-test 有输出，守卫 true）', () => {
+  // prune 不带 --apply 只读不删；--self-test 走纯函数 planPrune 并打印一行
+  const r = spawnSync(process.execPath, [path.join(ROOT, 'scripts', 'prune.mjs'), '--self-test'], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /self-test 删除项/, '守卫为 false 时脚本会静默退出、不打印 self-test 行');
 });

@@ -7,6 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDirectRun } from '../core/direct-run.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -61,7 +62,7 @@ function readAll() {
     .map((f) => [f.slice(0, -4), fs.readFileSync(path.join(TASKS_DIR, f), 'utf8')]);
 }
 
-const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const isMain = isDirectRun(import.meta.url);
 if (isMain) {
   const next = buildTaskCatalog(readAll());
   if (process.argv.includes('--check')) {

@@ -18,6 +18,7 @@
  */
 import { dialogs, frontName } from './background.mjs';
 import { isSafeIdentifier, isSafeScriptLiteral } from './safety.mjs';
+import { isDirectRun } from './direct-run.mjs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
@@ -152,7 +153,9 @@ export async function runOnce(options = {}) {
   return { front, rows };
 }
 
-const isMain = process.argv[1] && process.argv[1].endsWith('dialog-guard.mjs');
+// 入口守卫统一走 core/direct-run.mjs：原来用 argv[1].endsWith 名字判断，改过名的临时副本
+// 或同目录同名文件会误判；realpath 归一后只认「同一个文件」。
+const isMain = isDirectRun(import.meta.url);
 if (isMain) {
   const watch = process.argv.includes('--watch');
   const dryRun = process.argv.includes('--dry-run');

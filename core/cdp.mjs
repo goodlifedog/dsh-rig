@@ -30,7 +30,7 @@ import http from 'node:http';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import { EventEmitter } from 'node:events';
-import { pathToFileURL } from 'node:url';
+import { isDirectRun } from './direct-run.mjs';
 
 const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 const OPCODES = { CONT: 0x0, TEXT: 0x1, BINARY: 0x2, CLOSE: 0x8, PING: 0x9, PONG: 0x0a };
@@ -644,13 +644,10 @@ async function main() {
   }
 }
 
-function isDirectRun() {
-  if (!process.argv[1]) return false;
-  try { return import.meta.url === pathToFileURL(process.argv[1]).href; }
-  catch (error) { return false; }
-}
-
-if (isDirectRun()) {
+// 入口守卫统一走 core/direct-run.mjs（realpath 归一，符号链接路径也判 true）。
+// 原来这里有个本地 isDirectRun()，用 pathToFileURL(argv[1]) 字符串比较：
+// 经符号链接执行时 argv[1] 带 symlink 路径、import.meta.url 是 realpath → 判 false，命令行静默不跑。
+if (isDirectRun(import.meta.url)) {
   main().catch((error) => {
     console.error('[cdp] ' + (error && error.message ? error.message : error));
     process.exit(1);
