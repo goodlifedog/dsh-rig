@@ -15,6 +15,7 @@ import { restoreFront } from './front-watch.mjs';
 import { loadCache, saveCache, methodOrder, recordMethod } from './capabilities.mjs';
 import { isSafeIdentifier, pidMatchesProcess } from './safety.mjs';
 import { createRiskGate } from './front-risk.mjs';
+import { requireAppRunning } from './app-presence.mjs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -34,6 +35,46 @@ export function frontRiskGate() {
 /** 测试用：丢掉缓存的名单（改了 AGENT_FRONT_RISK 或名单文件后重新读） */
 export function resetFrontRiskGate() {
   defaultRiskGate = null;
+}
+
+/** requireRunning 未通过时的固定原因（判定本身复用 app-presence，不在这里重复实现） */
+export const NOT_RUNNING_REASON = '没在运行，不为了演示去启动/激活它';
+
+/**
+ * 可选的「运行门禁」（P1，默认关闭）。
+ *
+ * 为什么是 opt-in：ocu 对没在运行的应用调用 get_app_state/query/click 会把应用拉起来并顶到前台；
+ * 但本模块也有「ensureAppRunning 之后刻意操作」的调用方，默认 true 会破坏它们。所以：
+ *   - 不传 / requireRunning=false：行为与历史完全一致（回归用例覆盖）；
+ *   - requireRunning=true：先用 isAppRunning 判一次，未运行返回结构化 skipped，不进入底层 mcp。
+ *
+ * 判定逻辑复用 core/app-presence.mjs 的 requireAppRunning（内部 decideAppPresence），避免两套标准。
+ *
+ * @param {string} app 应用名
+ * @param {object} options 调用方 options（可带 bundleId/appName/processName/deps.isAppRunning）
+ * @param {object} deps 已合并的依赖（可注入假 isAppRunning 供单测）
+ * @returns {Promise<null|{skipped:string, running:boolean, reason:string, message:string, app:string}>}
+ */
+async function requireRunningGate(app, options, deps) {
+  const opts = options || {};
+  if (opts.requireRunning !== true) return null;
+  const probe = (deps && typeof deps.isAppRunning === 'function') ? deps.isAppRunning : isAppRunning;
+  const check = {};
+  if (opts.bundleId) check.bundleId = opts.bundleId;
+  if (opts.appName) check.appName = opts.appName;
+  if (opts.processName) check.processName = opts.processName;
+  const explicit = Object.keys(check).length > 0;
+  const presence = explicit
+    ? await requireAppRunning(String(opts.appName || app || ''), { isRunning: () => probe(check) })
+    : await requireAppRunning(app, { isAppRunning: probe });
+  if (presence.ok) return null;
+  return {
+    skipped: 'not-running',
+    running: false,
+    reason: NOT_RUNNING_REASON,
+    message: presence.message,
+    app: presence.app,
+  };
 }
 
 /** 当前前台应用（中文名） */
@@ -228,47 +269,86 @@ async function mcp() {
   return getOcuMcp();
 }
 
-/** 读界面树文本 */
-export async function state(app) {
-  const m = await mcp();
+/**
+ * 读界面树文本。
+ * @param {string} app
+ * @param {{requireRunning?:boolean, appName?:string, processName?:string, bundleId?:string, deps?:object}} [options]
+ *   requireRunning=true 且应用没在运行：返回 { skipped:'not-running', running:false, reason, text:'' }，不调用 ocu。
+ *   默认不传时行为与历史一致（直接读）。
+ */
+export async function state(app, options = {}) {
+  const opts = options || {};
+  const deps = Object.assign({ mcp, frontName, isAppRunning }, opts.deps || {});
+  const gate = await requireRunningGate(app, opts, deps);
+  if (gate) return Object.assign({ text: '' }, gate);
+  const m = await deps.mcp();
   const r = await m.callTool('get_app_state', { app, include_screenshot: false });
   return String(r.text || (r.raw && r.raw.content && r.raw.content[0] && r.raw.content[0].text) || '');
 }
 
-/** 按角色/文本查元素，返回 [{index, title, role, bounds}] */
-export async function find(app, { role, text, limit = 10 } = {}) {
-  const m = await mcp();
-  const args = { app, limit, max_nodes: 8000 };
-  if (role) args.role = role;
-  if (text) args.text = text;
+/**
+ * 按角色/文本查元素，返回 [{index, title, role, bounds}]。
+ * 第 2 个参数同时承载查询条件与可选的运行门禁（requireRunning/appName/processName/bundleId/deps），
+ * 老调用 find(app, { role, text, limit }) 不受影响。
+ */
+export async function find(app, queryOptions = {}) {
+  const opts = queryOptions || {};
+  const deps = Object.assign({ mcp, frontName, isAppRunning }, opts.deps || {});
+  const gate = await requireRunningGate(app, opts, deps);
+  if (gate) return Object.assign({ matches: [] }, gate);
+  const m = await deps.mcp();
+  const args = { app, limit: opts.limit == null ? 10 : opts.limit, max_nodes: 8000 };
+  if (opts.role) args.role = opts.role;
+  if (opts.text) args.text = opts.text;
   const r = await m.callTool('query', args);
   return (r.json && r.json.matches) || [];
 }
 
-/** AX 语义点击（不需要截图、不需要前台） */
-export async function click(app, elementIndex) {
-  const m = await mcp();
-  const before = await frontName();
+/**
+ * AX 语义点击（不需要截图、不需要前台）。
+ * 末尾可选对象支持 requireRunning 等运行门禁；未运行时返回 ok:false + skipped:'not-running'，不调用 ocu。
+ */
+export async function click(app, elementIndex, options = {}) {
+  const opts = options || {};
+  const deps = Object.assign({ mcp, frontName, isAppRunning }, opts.deps || {});
+  const gate = await requireRunningGate(app, opts, deps);
+  if (gate) return Object.assign({ ok: false, front: '', frontUnchanged: true, error: gate.reason }, gate);
+  const m = await deps.mcp();
+  const before = await deps.frontName();
   const r = await m.callTool('click', { app, element_index: String(elementIndex), click_method: 'accessibility' });
-  const after = await frontName();
+  const after = await deps.frontName();
   return { ok: !r.isError, front: after, frontUnchanged: before === after, error: r.isError ? firstText(r) : '' };
 }
 
-/** 给可设置控件设值（文本区/输入框） */
-export async function setValue(app, elementIndex, value) {
-  const m = await mcp();
-  const before = await frontName();
+/**
+ * 给可设置控件设值（文本区/输入框）。
+ * 末尾可选对象支持 requireRunning 等运行门禁；未运行时返回 ok:false + skipped:'not-running'，不调用 ocu。
+ */
+export async function setValue(app, elementIndex, value, options = {}) {
+  const opts = options || {};
+  const deps = Object.assign({ mcp, frontName, isAppRunning }, opts.deps || {});
+  const gate = await requireRunningGate(app, opts, deps);
+  if (gate) return Object.assign({ ok: false, front: '', frontUnchanged: true, error: gate.reason }, gate);
+  const m = await deps.mcp();
+  const before = await deps.frontName();
   const r = await m.callTool('set_value', { app, element_index: String(elementIndex), value: String(value) });
-  const after = await frontName();
+  const after = await deps.frontName();
   return { ok: !r.isError, front: after, frontUnchanged: before === after, error: r.isError ? firstText(r) : '' };
 }
 
-/** 后台键入（部分应用接受，别的会忽略） */
-export async function typeText(app, text) {
-  const m = await mcp();
-  const before = await frontName();
+/**
+ * 后台键入（部分应用接受，别的会忽略）。
+ * 末尾可选对象支持 requireRunning 等运行门禁；未运行时返回 ok:false + skipped:'not-running'，不调用 ocu。
+ */
+export async function typeText(app, text, options = {}) {
+  const opts = options || {};
+  const deps = Object.assign({ mcp, frontName, isAppRunning }, opts.deps || {});
+  const gate = await requireRunningGate(app, opts, deps);
+  if (gate) return Object.assign({ ok: false, front: '', frontUnchanged: true, error: gate.reason }, gate);
+  const m = await deps.mcp();
+  const before = await deps.frontName();
   const r = await m.callTool('type_text', { app, text: String(text), key_method: 'sky_key' });
-  const after = await frontName();
+  const after = await deps.frontName();
   return { ok: !r.isError, front: after, frontUnchanged: before === after, error: r.isError ? firstText(r) : '' };
 }
 
@@ -485,7 +565,19 @@ export async function clickByText(app, text, options = {}) {
  */
 export async function readSafe(app, options = {}) {
   const opts = options || {};
-  const deps = Object.assign({ frontName, state, restoreFront }, opts.deps || {});
+  const deps = Object.assign({ frontName, state, restoreFront, isAppRunning }, opts.deps || {});
+  // 可选运行门禁（默认关闭，行为不变）：requireRunning=true 且应用没在运行时，
+  // 直接返回 skipped:'not-running'，不进入 state（否则 ocu 会把应用拉起来并顶到前台）。
+  const gate = await requireRunningGate(app, opts, deps);
+  if (gate) {
+    return Object.assign({
+      text: '',
+      error: '',
+      frontStolen: false,
+      frontBefore: '',
+      frontAfter: '',
+    }, gate);
+  }
   // 前台风险名单：应用之前实测过"一读就自己跳到前台"，就别再读它了——
   // 每次读虽然会还原，但用户已经看到一次闪动，反复跑矩阵会一直闪。
   const risk = opts.risk === false ? null : (opts.risk || frontRiskGate());
@@ -530,7 +622,18 @@ export async function readSafe(app, options = {}) {
 /** 带前台保护的元素查询（同 readSafe，防止 query 把应用顶起来） */
 export async function findSafe(app, query, options = {}) {
   const opts = options || {};
-  const deps = Object.assign({ frontName, find, restoreFront }, opts.deps || {});
+  const deps = Object.assign({ frontName, find, restoreFront, isAppRunning }, opts.deps || {});
+  // 同 readSafe：可选运行门禁，未运行直接 skipped，不进入 find/query。
+  const gate = await requireRunningGate(app, opts, deps);
+  if (gate) {
+    return Object.assign({
+      matches: [],
+      error: '',
+      frontStolen: false,
+      frontBefore: '',
+      frontAfter: '',
+    }, gate);
+  }
   const risk = opts.risk === false ? null : (opts.risk || frontRiskGate());
   if (risk && typeof risk.shouldSkip === 'function' && risk.shouldSkip(app)) {
     return {
