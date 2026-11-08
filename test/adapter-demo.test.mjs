@@ -18,6 +18,7 @@ import {
   frontForCompare,
   compareFront,
   sampleFrontBaseline,
+  writeGuardDecision,
   runAdapterDemo,
 } from '../core/tasks/adapter-demo.mjs';
 
@@ -148,19 +149,51 @@ test('summarizeTree：节点数/标题/按钮/输入区；空树不可读', () =
   assert.equal(summarizeTree('').nodes, 0);
 });
 
-test('pickClickTarget：精确优先、其次包含；找不到给出候选；pickTypeTarget 优先文本输入区', () => {
+test('pickClickTarget：按文字 + 角色优先级；找不到给候选；pickTypeTarget 默认只写安全输入框', () => {
   const summary = summarizeTree(BUTTON_TREE);
-  assert.deepEqual(pickClickTarget(summary, '提交'), { found: true, index: '2', label: '提交', match: 'exact' });
+  assert.deepEqual(pickClickTarget(summary, '提交'), { found: true, index: '2', label: '提交', role: 'button', kind: 'button', match: 'exact', priority: 1 });
   assert.equal(pickClickTarget(summary, '交').match, 'contains');
   const missing = pickClickTarget(summary, '不存在');
   assert.equal(missing.found, false);
   assert.equal(missing.candidates.length, 2);
 
+  // 默认：只认 AXTextField/AXSearchField；只有 AXTextArea 时必须 --allow-write
   const typed = pickTypeTarget(summary);
-  assert.equal(typed.found, true);
-  assert.equal(typed.index, '4');
-  assert.equal(typed.kind, 'textArea');
+  assert.equal(typed.found, false);
+  assert.equal(typed.guard, 'text-area-needs-allow-write');
+  const typedAllow = pickTypeTarget(summary, { allowWrite: true });
+  assert.equal(typedAllow.found, true);
+  assert.equal(typedAllow.index, '4');
+  assert.equal(typedAllow.kind, 'textArea');
   assert.equal(pickTypeTarget({ inputs: [] }).found, false);
+
+  // Finder 侧边栏是行/单元格：按文字找得到，且不会被当成按钮
+  const finder = summarizeTree(['App=x', 'Window: "flow", App: 访达.',
+    '4 row 文稿', '5 row (selected) 桌面',
+    '32 按钮 新建备忘录 Help: 创',
+    '40 文本栏 (settable, string) Value: tech',
+  ].join('\n'));
+  const row = pickClickTarget(finder, '文稿');
+  assert.equal(row.found, true);
+  assert.equal(row.index, '4');
+  assert.equal(row.role, 'tableRow');
+  const named = pickClickTarget(finder, '新建备忘录');
+  assert.equal(named.role, 'button');
+  // Finder 里其他「文本栏」是文件名（settable AXTextField），没有搜索特征 → 绝不能当写入目标
+  const finderType = pickTypeTarget(finder);
+  assert.equal(finderType.found, false, '文件名不能被当输入框写入');
+});
+
+test('writeGuardDecision：空目标允许；有内容默认拒绝，--allow-write 才允许（写后必须恢复）', () => {
+  assert.equal(writeGuardDecision('', false).allow, true);
+  assert.equal(writeGuardDecision(undefined, false).allow, true);
+  const blocked = writeGuardDecision('用户正文', false);
+  assert.equal(blocked.allow, false);
+  assert.match(blocked.reason, /拒绝写入/);
+  assert.equal(blocked.current, '用户正文');
+  const allowed = writeGuardDecision('用户正文', true);
+  assert.equal(allowed.allow, true);
+  assert.match(allowed.reason, /写后恢复/);
 });
 
 test('hasStateChanged / extractValue：标题、节点数、新增行算变化；能按 index 读回 value', () => {
@@ -277,13 +310,25 @@ test('流程：找不到按钮 → 能力失败 exit1（不点击）', async () 
   assert.equal(step.ok, false);
 });
 
-test('流程：点击后界面树无变化 → 能力失败 exit1', async () => {
-  const { deps } = fakeDeps({ readState: async () => BUTTON_TREE });
+test('流程：工具点失败且界面树无变化 → 能力失败 exit1（clickOk/changed 都记录）', async () => {
+  const { deps } = fakeDeps({ readState: async () => BUTTON_TREE, click: async () => ({ ok: false, text: 'AXPress 不支持' }) });
   const { exitCode, report } = await runAdapterDemo({ app: 'TextEdit', clickText: '提交' }, deps);
   assert.equal(exitCode, 1);
   const step = report.steps.find((s) => s.step === 'click-by-text');
   assert.equal(step.ok, false);
+  assert.equal(step.clickOk, false);
+  assert.equal(step.changed, false);
   assert.match(step.detail, /没有可观测变化/);
+});
+
+test('流程：工具 ok 但界面树没变化 → 算成功（Calculator 场景：状态已变但 click 工具报错也不误判）', async () => {
+  const { deps } = fakeDeps({ readState: async () => BUTTON_TREE, click: async () => ({ ok: true }) });
+  const { exitCode, report } = await runAdapterDemo({ app: 'Calculator', clickText: '提交' }, deps);
+  assert.equal(exitCode, 0, JSON.stringify(report.steps));
+  const step = report.steps.find((s) => s.step === 'click-by-text');
+  assert.equal(step.ok, true);
+  assert.equal(step.clickOk, true);
+  assert.equal(step.changed, false);
 });
 
 test('流程：前台被改变 → 能力失败 exit1', async () => {
@@ -417,4 +462,88 @@ test('流程：横幅作基线 + 动作后真实前台一致 → exit0（不改�
   assert.equal(report.front.before, 'NotificationCenter', 'front.before 记录真实（可能是浮层）');
   assert.equal(report.front.unchanged, true);
   assert.ok(report.ignoredOverlays.includes('NotificationCenter'));
+});
+
+// ---------- task-94：行/单元格点击、写守卫、用户回来即停 ----------
+
+test('流程：按文字点 Finder 侧边栏行（role=tableRow）→ 树变即成功', async () => {
+  const finderBefore = ['App=x', 'Window: "flow", App: 访达.', '4 row 文稿', '5 row 桌面'].join('\n');
+  const finderAfter = ['App=x', 'Window: "文稿", App: 访达.', '4 row 文稿', '5 row 桌面', '9 row 我的文件'].join('\n');
+  let reads = 0;
+  const { deps, calls } = fakeDeps({
+    readState: async () => { reads += 1; return reads === 1 ? finderBefore : finderAfter; },
+    click: async (app, index) => { calls.click.push({ app, index }); return { ok: false }; },
+  });
+  const { exitCode, report } = await runAdapterDemo({ app: 'Finder', clickText: '文稿' }, deps);
+  assert.equal(exitCode, 0, JSON.stringify(report.steps));
+  const step = report.steps.find((s) => s.step === 'click-by-text');
+  assert.equal(step.role, 'tableRow');
+  assert.equal(step.index, '4');
+  assert.equal(step.clickOk, false);
+  assert.equal(step.changed, true);
+});
+
+test('流程：只有 AXTextArea 且没 --allow-write → 环境跳过 exit0（不写）', async () => {
+  const tree = ['App=x', 'Window: "备忘录", App: 备忘录.', '26 文本输入区 (settable, string) ID: body, Value: '].join('\n');
+  const { deps, calls } = fakeDeps({ readState: async () => tree });
+  const { exitCode, report } = await runAdapterDemo({ app: 'Notes', typeText: '[AGENT-TEST] x' }, deps);
+  assert.equal(exitCode, 0);
+  assert.equal(report.envSkip, true);
+  assert.match(report.reason, /AXTextArea/);
+  assert.equal(calls.setValue.length, 0, '没 --allow-write 不能写正文区');
+});
+
+test('流程：--allow-write + 空 AXTextArea → 写入并读回、写后恢复原值', async () => {
+  const empty = ['App=x', 'Window: "备忘录", App: 备忘录.', '26 文本输入区 (settable, string) ID: body, Value: '].join('\n');
+  const typed = ['App=x', 'Window: "备忘录", App: 备忘录.', '26 文本输入区 (settable, string) ID: body, Value: [AGENT-TEST] x'].join('\n');
+  const seq = [empty, empty, typed, empty]; // read-tree → 写前 latest(空) → 写后读回(typed) → 恢复后读回(空)
+  let reads = 0;
+  const { deps, calls } = fakeDeps({
+    readState: async () => { const v = seq[Math.min(reads, seq.length - 1)]; reads += 1; return v; },
+  });
+  const { exitCode, report } = await runAdapterDemo({ app: 'Notes', typeText: '[AGENT-TEST] x', allowWrite: true }, deps);
+  assert.equal(exitCode, 0, JSON.stringify(report.steps));
+  assert.equal(calls.setValue.length, 1, '空 AXTextArea 只写入一次，不回填空串（留给 cleanup 清理）');
+  assert.equal(calls.setValue[0].value, '[AGENT-TEST] x');
+  assert.ok(report.steps.some((s) => s.step === 'type-text' && s.ok === true));
+  const restore = report.steps.find((s) => s.step === 'restore');
+  assert.equal(restore.ok, true);
+  assert.match(restore.detail, /保留本次.*写入/);
+});
+
+test('流程：写守卫拒绝覆盖已有内容（无 --allow-write）→ 不写、exit0', async () => {
+  const tree = ['App=x', 'Window: "w", App: 某.', '40 搜索框 (settable, string) Value: 已有内容'].join('\n');
+  const { deps, calls } = fakeDeps({ readState: async () => tree });
+  const { exitCode, report } = await runAdapterDemo({ app: 'Finder', typeText: 'x' }, deps);
+  assert.equal(exitCode, 0);
+  assert.equal(calls.setValue.length, 0);
+  const guard = report.steps.find((s) => s.step === 'type-guard');
+  assert.equal(guard.ok, true);
+  assert.match(guard.detail, /拒绝写入/);
+});
+
+test('流程：用户中途回来（空闲 <20s）→ 立即环境跳过，不点击', async () => {
+  const idleSeq = [60000, 1000]; // 第 1 次=守卫阶段（用户离开），第 2 次=动作前检查（用户已回来）
+  let i = 0;
+  const { deps, calls } = fakeDeps({
+    idleMs: async () => idleSeq[Math.min(i++, idleSeq.length - 1)],
+    readState: async () => BUTTON_TREE,
+  });
+  const { exitCode, report } = await runAdapterDemo({ app: 'Finder', clickText: '提交' }, deps);
+  assert.equal(exitCode, 0);
+  assert.equal(report.envSkip, true);
+  assert.match(report.reason, /回到电脑前/);
+  assert.equal(calls.click.length, 0, '用户回来了就不能点');
+});
+
+test('流程：默认键鼠空闲阈值 180s 会传给守卫（--min-idle 可配）', async () => {
+  const seen = [];
+  const { deps } = fakeDeps({
+    shouldDeferForActiveUser: (idle, options) => { seen.push(options && options.thresholdMs); return { defer: false, reason: '' }; },
+  });
+  await runAdapterDemo({ app: 'Finder' }, deps);
+  assert.equal(seen[0], 180000, '默认要求用户离开 180s');
+  seen.length = 0;
+  await runAdapterDemo({ app: 'Finder', minIdleMs: 5000 }, deps);
+  assert.equal(seen[0], 5000, '--min-idle 可覆盖');
 });

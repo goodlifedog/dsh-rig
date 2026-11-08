@@ -61,7 +61,7 @@ export const DEFAULT_WAIT_MS = 1200;
  */
 export function parseArgs(argv) {
   const args = Array.isArray(argv) ? argv.slice() : [];
-  const out = { app: '', file: '', clickText: '', typeText: '', allowLaunch: false, help: false, errors: [] };
+  const out = { app: '', file: '', clickText: '', typeText: '', allowLaunch: false, allowWrite: false, minIdleMs: 180000, help: false, errors: [] };
   const valueOf = (flag, index) => {
     const value = args[index + 1];
     if (value === undefined || value.startsWith('--')) {
@@ -74,6 +74,14 @@ export function parseArgs(argv) {
     const arg = args[i];
     if (arg === '--help' || arg === '-h') out.help = true;
     else if (arg === '--allow-launch') out.allowLaunch = true;
+    else if (arg === '--allow-write') out.allowWrite = true;
+    else if (arg === '--min-idle') {
+      const raw = valueOf(arg, i);
+      i += 1;
+      const seconds = Number(raw);
+      if (!Number.isFinite(seconds) || seconds < 0) out.errors.push('--min-idle 需要非负秒数');
+      else out.minIdleMs = Math.round(seconds * 1000);
+    }
     else if (arg === '--app') { out.app = valueOf(arg, i); i += 1; }
     else if (arg === '--file') { out.file = valueOf(arg, i); i += 1; }
     else if (arg === '--click-text') { out.clickText = valueOf(arg, i); i += 1; }
@@ -161,30 +169,102 @@ export function decideRunGate(input = {}) {
   };
 }
 
-/** 解析界面树：节点数 / 窗口标题 / 按钮 / 输入区 / 文本行（纯函数） */
+/** 文本输入框里「安全可写」的特征：搜索/查找/输入/网址/URL 等；Finder 的文件名也是 AXTextField，绝不能往里写 */
+const SAFE_TEXT_FIELD_RE = /搜索|查找|输入|网址|地址|URL|search|query|filter/i;
+
+/** 可点击角色的解析顺序：长 token 在前（text area / text field / static text 不能被 text 抢走） */
+const CLICK_ROLE_TOKENS = [
+  { kind: 'textArea', re: /^(?:文本输入区|text area)(?=\s|$|\()/i },
+  { kind: 'searchField', re: /^(?:搜索框|search field)(?=\s|$|\()/i },
+  { kind: 'textField', re: /^(?:文本栏|text field)(?=\s|$|\()/i },
+  { kind: 'outlineRow', re: /^(?:outline row|外框行)(?=\s|$|\()/i },
+  { kind: 'listItem', re: /^(?:list item|列表项)(?=\s|$|\()/i },
+  { kind: 'tableRow', re: /^(?:table row|表格行|row|行)(?=\s|$|\()/i },
+  { kind: 'cell', re: /^(?:cell|单元格)(?=\s|$|\()/i },
+  { kind: 'button', re: /^(?:按钮|button)(?=\s|$|\()/i },
+  { kind: 'staticText', re: /^(?:static text|静态文本)(?=\s|$|\()/i },
+  { kind: 'text', re: /^(?:text|文本)(?=\s|$|\()/i },
+  { kind: 'tab', re: /^(?:tab|标签页)(?=\s|$|\()/i },
+  { kind: 'checkBox', re: /^(?:check box|checkbox|勾选框|复选框)(?=\s|$|\()/i },
+];
+
+/** 元数据分隔：ID:/Help:/Description:/Value:/Secondary Actions: */
+const META_SEP = /\s+(?:ID:|Help:|Description:|Value:|Secondary Actions:)/;
+
+/** 取 label（去掉元数据尾巴） */
+function cleanLabel(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  return raw.split(META_SEP)[0].trim();
+}
+
+/** 解析输入区的 value（Value: 到下一个元数据分隔/行尾） */
+function parseValue(rest) {
+  const m = /(?:^|\s)Value:\s*([\s\S]*?)(?=,\s*(?:Secondary Actions:|ID:|Help:|Description:)|$)/.exec(rest);
+  if (!m) return { hasValue: false, value: '' };
+  return { hasValue: true, value: String(m[1]).trim() };
+}
+
+/** 解析界面树：节点数 / 窗口标题 / 按钮 / 可点击角色（行/单元格/列表项等）/ 输入区（纯函数） */
 export function summarizeTree(stateText) {
   const text = String(stateText || '');
   const lines = text.split('\n').map((line) => line.trim()).filter(Boolean);
   const nodeLines = lines.filter((line) => /^\d+\s/.test(line));
   const titleMatch = /^Window: "([^"]*)"/m.exec(text);
   const buttons = [];
+  const clickables = [];
   const inputs = [];
-  const inputsRaw = [];
   for (const line of nodeLines) {
     const m = /^(\d+)\s+(.+)$/.exec(line);
     if (!m) continue;
     const index = m[1];
-    const rest = m[2].trim();
-    if (/^(?:按钮|button)/.test(rest)) {
-      buttons.push({ index, label: rest.replace(/^(?:按钮|button)\s*/, '').trim() });
-    } else if (/^(?:文本输入区|文本栏|text area|text field)/.test(rest)) {
-      inputsRaw.push({ index, label: rest.trim() });
+    let rest = m[2].trim();
+    let role = '';
+    for (const token of CLICK_ROLE_TOKENS) {
+      const hit = token.re.exec(rest);
+      if (hit) {
+        role = token.kind;
+        rest = rest.slice(hit[0].length).trim();
+        break;
+      }
+    }
+    // 去掉 (selected)/(disabled)/(settable, string) 这类标记，方便取 label/value
+    const flags = /^(?:\([^)]*\)\s*)+/.exec(rest);
+    const flagText = flags ? flags[0] : '';
+    const body = flags ? rest.slice(flagText.length).trim() : rest;
+    const settable = /settable/i.test(flagText) || /settable/i.test(rest);
+
+    if (role === 'textArea' || role === 'textField' || role === 'searchField') {
+      const parsed = parseValue(rest);
+      const label = parsed.hasValue ? parsed.value : cleanLabel(body);
       inputs.push({
         index,
-        label: rest.trim(),
-        settable: /settable/.test(rest),
-        kind: /文本输入区|text area/.test(rest) ? 'textArea' : 'textField',
+        label,
+        settable,
+        kind: role,
+        hasValue: parsed.hasValue,
+        value: parsed.value,
+        empty: parsed.hasValue ? parsed.value === '' : false,
       });
+      continue;
+    }
+
+    const label = cleanLabel(body);
+    if (!label) continue;
+    if (role === 'button') {
+      buttons.push({ index, label });
+      clickables.push({ index, role: 'button', kind: 'button', label, priority: 1 });
+    } else if (role === 'tableRow' || role === 'outlineRow' || role === 'listItem' || role === 'cell' || role === 'tab') {
+      clickables.push({ index, role, kind: role, label, priority: 2 });
+    } else if (role === 'checkBox') {
+      clickables.push({ index, role, kind: role, label, priority: 2 });
+    } else if (role === 'staticText' || role === 'text') {
+      // 静态文本只在文字完全一致时才点（避免误点一段说明文字）
+      clickables.push({ index, role, kind: role, label, priority: 3 });
+    } else if (!role && /(?:按钮|button)$/i.test(label)) {
+      // 有些标准按钮在树里没有角色前缀（如「关闭按钮」「增箭头按钮」），按命名按钮处理
+      buttons.push({ index, label });
+      clickables.push({ index, role: 'named-button', kind: 'namedButton', label, priority: 2 });
     }
   }
   return {
@@ -192,30 +272,71 @@ export function summarizeTree(stateText) {
     nodes: nodeLines.length,
     windowTitle: titleMatch ? titleMatch[1] : '',
     buttons,
+    clickables,
     inputs,
     lines,
   };
 }
 
-/** 按可见文字挑按钮：先精确、再包含（纯函数） */
+/**
+ * 按可见文字挑点击目标：角色白名单 + 优先级（按钮 → 行/单元格/列表项/命名按钮 → 静态文本）。
+ * 同一优先级内先精确匹配、再包含匹配；静态文本只接受精确匹配。纯函数。
+ */
 export function pickClickTarget(summary, clickText) {
   const wanted = String(clickText || '').trim();
   if (!wanted || !summary) return { found: false, reason: '未提供 --click-text' };
-  const buttons = Array.isArray(summary.buttons) ? summary.buttons : [];
-  const exact = buttons.find((b) => b.label === wanted);
-  if (exact) return { found: true, index: exact.index, label: exact.label, match: 'exact' };
-  const partial = buttons.find((b) => b.label.includes(wanted));
-  if (partial) return { found: true, index: partial.index, label: partial.label, match: 'contains' };
-  return { found: false, reason: '按钮列表里找不到文字「' + wanted + '」', candidates: buttons.slice(0, 10) };
+  const candidates = Array.isArray(summary.clickables) ? summary.clickables.slice() : [];
+  const ordered = candidates.slice().sort((a, b) => (a.priority || 9) - (b.priority || 9));
+  for (const allowContains of [false, true]) {
+    for (const c of ordered) {
+      if (!allowContains && (c.priority || 9) === 3) continue; // 静态文本不做包含匹配
+      const match = c.label === wanted ? 'exact' : (allowContains && c.label.includes(wanted) ? 'contains' : '');
+      if (!match) continue;
+      return { found: true, index: c.index, label: c.label, role: c.role, kind: c.kind, match, priority: c.priority };
+    }
+  }
+  return { found: false, reason: '可点击角色里找不到文字「' + wanted + '」', candidates: candidates.slice(0, 12) };
 }
 
-/** 挑可写输入区：优先 settable 的文本输入区，其次文本栏（纯函数） */
-export function pickTypeTarget(summary) {
-  const inputs = (summary && Array.isArray(summary.inputs)) ? summary.inputs : [];
-  const preferred = inputs.find((i) => i.settable !== false && i.kind === 'textArea')
-    || inputs.find((i) => i.settable !== false);
-  if (!preferred) return { found: false, reason: '界面树里找不到可写输入区' };
-  return { found: true, index: preferred.index, label: preferred.label, kind: preferred.kind };
+/**
+ * 挑可写输入目标（纯函数）：默认只允许 AXTextField/AXSearchField；
+ * AXTextArea 必须 allowWrite=true，且目标必须为空（防止覆盖用户正文）。
+ */
+export function pickTypeTarget(summary, options = {}) {
+  const opts = options || {};
+  const allowWrite = opts.allowWrite === true;
+  const inputs = ((summary && Array.isArray(summary.inputs)) ? summary.inputs : [])
+    .filter((i) => i.settable !== false);
+  // 只有「搜索框 / 特征明确的输入框」才算安全目标：
+  // Finder 里文件名也是 settable 的 AXTextField，直接写会重命名用户文件，必须排除。
+  const safe = inputs.filter((i) => i.kind === 'searchField'
+    || (i.kind === 'textField' && SAFE_TEXT_FIELD_RE.test(String(i.label || '') + ' ' + String(i.value || ''))));
+  const preferred = safe.find((i) => i.empty)
+    || safe.find((i) => !i.hasValue)
+    || safe[0];
+  if (preferred) {
+    return { found: true, index: preferred.index, label: preferred.label, kind: preferred.kind, role: preferred.kind, value: preferred.value };
+  }
+  const areas = inputs.filter((i) => i.kind === 'textArea');
+  if (areas.length) {
+    if (!allowWrite) {
+      return {
+        found: false,
+        guard: 'text-area-needs-allow-write',
+        reason: '只找到 AXTextArea（正文区），默认拒绝写入以免覆盖用户正文；确认目标为空后可加 --allow-write',
+      };
+    }
+    const safeArea = areas.find((i) => i.empty === true);
+    if (!safeArea) {
+      return {
+        found: false,
+        guard: 'text-area-not-empty',
+        reason: '可写的 AXTextArea 里已有内容，拒绝覆盖（避免写坏用户正文）',
+      };
+    }
+    return { found: true, index: safeArea.index, label: safeArea.label, kind: 'textArea', role: 'textArea', value: safeArea.value };
+  }
+  return { found: false, guard: 'no-input', reason: '界面树里找不到可写输入区（文本栏/搜索框/空正文区）' };
 }
 
 /** 两次界面树之间是否有变化（纯函数）：标题/节点数/新增行 任一变化即算 */
@@ -337,6 +458,16 @@ export async function sampleFrontBaseline(deps, options = {}) {
 }
 
 /** 读回文本里某个 value（纯函数，用于校验 type-text） */
+/**
+ * 写入守卫（纯函数）：目标输入区已有内容时默认拒绝写入，避免把测试文本留在用户数据里。
+ * --allow-write 才允许覆盖已有内容；无论允许与否，调用方都必须在写后恢复原值。
+ */
+export function writeGuardDecision(currentValue, allowWrite) {
+  const current = currentValue === undefined || currentValue === null ? '' : String(currentValue);
+  if (current === '' ) return { allow: true, current, reason: '目标输入区为空，允许写入' };
+  if (allowWrite) return { allow: true, current, reason: '目标输入区有内容（' + JSON.stringify(current) + '），已显式 --allow-write，写后恢复' };
+  return { allow: false, current, reason: '目标输入区已有内容（' + JSON.stringify(current) + '），拒绝写入；确需覆盖请加 --allow-write（写后会恢复原值）' };
+}
 export function extractValue(stateText, index) {
   const text = String(stateText || '');
   const lines = text.split('\n');
@@ -419,6 +550,15 @@ export async function runAdapterDemo(options = {}, depsInput = {}) {
     steps.push(Object.assign({ step, ok, detail: detail || '' }, extra || {}));
   };
   const finish = (exitCode) => ({ exitCode, report });
+  // 用户回来（键鼠 <20s 内动过）立即停：哪怕已经跑到一半，也不再继续操作应用
+  const userReturned = async () => {
+    const idle = await Promise.resolve().then(() => deps.idleMs()).catch(() => -1);
+    if (!(idle >= 0 && idle < 20000)) return false;
+    report.envSkip = true;
+    report.reason = '环境跳过：你回到电脑前（键鼠 ' + Math.max(0, Math.round(idle / 1000)) + ' 秒前动过），已立即停止，不再操作应用';
+    addStep('user-return', true, report.reason, { skipped: true });
+    return true;
+  };
 
   if (!app) {
     report.reason = '缺少 --app <显示名>';
@@ -428,8 +568,9 @@ export async function runAdapterDemo(options = {}, depsInput = {}) {
 
   // 先记一次真实前台（仅用于环境跳过时的上下文；动作前的正式基线在 open/launch 之后采）
   report.front.before = await deps.frontName().catch(() => '');
+  const minIdleMs = Number.isFinite(options_.minIdleMs) && options_.minIdleMs >= 0 ? options_.minIdleMs : 180000;
   const idleMs = await Promise.resolve().then(() => deps.idleMs()).catch(() => -1);
-  const userActive = deps.shouldDeferForActiveUser(idleMs);
+  const userActive = deps.shouldDeferForActiveUser(idleMs, { thresholdMs: minIdleMs });
   let risky = false;
   let riskyAs = '';
   try {
@@ -535,6 +676,7 @@ export async function runAdapterDemo(options = {}, depsInput = {}) {
     if (!before.readable) return finish(1);
 
     if (options_.clickText) {
+      if (await userReturned()) return finish(0);
       const target = pickClickTarget(before, options_.clickText);
       if (!target.found) {
         addStep('click-by-text', false, target.reason || ('找不到按钮：' + options_.clickText), { candidates: target.candidates || [] });
@@ -545,20 +687,45 @@ export async function runAdapterDemo(options = {}, depsInput = {}) {
       const afterState = await deps.readState(app).catch(() => '');
       const after = summarizeTree(afterState);
       const changed = hasStateChanged(before, after);
-      addStep('click-by-text', Boolean(changed.changed) && (!clicked || clicked.ok !== false),
-        '点中「' + target.label + '」index=' + target.index + '（' + target.match + '）；' + (changed.changed ? changed.detail : '点击后界面树没有可观测变化'),
-        { index: target.index, label: target.label, changed: changed.changed, clickOk: clicked ? clicked.ok : null });
-      if (!changed.changed) return finish(1);
+      // 成功判定：工具返回 ok，或界面树确实变了（Calculator 这类点击后 click 工具可能报错但状态已变）。
+      // 两个字段都记下来，不丢证据。
+      const clickOk = Boolean(clicked && clicked.ok !== false);
+      const ok = clickOk || changed.changed;
+      addStep('click-by-text', ok,
+        '点中「' + target.label + '」index=' + target.index + '（role=' + (target.role || 'button') + '，' + target.match + '）；'
+          + 'clickOk=' + clickOk + '，changed=' + changed.changed + '；'
+          + (changed.changed ? changed.detail : '点击后界面树没有可观测变化'),
+        {
+          index: target.index,
+          label: target.label,
+          role: target.role || 'button',
+          clickOk,
+          changed: changed.changed,
+        });
+      if (!ok) return finish(1);
     }
 
     if (options_.typeText) {
+      if (await userReturned()) return finish(0);
       const latestState = await deps.readState(app).catch(() => '');
       const latest = summarizeTree(latestState);
-      const target = pickTypeTarget(latest);
+      const target = pickTypeTarget(latest, { allowWrite: Boolean(options_.allowWrite) });
       if (!target.found) {
-        addStep('type-text', false, target.reason || '找不到可写输入区');
-        return finish(1);
+        // 找不到安全可写目标 = 环境/安全跳过（绝不在不确定的输入框里写用户数据）
+        report.envSkip = true;
+        report.reason = '环境跳过：' + (target.reason || '找不到安全可写目标');
+        addStep('type-text', true, report.reason, { skipped: true, guard: target.guard || 'no-safe-input' });
+        return finish(0);
       }
+      // 写前先看目标里有没有内容：有内容默认拒绝，避免覆盖用户数据（--allow-write 才强制）
+      const currentValue = extractValue(latestState, target.index);
+      const decision = writeGuardDecision(currentValue, Boolean(options_.allowWrite));
+      if (!decision.allow) {
+        addStep('type-guard', true, decision.reason, { skipped: true, current: decision.current });
+        report.skipped = true;
+        return finish(0);
+      }
+      addStep('type-guard', true, decision.reason, { current: decision.current });
       const written = await deps.setValue(app, target.index, String(options_.typeText));
       await deps.sleep(Number(options_.typeWaitMs || 600));
       const readBackState = await deps.readState(app).catch(() => '');
@@ -568,10 +735,37 @@ export async function runAdapterDemo(options = {}, depsInput = {}) {
         ? '写入并读回成功：index=' + target.index + ' value=' + JSON.stringify(value)
         : '读回 value 不符合预期：' + JSON.stringify(value) + '（期望 ' + JSON.stringify(options_.typeText) + '）',
         { index: target.index, value });
-      if (!ok) return finish(1);
+      // 恢复策略：
+      //  - 覆盖了原有内容（current !== ''）→ 必须恢复原值，不能把用户内容改掉；
+      //  - 目标是 AXTextField/AXSearchField（搜索框/地址栏）→ 恢复成空，界面干净；
+      //  - 目标是空的 AXTextArea（例如备忘录新建的空笔记）→ 保留本次写入，
+      //    交给 cleanup:test --force 按 [AGENT-TEST] 标记清理（回填空串会让笔记失去标记、清不掉）。
+      const shouldRestore = decision.current !== '' || target.kind !== 'textArea';
+      if (!shouldRestore) {
+        addStep('restore', true, '目标是空 AXTextArea：保留本次 [AGENT-TEST] 写入，交由 cleanup:test --force 清理', {
+          index: target.index,
+          kept: String(options_.typeText),
+        });
+      }
+      const restoreRes = shouldRestore
+        ? await deps.setValue(app, target.index, decision.current).catch(() => ({ ok: false }))
+        : { ok: true, skipped: true };
+      let restoreOk = true;
+      if (shouldRestore) {
+        await deps.sleep(Number(options_.typeWaitMs || 600));
+        const restoreState = await deps.readState(app).catch(() => '');
+        const restoredValue = extractValue(restoreState, target.index);
+        restoreOk = restoredValue === decision.current;
+        addStep('restore', restoreOk, restoreOk
+          ? '已恢复原值：' + JSON.stringify(decision.current)
+          : '恢复失败：当前 ' + JSON.stringify(restoredValue) + '，原值 ' + JSON.stringify(decision.current),
+          { index: target.index, current: decision.current, restored: restoredValue, setOk: Boolean(restoreRes && restoreRes.ok !== false) });
+      }
+      if (!ok || !restoreOk) return finish(1);
     }
 
     // 回显能力（小窗画面）：拿不到就如实 skip，不判失败
+    if (await userReturned()) return finish(0);
     const echo = await deps.echoScreenshot(app, tempDir || os.tmpdir()).catch((error) => ({ ok: false, skipped: true, reason: String((error && error.message) || error) }));
     addStep('echo', true, echo && echo.ok
       ? '小窗可回显：windowId=' + echo.windowId + '，截图 ' + echo.bytes + ' 字节'
@@ -611,7 +805,7 @@ export async function runAdapterDemo(options = {}, depsInput = {}) {
 // ------------------------- CLI -------------------------
 
 const HELP = [
-  '用法: node core/tasks/adapter-demo.mjs --app <显示名> [--file <样例>] [--click-text <文字>] [--type-text <文字>] [--allow-launch]',
+  '用法: node core/tasks/adapter-demo.mjs --app <显示名> [--file <样例>] [--click-text <文字>] [--type-text <文字>] [--allow-launch] [--allow-write] [--min-idle <秒>]',
   '',
   '示例:',
   '  node core/tasks/adapter-demo.mjs --app TextEdit --file examples/adapters/sample.txt --type-text "[AGENT-TEST] typed"',
