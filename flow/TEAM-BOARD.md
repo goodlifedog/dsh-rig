@@ -55,6 +55,9 @@
 | task-58 | ocu-recipe | H2：browser / headless-demo 的 AppleEvent 入口补预检 | 核验后提交 `32cd7a8` |
 | task-59 | headless-engineer | 规则 6：发 AppleEvent 前必须有自动化预检（静态防回归 + 10 条已知缺口登记） | 核验后提交 `9eb3fce`；Lead 追加缺口数量上限断言 |
 | task-60 | boss-researcher | 应用适配广度调研（7 个候选 + 10 条不建议 + 最小可行步骤） | 核验后提交 `385c369`；INDEX 收录 |
+| task-61 | headless-engineer | 适配第一批：新增 mail/calendar/reading/photos 门类 + media 补 Music（预设+单测+清点） | 核验后提交 `dc4faca`；清点 32→38 |
+| task-62 | cdp-bridge | 清点口径：细分「部分验证（通道测过、矩阵未读）」+ 修 cdp-ok 判定 | 核验后提交 `1753042` |
+| task-63 | ocu-recipe | 权限闸门覆盖面：认 callTool 界面工具与 ocu js 外层调用 | 核验后提交 `09415a9`；需 AX 任务 16→19 |
 
 ## 当前状态
 

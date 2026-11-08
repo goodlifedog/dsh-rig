@@ -267,7 +267,7 @@ npm run as:channel                    # AppleScript 通道自检（先静默查�
 
 ```bash
 npm run bg:verify            # 一条命令跑完全部验收，输出 reports/bg-verify-*.md
-MATRIX_PRESET=im npm run matrix   # 按门类批量探测：office / im / dev / system / media / tools
+MATRIX_PRESET=im npm run matrix   # 按门类批量探测：office / im / dev / system / media / tools / mail / calendar / reading / photos
 ```
 
 按门类实测过的应用（读界面 / 操作 / 画面回显 / 前台是否被抢）：

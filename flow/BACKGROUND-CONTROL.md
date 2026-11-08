@@ -143,7 +143,7 @@ await app.getAXState({ windowPlacement: 'restore' });         // 还回去
 
 ## 四点六、应用能力矩阵（2026-11-07 实测）
 
-按门类批量跑：`MATRIX_PRESET=office|im|dev|system|media|tools npm run matrix`（清单在 `core/app-presets.mjs`），
+按门类批量跑：`MATRIX_PRESET=office|im|dev|system|media|tools|mail|calendar|reading|photos npm run matrix`（清单在 `core/app-presets.mjs`），
 探测完默认只关掉本轮自己拉起的应用。
 
 ```bash

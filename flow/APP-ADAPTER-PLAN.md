@@ -8,6 +8,8 @@
 > `flow/COVERAGE.md`（12 个应用的 AX 覆盖率）、`docs/MAC-APPS.md` 第六/七节；
 > ④ 本机 `/Applications`、`/System/Applications` 的只读 `ls` + Info.plist/sdef 检查（不启动应用）。
 
+> **落地状态（2026-11-08 晚）**：P2/P3/P4/P5 的预设部分已完成——Preview / Mail / Calendar / Reminders / Music / Photos 已进 `core/app-presets.mjs`（新增 mail/calendar/reading/photos 四个门类，media 补 Music），清点从 32 → 38 个应用；矩阵实测仍待 verify:live 窗口（会启动应用）。ChatGPT 在清点里已单列为「部分验证（CDP cdp-ok、矩阵未读）」。
+
 ## 0. 一句话结论
 
 **最大的空白不是某个门类，而是 electron 运行时族：装了 5 个、适配 0 个。**

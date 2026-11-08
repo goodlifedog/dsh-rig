@@ -40,7 +40,7 @@ await quitApp(app);                                // 只关自己拉起来的
 
 ```bash
 npm run matrix                                   # 默认 11 个门类
-MATRIX_PRESET=im npm run matrix                  # 按预设门类跑：office/im/dev/system/media/tools
+MATRIX_PRESET=im npm run matrix                  # 按预设门类跑：office/im/dev/system/media/tools/mail/calendar/reading/photos
 MATRIX_APPS_JSON='[{"name":"Steam","bundle":"com.valvesoftware.steam","process":"steam_osx"}]' npm run matrix
 MATRIX_QUIT=0 npm run matrix                     # 探测完不关（默认会关自己开的）
 MATRIX_DISMISS=0 npm run matrix                  # 不点首启弹窗
@@ -197,19 +197,25 @@ overlay 的系统窗口列表（CGWindowList）。只信 AX 会把菜单栏工�
 
 ## 六、本机已安装应用的覆盖情况（2026-11-08 刷新，数据源 `npm run apps:inventory`）
 
-32 个应用（另有 2 个 Steam 快捷方式壳未计入）：**已适配 23，可只用画面 2，专用方案 1，不动 3，限制 3**。
+38 个应用（另有 2 个 Steam 快捷方式壳未计入）：**已适配 21，部分验证 1，可只用画面 2，专用方案 1，不动 3，限制 2，未测 8**。
+
+> 「部分验证」= 通道级证据有（CDP `cdp-ok` / AppleScript 只读通过）但**没跑过 app-matrix 界面读数**：
+> 只能说明「这条通道能用」，既不算已适配，也不该并进「未测」。目前是 ChatGPT。
 
 | 应用 | 状态 | 说明 |
 | --- | --- | --- |
 | 备忘录 / 文本编辑 / 计算器 / 访达 / 系统设置 / FastZip / State / GarageBand / OrbStack / Pages Creator Studio / 腾讯会议 / UURemote / iRightMouse | 已适配 | AX 完整，可读可点可设值 |
-| QQ / 微信 / Gemini / ChatGPT | 已适配 | chromium/electron 系；操作后异步抢前台，已自动还原；**在风险名单里**（读取会抢，默认跳过） |
+| QQ / 微信 / Gemini | 已适配 | chromium/electron 系；操作后异步抢前台，已自动还原；**在风险名单里**（读取会抢，默认跳过） |
+| ChatGPT | 部分验证 | Electron 内核，CDP 实测 `cdp-ok`；但还没跑过 app-matrix 界面读数，所以不算已适配；**在风险名单里** |
 | Safari | 已适配 | 已收进 system 预设，实测可读（105 节点 / 47 按钮）；**页面内容不在 AX 树里**，要控制页面得在 Safari 设置里打开 Allow JavaScript from Apple Events（本机当前关着，通道检测会明确提示）；冷启动不留窗口，需要已有窗口 |
-| Ghostty / Telegram / Steam / WPS Office | 已适配 | Ghostty 读会抢前台；Telegram 只读（0 按钮）；Steam 只读；WPS 在 qt 族——**都在风险名单里**，默认跳过读取 |
+| Ghostty / Steam / WPS Office | 已适配 | Ghostty 读会抢前台；Steam 只读；WPS 在 qt 族——**都在风险名单里**，默认跳过读取 |
 | iMovie | 已适配 | 读取瞬间抢前台，已还原（不在名单时仍会读一次） |
 | Keynote / Numbers Creator Studio | 可只用画面 | 首次启动是许可/新功能引导，**不代点「继续」**；用户过完引导并打开文稿后 AX 可读 |
 | Google Chrome | 专用方案 | 会自己抢前台，用独立 profile 的 headless 实例（browser:bg） |
 | Clash Verge / 奇游加速器 / DeepSeek Harness | **不动** | 用户的代理、加速器、宿主应用，只读状态或不碰 |
-| Antigravity / OpenCode / 抖音 | 限制 | 启动后自行退出，或带调试端口的 CDP 也起不来（详见 cdp-driver 报告） |
+| Antigravity / 抖音 | 限制 | 启动后自行退出，或带调试端口的 CDP 也起不来（详见 cdp-driver 报告） |
+| Calendar / Reminders / Mail / Preview / Music / Photos | 未测（新门类） | 已进预设（calendar / mail / reading / photos / media），但还没跑矩阵实测；首次冷启动会弹登录/iCloud/通知/媒体库引导，**矩阵只读、不点按钮、不删数据、不发信** |
+| OpenCode / Telegram | 未测 | 历史矩阵报告被轮转后回到未测（OpenCode 的 CDP 端口实测起不来）；要恢复结论需重跑矩阵 |
 | Dome Keeper / Escape From Duckov | 不在统计内 | `~/Applications` 里的 Steam 快捷方式壳（只有 run.sh、没有 bundle id），不是能接管的独立应用 |
 
 关于风险名单：上表里标「读取会抢」的应用已被 `~/.desktop-agent/front-risk.json` 记录（见第十节），
