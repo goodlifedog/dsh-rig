@@ -38,7 +38,15 @@ function chmodSafe(target, mode) {
 function hardenDataDir(dir) {
   const base = dir || path.dirname(tokenPath());
   chmodSafe(base, 0o700);
-  // 已知的敏感子目录（浏览器 profile 可能带登录态）；不存在就跳过，不报错
+  // 遍历 base 下所有子目录统一 700：白名单会漏掉自定义 profile
+  // （AGENT_CHROME_PROFILE / HEADLESS_PROFILE / 任务自建的 concurrent-profile 等），
+  // 而它们同样可能带登录态 cookie。只处理真实目录，不跟符号链接。
+  try {
+    for (const entry of fs.readdirSync(base, { withFileTypes: true })) {
+      if (entry.isDirectory()) chmodSafe(path.join(base, entry.name), 0o700);
+    }
+  } catch {}
+  // 兜底：遍历失败（权限/竞态）时至少把已知敏感目录收一遍；不存在就跳过，不报错
   for (const name of ['bin', 'smoke', 'chrome-profile', 'headless-profile', 'headless-profile-p1', 'headless-profile-p2']) {
     chmodSafe(path.join(base, name), 0o700);
   }

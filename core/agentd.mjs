@@ -82,6 +82,39 @@ export const overlay = {
 };
 
 // ---------- ocu 封装 ----------
+
+/**
+ * 把一批 ocu 调用写到私有临时文件，返回 { dir, file }。
+ *
+ * 安全（评审 L-1）：以前固定写 /tmp/ocu-calls-<pid>.json，路径可预测——同机别的用户
+ * 可以提前在同名路径放符号链接，我们 writeFile 会跟随链接把 JSON 写进（我们拥有的）任意文件。
+ * 现在用 mkdtemp 建 0700 私有目录（名字带随机后缀，不可预测），文件 0600，用完整目录删除。
+ *
+ * @param {Array} list ocu call/--calls-file 的内容
+ * @returns {Promise<{dir:string, file:string}>}
+ */
+export async function writeCallsTempFile(list) {
+  const fs = await import('node:fs/promises');
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ocu-calls-'));
+  try {
+    const file = path.join(dir, 'calls.json');
+    await fs.writeFile(file, JSON.stringify(list), { mode: 0o600 });
+    return { dir, file };
+  } catch (error) {
+    await removeCallsTempDir(dir);
+    throw error;
+  }
+}
+
+/** 删除 writeCallsTempFile 建的私有目录（失败也吞掉，不掩盖真正错误） */
+export async function removeCallsTempDir(dir) {
+  if (!dir) return;
+  try {
+    const fs = await import('node:fs/promises');
+    await fs.rm(dir, { recursive: true, force: true });
+  } catch {}
+}
+
 export const ocu = {
   async listApps() {
     const { stdout } = await run(OCU, ['call', 'list_apps']);
@@ -114,12 +147,14 @@ export const ocu = {
   },
 
   async calls(list, { sleep = 1 } = {}) {
-    const file = path.join(os.tmpdir(), 'ocu-calls-' + process.pid + '.json');
-    const fs = await import('node:fs/promises');
-    await fs.writeFile(file, JSON.stringify(list));
-    const { stdout, stderr } = await run(OCU, ['call', '--calls-file', file, '--sleep', String(sleep)], { timeout: 180000 });
-    await fs.unlink(file).catch(() => {});
-    return stdout + stderr;
+    // 见 writeCallsTempFile：不再用可预测的 /tmp/ocu-calls-<pid>.json
+    const { dir, file } = await writeCallsTempFile(list);
+    try {
+      const { stdout, stderr } = await run(OCU, ['call', '--calls-file', file, '--sleep', String(sleep)], { timeout: 180000 });
+      return stdout + stderr;
+    } finally {
+      await removeCallsTempDir(dir);
+    }
   },
 };
 

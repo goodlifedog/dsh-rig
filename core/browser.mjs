@@ -37,6 +37,22 @@ export const DEFAULT_PROFILE = process.env.AGENT_CHROME_PROFILE
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * 确保某个目录存在且只有本用户可进（0700，含已存在的目录）。
+ *
+ * 评审 L-2：mkdir 不传 mode 时新建目录是 755（受 umask 影响），而 Chrome profile 里可能有
+ * 登录态 cookie；它新建的文件本身是 644，只能靠目录权限挡住同机其他用户。
+ * 已存在的目录（早期版本建的、或用户自己 mkdir 的）也必须显式纠正，mkdir 的 mode 对它们不生效。
+ *
+ * @param {string} dir 目录（可以是自定义 profile 路径）
+ * @returns {Promise<string>} 原样返回 dir，方便链式调用
+ */
+export async function ensurePrivateDir(dir) {
+  await fsp.mkdir(dir, { recursive: true, mode: 0o700 });
+  try { await fsp.chmod(dir, 0o700); } catch {}
+  return dir;
+}
+
 export function readDevToolsActivePort(userDataDir) {
   const file = path.join(userDataDir, 'DevToolsActivePort');
   if (!fs.existsSync(file)) return null;
@@ -284,9 +300,9 @@ export async function launch(opts = {}) {
   const timeoutMs = screenLocked ? baseTimeout * 3 : baseTimeout;
   if (screenLocked) console.log('[browser] 检测到锁屏，启动超时放宽到 ' + timeoutMs + 'ms');
   const attempts = Math.max(1, Number(opts.retries == null ? 2 : opts.retries));
-  await fsp.mkdir(userDataDir, { recursive: true });
-  // profile 里可能有登录态 cookie：目录必须只有本用户可进（Chrome 新建文件是 644，靠目录挡）
-  try { await fsp.chmod(userDataDir, 0o700); } catch {}
+  // profile 里可能有登录态 cookie：目录必须只有本用户可进（Chrome 新建文件是 644，靠目录挡）。
+  // 自定义 profile（AGENT_CHROME_PROFILE / HEADLESS_PROFILE / 任务自建路径）也走这里，不依赖白名单。
+  await ensurePrivateDir(userDataDir);
 
   const logLine = (text) => { overlay.log(text).catch(() => {}); };
   const args = buildArgs(opts, userDataDir);
