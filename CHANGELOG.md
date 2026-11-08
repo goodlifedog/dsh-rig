@@ -11,7 +11,8 @@
   ④ **note-cleanup / sync-quit / cold-launch** 发 AppleEvent 前预检自动化授权，sync-quit 预检 300ms 硬超时、绝不阻塞退出；
   ⑤ **自检与归类**：`/selftest` 拆成辅助功能/自动化/屏幕录制三项分开报（hint 不再指错设置页），`run-classify` 认得权限缺失文案（中英文 + -1743/-1744）并归环境跳过，真失败优先不变；
   ⑥ **剩余的裸 AppleEvent 入口全部接上静默预检**：新增 `core/appleevent-preflight.mjs`（`askUserIfNeeded=false`、800ms 硬超时、granted/denied 短缓存），验收的 5 处入口（激活宿主/还原前台/读前台名与 bundle）以及浏览器引导、headless 演示的前台与窗口查询都改成「先查授权再发事件」：已授权时脚本/参数/timeout 与旧实现逐字一致，只有明确未授权才跳过（0 次 osascript）并写进报告告警，探测失败/超时按未知仍尝试；
-  ⑦ **小窗抓图前静默屏幕录制预检**（`CGPreflightScreenCaptureAccess`，不弹框），未授权不截图、小窗显示「缺少屏幕录制权限」+ 打开设置；窗口标题全空时单独报「可能缺少屏幕录制权限」而不是窗口失效。
+  ⑦ **静态防回归**：`npm run safety:audit` 新增规则 6 —— 对别的应用发 AppleEvent 前必须有自动化预检（`checkAutomationPermission/createAppleEventPreflight/preflightAppleEvent/runAppleEventGuarded/decideAutomationAllow` 之一，或 `// audit-ok: <理由>`），ObjC/JXA（无 `tell application`）不算；12 条结构性白名单每条写理由，另有 10 个任务级已知缺口单独登记（补完即删，单测限制缺口数量上限）；
+  ⑧ **小窗抓图前静默屏幕录制预检**（`CGPreflightScreenCaptureAccess`，不弹框），未授权不截图、小窗显示「缺少屏幕录制权限」+ 打开设置；窗口标题全空时单独报「可能缺少屏幕录制权限」而不是窗口失效。
   新增/补充 8 个测试文件，全量 1012 项 / 1010 过 / 2 跳过 / 0 失败。
 - 根因层留统一收口点（P1）：`core/background.mjs` 的 `state/find/click/setValue/typeText/readSafe/findSafe` 末尾支持 `{ requireRunning: true }`，开启后先判 `isAppRunning`（复用 `core/app-presence.mjs`），未运行返回结构化 `skipped:'not-running'` 且不进入底层 MCP——避免 ocu 把没运行的应用拉起来。默认 `false` 保持历史行为（9 条单测证明默认路径逐字节不变 + 开启后拦截，全部用假 mcp/假探测，不碰真实应用）。
 
