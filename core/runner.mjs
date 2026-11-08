@@ -3,8 +3,8 @@
 //
 // 用法：
 //   node core/runner.mjs list
-//   node core/runner.mjs run boss-scan
-//   node core/runner.mjs run boss-scan --retries 2 --timeout 300000
+//   node core/runner.mjs run form-fill
+//   node core/runner.mjs run form-fill --retries 2 --timeout 300000
 //
 // 任务 = core/tasks/ 下的任意 .mjs 文件，独立子进程运行，互不污染。
 import { spawn } from 'node:child_process';

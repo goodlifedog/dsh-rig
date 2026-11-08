@@ -18,7 +18,6 @@ const OUT = path.join(ROOT, 'flow', 'TASKS.md');
 const WRITES = new Set([
   'background-control', 'form-fill', 'form-fill-local', 'terminal-control',
   'drive-agent', 'drive-agent-cli', 'user-chrome-demo',
-  'boss-greet', 'greet-inner', 'greet-verify',
 ]);
 
 export function taskDescription(source) {

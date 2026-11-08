@@ -3,7 +3,7 @@
 对应任务：task-5「后台写操作任务：完成一次真实表单填写并校验」
 交付代码：
 
-- desktop-agent/core/tasks/form-fill.mjs —— 真实应用（Chrome + BOSS 搜索框）
+- desktop-agent/core/tasks/form-fill.mjs —— 真实应用（Chrome + 页面输入框）
 - desktop-agent/core/tasks/form-fill-local.mjs —— 本地对照（file:// + 最小 HTML 表单）
 - 本文 —— 四类控件可写性结论、复现方法与限制
 
@@ -29,7 +29,7 @@
 
 ---
 
-## 2. 真实应用验证（Chrome + BOSS）
+## 2. 真实应用验证（Chrome + 目标站点）
 
 命令：
 
@@ -42,7 +42,7 @@ PATH="$HOME/.local/bin:$PATH" node core/tasks/form-fill.mjs
 
 ~~~text
 [1] 初始前台: DeepSeek Harness
-[2] 确认/切回 BOSS 职位页 … ok= true url= https://www.zhipin.com/web/geek/jobs
+[2] 确认/切回 目标页面 … ok= true url= https://www.example.com/web/page
 [3] 后台改写搜索框 + 读回校验 + 恢复 …
     前台: DeepSeek Harness -> DeepSeek Harness
     原值: "测试ABC"
@@ -61,7 +61,7 @@ PATH="$HOME/.local/bin:$PATH" node core/tasks/form-fill.mjs
 
 做法：
 
-1. 先用 AX 读当前标签页 URL，不是 zhipin.com/web/geek/jobs 就点对应标签页切回来
+1. 先用 AX 读当前标签页 URL，不是 example.com/web/page 就点对应标签页切回来
    （切不动时用 AppleScript set active tab index 兜底，同样不激活 Chrome）。
 2. 在 AX 树里按 Placeholder「搜索职位、公司」定位搜索框，记录原值。
 3. click 聚焦 → cmd+a 全选 → sky_key 键入新关键词 → 读回 AX 校验。

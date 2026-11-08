@@ -5,13 +5,12 @@
 
 ## 结论
 
-**可以发，但有三个前置动作**（都在 1 小时内能完成）：
+**可以发，但有两个前置动作**（都在 1 小时内能完成）：
 
-1. 决定 BOSS 内容去留（见 [`BOSS-EXTRACT.md`](BOSS-EXTRACT.md)）
-2. `git apply flow/patch-publish.diff` + 替换两处占位（包名 / 仓库地址）
-3. 设置 `git config user.email` 为 GitHub noreply
+1. `git apply flow/patch-publish.diff` + 替换两处占位（包名 / 仓库地址）
+2. 设置 `git config user.email` 为 GitHub noreply
 
-三个动作做完，`npm run verify` 绿 + 包能装能用 → 可以直接公开。
+两个动作做完，`npm run verify` 绿 + 包能装能用 → 可以直接公开。
 
 ## 证据表
 
@@ -41,7 +40,7 @@
 - 有没有人报「装不上」「跑不起来」——重点看 `npm i -g` 和 `npm run doctor`
 - 有没有 issue 提到「小窗不出现」——大概率是 host 检测或会话门控，`/health` 里有 `hostKind`、`hostVisible` 可以定位
 - 有没有人跑 `npm run accept` 报红——先看是「环境跳过」还是「真失败」，两者现在能区分了
-- 如果 BOSS 内容保留了：留意平台相关投诉；如果摘掉了：留意有没有人问「那个功能去哪了」
+- 如果 业务内容保留了：留意平台相关投诉；如果摘掉了：留意有没有人问「那个功能去哪了」
 
 ## 一句话
 

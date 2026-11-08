@@ -28,7 +28,6 @@ test('常见环境原因都能识别（环境跳过只认显式声明/环境字�
   const cases = [
     ['跳过扫描：当前就是前台，为避免干扰用户', '用户正在使用目标应用'],
     ['cgWindowNotFound: Electron 宿主窗口没起来', 'Electron 宿主被占用或窗口读不到'],
-    ['SKIP 无法切回 BOSS 职位页：没有 BOSS 职位页标签', '用户 Chrome 里没开 BOSS 职位页'],
     ['SKIP 读不到 Google Chrome 的界面树', '目标应用没运行或缺辅助功能权限'],
     ['SKIP 锁屏中，跳过前台与窗口数校验', '锁屏'],
     ['SKIP headless Chrome 还有 null 个窗口', '读不到窗口数（缺辅助功能权限）'],

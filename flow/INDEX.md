@@ -20,7 +20,7 @@
 | 看 ocu（底层能力）怎么接进来的 | [OCU-INTEGRATION.md](OCU-INTEGRATION.md) |
 | 打包、发布、CI | [PACKAGING.md](PACKAGING.md) + [PUBLISH.md](PUBLISH.md) |
 | Windows 上跑（未实机验证） | [WINDOWS-TESTING.md](WINDOWS-TESTING.md) + [CROSS-PLATFORM.md](CROSS-PLATFORM.md) |
-| 写入/投递类任务的规则 | [WRITE.md](WRITE.md) + [BOSS-RULES.md](BOSS-RULES.md) |
+| 写入/投递类任务的规则 | [WRITE.md](WRITE.md) + [WRITE.md](WRITE.md) |
 
 ## 发布与协作（新加的，放这里免得找不到）
 
@@ -30,7 +30,6 @@
 >
 > **总任务（对外化 + 自主适配 + 协作约定）→ [TASK-MASTER-PLAN.md](TASK-MASTER-PLAN.md)**
 >
-> **待执行总任务单（隐私/删 BOSS/结构/改名/ocu/发布）→ [TASK-EXTERNALIZE.md](TASK-EXTERNALIZE.md)**
 >
 > **待执行任务单：改名 + 内置 ocu + 可搜索性 → [TASK-RENAME-TO-RIG.md](TASK-RENAME-TO-RIG.md)**
 
@@ -41,7 +40,6 @@
 | 把它公开出去（GitHub / npm）的步骤 | [PUBLISH-CHECKLIST.md](PUBLISH-CHECKLIST.md) |
 | 外部评审留的补丁怎么打 | [PATCHES.md](PATCHES.md) |
 | 写任务时日志该怎么标（PASS/FAIL/环境跳过/❌） | [TASK-OUTPUT.md](TASK-OUTPUT.md) |
-| 把 BOSS 那部分从公开面摘掉 | [BOSS-EXTRACT.md](BOSS-EXTRACT.md) |
 | 多会话 / 多 agent 一起用这个仓库 | [AGENT-COORDINATION.md](AGENT-COORDINATION.md) |
 | 看外部评审提过什么、还剩什么 | [REVIEW-ACTIONS.md](REVIEW-ACTIONS.md) + [REVIEW-RETRO.md](REVIEW-RETRO.md) |
 
@@ -69,7 +67,6 @@ npm run away:maintain    # 用户离开时一条龙：verify:live → 新门类�
 - 外部评审留下的补丁：[PATCHES.md](PATCHES.md)；发版文案草稿：[RELEASE-NOTES-DRAFT.md](RELEASE-NOTES-DRAFT.md)
 - 方法论与历史记录：[RECIPE.md](RECIPE.md)（踩坑总结）、[SCAN.md](SCAN.md)（扫描类任务）
 - 外部评审收尾结论：[FINAL-REPORT.md](FINAL-REPORT.md)（工程可发、剩下的是主人的决定）
-- 招聘平台相关内容（`BOSS-*.md`）：**公开发布前需要从公开面移除**，见 [BOSS-EXTRACT.md](BOSS-EXTRACT.md)
 
 ## 维护约定
 

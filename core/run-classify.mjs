@@ -16,7 +16,6 @@ const ENV_RULES = [
   [/当前就是前台|不打扰用户|跳过扫描/, '用户正在使用目标应用'],
   [/cgWindowNotFound|宿主窗口/, 'Electron 宿主被占用或窗口读不到'],
   [/读不到 .*界面树|没有辅助功能权限/, '目标应用没运行或缺辅助功能权限'],
-  [/没有 BOSS 职位页标签|无法切回 BOSS 职位页|"attempts":\["no-tab"\]/, '用户 Chrome 里没开 BOSS 职位页'],
   // 只认"屏幕已锁"这类结论；不能匹配「锁屏状态 未锁屏」这种健康检查行，
   // 否则健康检查会被整步误判成环境跳过（verify:safe 实测踩过）。
   [/屏幕已锁|屏幕已锁定|锁屏中|锁屏导致/, '锁屏'],
@@ -42,7 +41,7 @@ export function isFailedRun(text) {
 /**
  * 真失败的硬信号：命中任意一条就不许再判环境跳过。
  *
- * 为什么要有 FAIL 这一条：有些任务（form-fill / browser-demo / boss-scan）用 PASS/FAIL
+ * 为什么要有 FAIL 这一条：有些任务（form-fill / browser-demo）用 PASS/FAIL
  * 两套前缀，不用 ❌。以前只挡 ❌，于是「FAIL 改成了指定关键词」这种断言失败会被
  * 「页面结构已变」的环境规则豁免掉，验收显示 PASS——假绿，评审已经复现过。
  *

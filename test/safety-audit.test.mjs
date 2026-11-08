@@ -59,8 +59,8 @@ test('界面操作没有锁屏/前台/互斥护栏 → 抓出来', () => {
 });
 
 test('显式允许的内层脚本不要求护栏；脚本目录可关掉这条规则', () => {
-  assert.ok(UI_GUARD_ALLOWLIST.includes('greet-inner.mjs'));
-  assert.deepEqual(rules('core/tasks/greet-inner.mjs', 'await app.getAXState();'), []);
+  assert.deepEqual(UI_GUARD_ALLOWLIST, [], '当前没有需要豁免的内层脚本');
+  assert.deepEqual(rules('core/tasks/x.mjs', 'await app.getAXState();'), ['ui-without-guard'], '普通任务照常要求护栏');
   assert.deepEqual(rules('scripts/x.mjs', 'await app.getAXState();', { uiGuard: false }), []);
 });
 

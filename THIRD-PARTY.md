@@ -13,7 +13,7 @@
 | `core/platform.mjs` | 平台抽象（控制后端探测、路径、服务管理） |
 | `core/browser.mjs` `cdp.mjs` `human.mjs` `humanize.mjs` | 离屏浏览器、CDP 客户端、拟人鼠标/输入轨迹 |
 | `core/backends/uia.mjs` | Windows 控制后端适配层 |
-| `core/tasks/*.mjs` | 具体任务（含 BOSS 投递与验收） |
+| `core/tasks/*.mjs` | 具体任务（后台控制、表单、演示与验收） |
 | `overlay/*` | 多会话小窗：主进程、HTTP 服务、渲染、平台层、会话门控 |
 | `tools/uia-bridge.ps1` | Windows UI Automation 桥 |
 | `scripts/*` | 仓库体检、重启自检、导出 |
@@ -51,17 +51,7 @@ execFile(OCU, ['js', '--timeout', '60000', '--file', script]);
 **重点说明**：macOS 上的点击、读界面、后台输入，底层能力来自 `ocu`。本项目做的是把它的 CLI 包装成可调度、可验证、可展示的一层——不是自己实现了 Accessibility 控制。
 换掉 `ocu` 后，macOS 和 Windows 的控制都不可用——ocu 的安装包里带 `dist/windows/{amd64,arm64}` 原生运行时，官方支持 Windows。我们自写的 UIA 桥只是没有 ocu 时的兜底。
 
-## 三、仅作资料参考、未使用其代码
-
-| 来源 | 用途 | 是否使用代码 |
-| --- | --- | --- |
-| 即投（浏览器插件） | 观察其行为，确认「已向BOSS发送消息」是结果通知而非送达回执 | 否 |
-| [get_jobs](https://github.com/yuanhhui/get_jobs) | 参考其公开文档与注释中对 BOSS 弹窗语义的描述 | 否 |
-| BOSS 直聘帮助中心 / 黑猫投诉官方回复 | 每日沟通额度规则 | 否 |
-
-这些来源的结论都写在 `flow/BOSS-RULES.md`，每条附链接。
-
-## 四、许可合规
+## 三、许可合规
 
 - 本项目：MIT（见 `LICENSE`）
 - `ocu`、Electron：MIT，允许商用与再分发，但**再分发时需保留其版权声明**

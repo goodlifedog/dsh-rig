@@ -12,7 +12,7 @@ import { spawnSync } from 'node:child_process';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-// 本次收口的入口文件：任务书列的 18 个 + 同一类问题顺手统一的 greet-verify
+// 本次收口的入口文件：任务书列的入口脚本 + 同一类问题顺手统一的同批文件
 const REQUIRED = [
   'core/acceptance.mjs',
   'core/runner.mjs',
@@ -21,7 +21,6 @@ const REQUIRED = [
   'core/tasks/drive-agent.mjs',
   'core/tasks/drive-agent-cli.mjs',
   'core/tasks/browser-background.mjs',
-  'core/tasks/boss-scan.mjs',
   'core/tasks/headless-demo.mjs',
   'core/tasks/user-active-demo.mjs',
   'core/tasks/app-matrix.mjs',
@@ -32,7 +31,6 @@ const REQUIRED = [
   'core/tasks/parallel-real-demo.mjs',
   'core/tasks/form-fill-local.mjs',
   'core/tasks/form-fill.mjs',
-  'core/tasks/greet-verify.mjs',
 ];
 
 // 已知缺口清单（现在为空）：task-75 把最后 6 处也收口了（cdp / dialog-guard / tasks-doc / env-doc /
@@ -71,8 +69,8 @@ function listFiles(dir, prefix) {
     .map((f) => prefix + '/' + f);
 }
 
-test('18 个入口文件（+ greet-verify）的守卫都走 isDirectRun', () => {
-  assert.equal(REQUIRED.length, 19);
+test('入口文件的守卫都走 isDirectRun', () => {
+  assert.equal(REQUIRED.length, 17);
   for (const file of REQUIRED) {
     const src = read(file);
     assert.ok(/isDirectRun\(import\.meta\.url\)/.test(src), file + ' 没有用 isDirectRun(import.meta.url)');

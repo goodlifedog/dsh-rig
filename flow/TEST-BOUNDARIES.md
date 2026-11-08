@@ -66,7 +66,7 @@
 | 辅助功能授权 | AX 读树/点击/键入；缺了 ocu 直接报错 | `ocu doctor --json` / 权限闸门 |
 | 屏幕录制授权 | 截图/窗口标题/画面；缺了窗口标题会静默为空 | 抓帧预检 + 标题空检测 |
 | 自动化授权（按「发起方→目标 app」） | AppleScript 通道；缺了 -1743/-1744 | `checkAutomationPermission`（不弹框） |
-| 目标应用在运行 | 依赖具体应用的任务（Chrome/BOSS/Ghostty…）；未运行一律跳过 | `isAppRunning`（含别名补全） |
+| 目标应用在运行 | 依赖具体应用的任务（Chrome/目标站点/Ghostty…）；未运行一律跳过 | `isAppRunning`（含别名补全） |
 | 7778/7789 端口与票据 | 小窗/daemon 相关步骤 | `npm run health` |
 
 ## 6. 已知盲区（不做无根据的保证）

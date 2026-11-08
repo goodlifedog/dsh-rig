@@ -35,7 +35,7 @@
 | `core/` | daemon、任务运行器、平台层、浏览器/CDP、ocu 封装 |
 | `core/tasks/` | 所有任务，一个文件一个任务，文件名就是任务名 |
 | `overlay/` | Electron 小窗（端口 7788） |
-| `flow/` | 方法论与踩坑记录（RECIPE / BOSS-GREET / CDP-FALLBACK / PACKAGING …） |
+| `flow/` | 方法论与踩坑记录（RECIPE / CDP-FALLBACK / PACKAGING …） |
 | `logs/` | 运行日志（不进 git） |
 | `reports/` | 验收报告（不进 git） |
 
@@ -193,7 +193,7 @@ npm run service:uninstall # 移除 launchd 自启（daemon + overlay 两个 plis
 代码：`core/browser.mjs` 的 `launch({ headless: false })`：独立 user-data-dir + `--window-position=-5000,-5000`，连上后再用 `Browser.setWindowBounds` 把窗口钉到屏幕外。
 
 - 启动前会 `sanitizeProfile`：删掉 `window_placement` 和会话恢复文件，否则 Chrome 会按上次位置把窗口还原到你屏幕上。
-- 用到 BOSS 投递这类需要独立登录态的流程（`greet-verify`、`boss-scan-dedicated`）。
+- 需要用独立登录态跑的任务：可以在这个离屏实例里登录一次，登录态留在独立的 profile 目录里。
 
 ### 2.4 不是浏览器：原生 App 与 Electron
 
@@ -437,7 +437,7 @@ curl -s -H "X-Agent-Token: $TOKEN" http://127.0.0.1:7788/health | head -c 400   
 
 | 症状 | 原因 | 处理 |
 | --- | --- | --- |
-| 任务报成功但外部没变化 | 用「脚本自己看到的成功」自证 | 改用外部事实验收（BOSS 投递的差集判据） |
+| 任务报成功但外部没变化 | 用「脚本自己看到的成功」自证 | 改用外部事实验收（读回真实值 / 前后差集） |
 | 「等待应用锁超时：X」 | 另一个任务占着同一应用 | 等它结束，或确认没有僵死任务后删 `/tmp/agentd-*.lock` |
 | 「前台发生了变化：X 被激活，操作已中止」 | `guard()` 护栏触发 | 说明操作把目标应用提到了前台，检查是不是用了截图/坐标点击 |
 | ocu 元素 index 报 stale / not found | index 只对同一次 AX 快照有效 | 每次动作前重新取状态、重新解析 index（不要硬编码数字） |
@@ -659,5 +659,5 @@ main().catch((e) => { console.error('FAIL:', e.message); process.exit(1); });
 
 - 退出码 0 = 成功，非 0 = 失败（runner/daemon 都按这个判定，失败会推红点到小窗）。
 - 过程用 `overlay.status()` / `overlay.log()` 推给小窗，用户只看小窗就知道跑到哪。
-- **成功判据要来自外部事实**，不要用「弹窗说成功了」自证（见 `flow/BOSS-GREET.md` 的 8 连误报案例）。
+- **成功判据要来自外部事实**，不要用「弹窗说成功了」自证（见 `flow/WRITE.md` 的验收口径与 `README` 的案例）。
 - 要操作用户的应用，先过 `guard()` / `withAppLock()`，别绕开护栏。

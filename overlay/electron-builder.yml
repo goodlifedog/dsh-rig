@@ -1,5 +1,5 @@
-appId: com.goodlifedog.dsh-desktop-agent
-productName: Desktop Agent
+appId: com.goodlifedog.dsh-rig
+productName: DSH Rig
 copyright: Copyright © 2026 goodlifedog
 directories:
   output: ../dist-app
@@ -27,7 +27,7 @@ mac:
   category: public.app-category.productivity
   identity: "-"  # ad-hoc 签名，本地可用
 dmg:
-  title: Desktop Agent
+  title: DSH Rig
 win:
   target:
     - nsis

@@ -17,11 +17,10 @@
 - 已修的数据安全洞：文本编辑只在「未命名 + 测试格式正文」时才关、备忘录新建失败不写、终端已输入半截命令时不敲、保存确认是 AXSheet 也认、验收中止会收起所有小窗
 - 发布待办：仍只差 `patch-publish.diff` + 四个决定（见下）
 
-## 你要做的四件事（都只要一次决定）
+## 你要做的三件事（都只要一次决定）
 
 | # | 决定 | 选项 |
 | --- | --- | --- |
-| 1 | **BOSS 内容去留** | A. 摘出去（按 `BOSS-EXTRACT.md` 做，2-4 小时）　B. 保留但不上首页 + 加免责声明（1 小时） |
 | 2 | **npm 包名** | scoped 包，如 `@<你的npm名>/desktop-agent`（`desktop-agent` 已被占用） |
 | 3 | **GitHub 仓库地址** | 替换补丁里的 `github.com/goodlifedog/desktop-agent` |
 | 4 | **git 提交身份** | `git config user.email "<id>+<用户名>@users.noreply.github.com"` |
@@ -45,7 +44,6 @@ npm publish --dry-run   # 必须显示 registry.npmjs.org + public access
 | 判断「现在到底能不能发」 | [`PUBLISH-VERDICT.md`](PUBLISH-VERDICT.md)（实测证据表 + 已知不完美） |
 | 一步步执行发布 | [`PUBLISH-CHECKLIST.md`](PUBLISH-CHECKLIST.md)（含彩排结果） |
 | 发版文案 | [`RELEASE-NOTES-DRAFT.md`](RELEASE-NOTES-DRAFT.md)（挑好的 10 来条） |
-| 把 BOSS 内容摘出去 | [`BOSS-EXTRACT.md`](BOSS-EXTRACT.md)（要删哪些、验收怎么补） |
 | 还剩什么问题没修 | [`REVIEW-ACTIONS.md`](REVIEW-ACTIONS.md)（只列没做的） |
 | 外部评审哪些话我说错了 | [`REVIEW-RETRO.md`](REVIEW-RETRO.md)（自我校准用） |
 | 补丁怎么打 | [`PATCHES.md`](PATCHES.md) |

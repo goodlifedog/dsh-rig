@@ -9,8 +9,6 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TASKS = [
-  'boss-greet',
-  'boss-scan',
   'electron-demo',
   'form-fill-local',
   'form-fill',

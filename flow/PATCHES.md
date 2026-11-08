@@ -62,7 +62,7 @@ node --test test/overlay-packaging.test.mjs
 **问题**：`flow/` 下新写的文档经常忘记加进 `INDEX.md`（我自己就漏了三轮，累计 10 份没入口）。
 
 补丁：`repo:check` 增加一条「flow 文档都能从 INDEX 找到」——列出未收录的文档名，
-`INDEX.md` 与 `BOSS-*.md`（公开前要移除）豁免。实测：新建一个未收录文档立刻报红，加进 INDEX 后恢复绿。
+`INDEX.md` 与 `目标站点-*.md`（公开前要移除）豁免。实测：新建一个未收录文档立刻报红，加进 INDEX 后恢复绿。
 
 验证：
 ```bash

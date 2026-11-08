@@ -118,7 +118,7 @@ SOAK_ROUNDS=20 npm run soak     # 更久
 npm run accept     # 需要本机服务在跑，输出 reports/acceptance-*.md
 ```
 
-会跑：overlay 在线、小窗显隐、boss-scan、multi-app、form-fill、platform-demo、browser-demo、electron-demo。
+会跑：overlay 在线、小窗显隐、scan、multi-app、form-fill、platform-demo、browser-demo、electron-demo。
 环境不具备时记 SKIP 并写原因。
 
 ## 七、锁屏时哪些指标不能信

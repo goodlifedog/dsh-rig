@@ -46,4 +46,4 @@
 cd desktop-agent && node core/acceptance.mjs
 ```
 
-当前结果：**8/8 PASS + 1 项环境跳过**（overlay 在线、显隐、boss-scan、multi-app、form-fill 跳过、platform-demo、browser-demo、electron-demo）。
+当前结果：全部通过（明细见 `reports/acceptance-<时间戳>.md`；环境不具备的项会标「环境跳过」，不算失败）。

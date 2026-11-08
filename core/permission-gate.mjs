@@ -99,7 +99,7 @@ export function stripSourceComments(source) {
  * 「把 ocu 的 js 子命令当子进程跑」的写法：execFile(OCU, ['js', ...]) / execFileSync / spawn / spawnSync。
  *
  * 为什么复用 OCU_APP_CALL_RE 还不够：那条正则匹配的是**内层脚本里的** cua.getApp/callTool，
- * 而 boss-greet 把内层代码放在单独文件（greet-inner.mjs），外层任务源码里只剩
+ * 而有些任务把内层代码放在单独文件（*-inner.mjs），外层任务源码里只剩
  * execFile(OCU, ['js', '--timeout', …, '--file', innerPath])，不命中任何 OCU_APP_CALL_RE 模式。
  * 所以这里补一条窄正则，只匹配「子进程命令里出现独立参数 'js'」的写法，
  * 不匹配 'script.js' / '--js-flags=…' 这类普通参数（引号后必须紧跟 js 再紧跟引号）。
@@ -112,7 +112,7 @@ const OCU_JS_CLI_RE = /(?:execFile|execFileSync|spawn|spawnSync)\s*\((?:[^\n]*\n
  * 复用了 core/safety-audit.mjs 的两套模式，不维护第二份正则：
  *   - UI_ACTION_RE：ocu/AX/点击/输入/读界面；
  *   - OCU_APP_CALL_RE：补上 MCP 的 callTool 读界面工具、以及内层 cua.getApp 这类写法
- *     （mcp-demo / boss-greet 内层脚本就是这种，旧判定漏掉它们）。
+ *     （mcp-demo 和「内层脚本放在单独文件」的任务就是这种，旧判定会漏掉）。
  * 另外补一条窄正则 OCU_JS_CLI_RE 识别「execFile(OCU, ['js', …])」外层调用（内层代码在单独文件时
  * 外层源码看不到 cua.getApp）；理由见该常量注释。
  * 屏幕录制单独判：只有 ocu 截图（include_screenshot）或系统 screencapture 才需要，

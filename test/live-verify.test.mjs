@@ -53,7 +53,7 @@ test('中途停止：锁屏优先，其次用户回来；都没有就继续', ()
 test('分类：既有通过行又有环境跳过行 → PASS（不能整步误判成跳过）', () => {
   const out = [
     '  PASS  overlay 在线',
-    '  PASS  任务 boss-scan',
+    '  PASS  任务 multi-app',
     '  SKIP  任务 form-fill  环境跳过（任务自报环境跳过）',
     '结果: 共 13 项，通过 10，环境跳过 3，失败 0',
   ].join('\n');

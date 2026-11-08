@@ -108,7 +108,7 @@ macOS 的 `screencapture -l` 直接吃 desktopCapturer 给的窗口序号，Wind
 ```js
 await fetch('http://127.0.0.1:7788/window', {
   method: 'POST',
-  body: JSON.stringify({ windowId, title: 'BOSS直聘 - Google Chrome' }),
+  body: JSON.stringify({ windowId, title: '目标网站 - Google Chrome' }),
 });
 ```
 

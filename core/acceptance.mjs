@@ -640,7 +640,6 @@ async function main() {
   // 任务按顺序跑；每跑完一个都复查一次「用户是否回来 / 有没有别的验收插入」，
   // 一旦不满足就停掉后续任务、如实标环境跳过，而不是硬跑出假失败（评审指出入口只查一次不够）。
   const TASK_PLAN = [
-    { name: 'boss-scan' },
     { name: 'multi-app' },
     { name: 'form-fill' },
     { name: 'platform-demo' },

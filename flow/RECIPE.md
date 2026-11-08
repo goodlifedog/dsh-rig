@@ -208,105 +208,27 @@ caffeinate -d
 
 ## 9. 安全边界
 
-- 只允许：筛选器、搜索框、收藏、标签页这类无害控件。
-- 绝对禁止：打招呼、投递、发送消息、修改账号资料、任何外发动作。
-- 探针只做两件事：点左侧「武汉」城市筛选按钮（打开弹层）、点弹层关闭按钮（恢复现场）。
+- 只允许：筛选器、搜索框、收藏、标签页这类无害、可逆的控件。
+- 绝对禁止：发送消息、提交订单、删除内容、修改账号资料等任何外发或不可逆动作。
+- 演示类探针只做两件事：打开一个弹层、再把它关掉（恢复现场）。
 - 不启用 global 指针通道；不动真实鼠标。
 
 ---
 
-## 10. 交付脚本用法
+## 10. 实测结论（历史记录，已通用化）
 
-~~~sh
-cd desktop-agent/flow
-node probe.mjs
-~~~
+早期用一份独立探针脚本验证过「后台点击不抢前台」这条路，脚本已随站点专用内容移除；
+结论保留在这里，任何页面都适用：
 
-- probe-inner.mjs 是内层脚本（占位符由 probe.mjs 注入），不要单独运行。
-- 退出码：0 全部通过；1 业务验证失败；2 环境不可用（锁屏 / ocu 异常 / 页面不对）。
-- 可覆盖的环境变量：OCU_BIN、OCU_APP、EXPECTED_FRONTMOST、PROBE_JS_TIMEOUT_MS。
-- PROBE_SKIP_LOCK_CHECK=1 只用于离线自测（配合假 ocu 验证包装逻辑），真实运行不要设置。
-
-### 探针做的事（按顺序）
-
-1. 预检：ocu 是否存在、版本、屏幕是否锁定。
-2. 记录操作前的真实前台应用 / 鼠标坐标 / list-apps 第一行。
-3. 后台读 AX 树，确认是 BOSS 职位页（zhipin.com/web/geek/jobs），并确认城市弹层未打开
-   （若上次残留了弹层，先关掉）。
-4. 正则定位左侧筛选栏「武汉」按钮，accessibility 点击。
-5. 等 1s 后读 AX，最多轮询 3 次，校验「请选择城市」「热门城市」出现、URL 未跳转，
-   记录新增的 AX 行作为证据。
-6. 依次尝试 sky_click 关闭按钮 / accessibility 点回筛选按钮 / sky_key Esc，尽量恢复现场。
-7. 记录操作后的前台应用与鼠标坐标，期间每 700ms 采样前台。
-8. 打印 PASS/FAIL 明细并给出退出码。
-
----
-
-## 11. 实测证据（2026-11-05）
-
-### 11.1 accessibility 点击打开城市弹层
-
-操作前 AX 873 行 → 操作后 897 行，新增节点（文本级 diff）：
-
-~~~
-+ 标题 请选择城市 Value: 3
-+ 文本 请选择城市
-+ button Frame: x=932, y=290, w=24, h=24        ← 弹层关闭按钮
-+ button 热门城市 Frame: x=178, y=352, w=130, h=39
-+ button ABCDE  Frame: x=308, y=352, w=130, h=39
-+ button 全国   Frame: x=178, y=411, w=158, h=40
-+ button 北京   Frame: x=335, y=411, w=158, h=40
-+ button 武汉   Frame: x=807, y=459, w=157, h=40
-...
-- container 测试abc 开发        ← 搜索建议列表：因为点击使输入框失焦而收起
-~~~
-
-目标控件（点击前那次快照的 AX 树原文）：69 button  武汉 Frame: x=52, y=273, w=72, h=32
-URL 未跳转（仍是 zhipin.com/web/geek/jobs）。
-前台：DeepSeek Harness → DeepSeek Harness；鼠标坐标不变。
-
-### 11.2 关闭弹层
-
-- 正确方式：accessibility 点弹层右上角 × 按钮（element 313，Frame x=932,y=290,w=24,h=24）。
-  实测需要点 1~2 次（第一次常被吞），点完轮询 0.8~2s 确认「请选择城市」消失。
-- 反例：再点筛选按钮**不会**关闭弹层（它只负责打开）。
-- 反例：sky_click 点 (944,302) 少数情况能关、多数无效；app_post 两次都无效；
-  sky_key Escape 无效。→ 别把这几条当主路径，且必须校验结果。
-
-### 11.2.1 最终全 PASS 记录（2026-11-05 17:35）
-
-node probe.mjs 输出：12 项检查全部 PASS，退出码 0。关键行：
-
-~~~
-AX 行数: 868 -> 897
-目标控件: 64 button  武汉 Frame: x=52, y=273, w=72, h=32
-步骤: ensure-closed-before(closed) -> open-city-dialog(a11y-city@64 x2) -> restore(a11y-close@313 x2)
-运行期间采样: 22 x DeepSeek Harness
-Chrome 是否曾成为前台: false
-鼠标坐标是否一致: 是
-结果: 全部通过
-~~~
-
-注意：探针运行期间如果用户自己动鼠标/切应用，前台判定会失败（那是人工干扰，不是自动化抢焦点）。
-probe.mjs 已把这种场景降级成 WARN（检测到鼠标移动即视为人工干扰）。
-
-### 11.3 list-apps vs 真实前台
-
-~~~
-ocu list-apps 第一行: Google Chrome — com.google.Chrome [running, last-used=2026-11-05, uses=628]
-真实前台(System Events): DeepSeek Harness
-~~~
-
-### 11.4 锁屏导致 AX 失效
-
-~~~
-$ ~/.local/bin/ocu snapshot "Google Chrome"
-Error Domain=NSPOSIXErrorDomain Code=2 "No such file or directory"
-
-$ ioreg -n Root -d1 -a | grep -A1 CGSSessionScreenIsLocked
-<key>CGSSessionScreenIsLocked</key>
-<true/>
-~~~
+- **accessibility 点击能生效**：弹层/对话框里新增的节点可以从 AX 树 diff 里读出来（行数 873 → 897），
+  目标控件是「button + 名称 + Frame」这种可定位节点；点完 URL 不变，真实前台与鼠标坐标都不变。
+- **点击会被吞**：accessibility 点击偶发无效（连续点 4 次可能只有 1~2 次生效），打开/关闭都要重试状态机。
+- **关闭不能用「再点一次开关」**：那只负责打开；得点弹层自己的关闭按钮（×），实测需要 1~2 次。
+- **坐标点击不稳定**：同一坐标（如 944,302）少数能成、多数无效；Esc 也不一定生效。
+  → 坐标只做兜底，且必须校验结果，不能当主路径。
+- **判定要看外部事实**：AX 树前后对比 + 真实前台 + 鼠标坐标，三样都一致才算「没打扰用户」；
+  用户自己动鼠标/切应用会造成误报，这种情况要降级成 WARN 而不是 FAIL。
+- **锁屏时 AX 全挂**：`NSPOSIXErrorDomain Code=2`，属环境不可用（退出码 2），不要当业务失败。
 
 ---
 
@@ -315,10 +237,10 @@ $ ioreg -n Root -d1 -a | grep -A1 CGSSessionScreenIsLocked
 1. **页面/弹层的 AX 树有延迟**：弹层节点出现和消失都比视觉慢 0.5~2s；判定必须轮询，
    不要点完立刻下结论（早期误判就是这么来的）。
 2. **点击会被吞**：accessibility 点击偶发无效（连续 4 次可能只有 1~2 次生效），
-   打开/关闭都要做重试状态机；参考 probe-inner.mjs 的 ensureOpen / ensureClosed。
-3. **用户在用机器时探针会误报**：probe 采样前台，若用户中途切到 Chrome/Finder，
-   前台判定会失败；已按「鼠标位移 = 人工干扰」降级为 WARN。想拿全 PASS 需机器空闲 15~20 秒。
+   打开/关闭都要做重试状态机（先确认已打开/已关闭，再继续下一步）。
+3. **用户在用机器时会误报**：评测脚本采样前台，若用户中途切到别的应用，前台判定会失败；
+   按「鼠标位移 = 人工干扰」降级为 WARN。想拿全 PASS 需机器空闲 15~20 秒。
 4. **锁屏时 AX 全挂**：NSPOSIXErrorDomain Code=2，隔一分钟重试或解锁后再跑；
-   probe.mjs 会把锁屏当环境不可用（退出码 2）。
+   评测脚本应把锁屏当环境不可用（退出码 2），不要当业务失败。
 5. **sky_key 实际键入**：未做「聚焦输入框 + sky_key 输入 + 读回 value」的完整验收；
    输入优先用 set_value。

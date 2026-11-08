@@ -7,7 +7,8 @@ import { isMac, isWindows } from '../core/platform.mjs';
 import { tokenHeadersFor } from '../core/local-token.mjs';
 import { daemonUrl, daemonPort } from '../core/ports.mjs';
 
-const LABELS = ['com.desktop-agent.daemon', 'com.desktop-agent.overlay'];
+// 0.8.0 改名后必须用新标签（旧 com.desktop-agent.* 在 service install 时会被清掉）
+const LABELS = ['com.goodlifedog.dsh-rig.daemon', 'com.goodlifedog.dsh-rig.overlay'];
 
 function run(cmd, args, timeout = 30000) {
   return new Promise((resolve) => execFile(cmd, args, { timeout }, (err, stdout, stderr) =>
@@ -23,7 +24,7 @@ async function restartMac() {
 }
 
 async function restartWin() {
-  for (const name of ['desktop-agent-daemon', 'desktop-agent-overlay']) {
+  for (const name of ['dsh-rig-daemon', 'dsh-rig-overlay']) {
     await run('schtasks', ['/End', '/TN', name]);
     const r = await run('schtasks', ['/Run', '/TN', name]);
     console.log((r.ok ? '  重启 ' : '  重启失败 ') + name);

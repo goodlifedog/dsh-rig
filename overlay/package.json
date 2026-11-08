@@ -1,8 +1,8 @@
 {
-  "name": "desktop-agent-overlay",
-  "version": "0.7.0",
+  "name": "dsh-rig-overlay",
+  "version": "0.8.0",
   "private": true,
-  "description": "单机版桌面代理：后台电脑控制 + 多会话小窗（内置 daemon，开箱即用）",
+  "description": "DSH Rig 的小窗层：多会话浮窗 + 实时回显（内置 daemon，开箱即用）",
   "license": "MIT",
   "main": "main.js",
   "scripts": {

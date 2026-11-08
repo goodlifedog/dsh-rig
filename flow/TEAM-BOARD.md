@@ -8,11 +8,11 @@
 | --- | --- | --- |
 | overlay-dev | 小窗显示/门控/审查 | task-18 显示路径审查、task-27 R1–R6 修复 |
 | cdp-bridge | CDP 通道与端口安全 | task-19 CDP 可接入性盘点、task-25 M-4 端口主人 fail-closed |
-| greet-engineer | 进程组/孤儿清理 | task-22 M-1、task-29 M-1b |
+| form-engineer | 进程组/孤儿清理 | task-22 M-1、task-29 M-1b |
 | overlay-multi | 中止清理预算 | task-23 M-2 |
 | human-input | 验收锁/并发 | task-24 M-3 |
 | headless-engineer | 安全评审/token | task-20 独立安全评审、task-26 M-5 |
-| boss-researcher | 请求头收口 | task-28 M-5b |
+| app-researcher | 请求头收口 | task-28 M-5b |
 | ocu-recipe | 数据安全/笔记清理 | task-21 H-1 |
 
 ## 派单与监督规则
@@ -37,10 +37,10 @@
 | 任务 | 成员 | 交付 | Lead 核验 |
 | --- | --- | --- | --- |
 | task-42 | headless-engineer | 批次 A 预检（terminal-control / drive-agent / drive-agent-cli） | 目标单测 + diff，提交 `50ebe5a` |
-| task-43 | human-input | 批次 B（boss-scan / form-fill / boss-greet / mcp-demo / platform-demo） | 同上 |
+| task-43 | human-input | 批次 B（scan / form-fill / write-task / mcp-demo / platform-demo） | 同上 |
 | task-44 | overlay-dev | 批次 C（user-active-demo / background-control 文本编辑 / user-chrome-demo） | 同上 |
 | task-45 | ocu-recipe | 批次 D（parallel-real-demo 双应用预检） | 同上 |
-| task-46 | boss-researcher | P6 文档硬约束（docs/SECURITY.md、docs/MAC-APPS.md 第 9 条） | `repo:check` 全绿后提交 `d9ea159` |
+| task-46 | app-researcher | P6 文档硬约束（docs/SECURITY.md、docs/MAC-APPS.md 第 9 条） | `repo:check` 全绿后提交 `d9ea159` |
 | task-47 | headless-engineer | P4 常驻静态检查（规则 5 + 14 条白名单 + fixture 单测） | `safety:audit` / 全量测试后提交 `ec6053d`；Lead 另把扫描范围扩到 `core/*.mjs` 并修 open 规则误判 |
 | task-48 | cdp-bridge | P1 根因层可选运行门禁（background 读写入口 opt-in） | 9 条单测 + 默认路径回归，提交 `b573cc6` |
 | task-49 | human-input | 权限安全审计（TCC 权限矩阵与 fail-closed 审查） | 见 flow/PERMISSIONS-AUDIT.md，Lead 抽样核验 H1/H4/H5 后提交 `6ba0ed6` |
@@ -49,12 +49,12 @@
 | task-52 | cdp-bridge | H3 Safari 探针先运行/授权预检 | 核验后提交 `d81dd6b` |
 | task-53 | human-input | H2 最小批次：三个脚本发 AppleEvent 前预检（sync-quit 300ms 不阻塞） | 核验后提交 `d81dd6b` |
 | task-54 | overlay-dev | M1/M2 屏幕录制静默预检 + 窗口标题全空权限提示 | 核验后提交 `2bd5f8a` |
-| task-55 | greet-engineer | H2 核心：前台读取改 ObjC（不发 AppleEvent）+ 回退开关 | 核验后提交 `8bf2ba1`；实测两种实现 20 次采样 100% 一致 |
-| task-56 | boss-researcher | （作废）H2 剩余入口只读计划：子 agent 失败未产出，Lead 改为直接派实现单 | 已删除 |
+| task-55 | form-engineer | H2 核心：前台读取改 ObjC（不发 AppleEvent）+ 回退开关 | 核验后提交 `8bf2ba1`；实测两种实现 20 次采样 100% 一致 |
+| task-56 | app-researcher | （作废）H2 剩余入口只读计划：子 agent 失败未产出，Lead 改为直接派实现单 | 已删除 |
 | task-57 | overlay-multi | H2：acceptance 五处 AppleEvent 入口接静默预检 + 新增公共 helper | 核验后提交 `0a52f69` |
 | task-58 | ocu-recipe | H2：browser / headless-demo 的 AppleEvent 入口补预检 | 核验后提交 `32cd7a8` |
 | task-59 | headless-engineer | 规则 6：发 AppleEvent 前必须有自动化预检（静态防回归 + 10 条已知缺口登记） | 核验后提交 `9eb3fce`；Lead 追加缺口数量上限断言 |
-| task-60 | boss-researcher | 应用适配广度调研（7 个候选 + 10 条不建议 + 最小可行步骤） | 核验后提交 `385c369`；INDEX 收录 |
+| task-60 | app-researcher | 应用适配广度调研（7 个候选 + 10 条不建议 + 最小可行步骤） | 核验后提交 `385c369`；INDEX 收录 |
 | task-61 | headless-engineer | 适配第一批：新增 mail/calendar/reading/photos 门类 + media 补 Music（预设+单测+清点） | 核验后提交 `dc4faca`；清点 32→38 |
 | task-62 | cdp-bridge | 清点口径：细分「部分验证（通道测过、矩阵未读）」+ 修 cdp-ok 判定 | 核验后提交 `1753042` |
 | task-63 | ocu-recipe | 权限闸门覆盖面：认 callTool 界面工具与 ocu js 外层调用 | 核验后提交 `09415a9`；需 AX 任务 16→19 |

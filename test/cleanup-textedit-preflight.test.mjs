@@ -131,7 +131,7 @@ test('H2-C unknown / 预检抛错：仍然尝试（行为不变）', async () =>
 });
 
 test('H2-C granted：Chrome 标签读取参数逐字不变', async () => {
-  const osa = makeOsa({ [CHROME_SCRIPT]: 'https://a, https://zhipin.com/x' });
+  const osa = makeOsa({ [CHROME_SCRIPT]: 'https://a, http://localhost:7788/x' });
   const report = [];
   const result = await reportOnly(report, { preflight: grantedPreflight, deps: { osa, isAppRunning: RUNNING } });
   assert.equal(result.read, true);
@@ -139,7 +139,7 @@ test('H2-C granted：Chrome 标签读取参数逐字不变', async () => {
   const tabs = report.find((r) => r.kind === 'chrome-tabs');
   assert.ok(tabs);
   assert.equal(tabs.total, 2);
-  assert.deepEqual(tabs.suspicious, ['https://zhipin.com/x']);
+  assert.deepEqual(tabs.suspicious, ['http://localhost:7788/x']);
 });
 
 test('H2-C denied：Chrome 不读标签、不删不关，报告 chrome-skipped', async () => {

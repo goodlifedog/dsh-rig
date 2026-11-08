@@ -16,7 +16,7 @@
 | `AGENT_ALLOW_QUERY_TOKEN` | （开关，设 1 开启） | `core/daemon.mjs`<br>`overlay/server.js` |
 | `AGENT_ALLOW_REMOTE_TOKEN` | （开关，设 1 开启） | `core/local-token.cjs` |
 | `AGENT_APP` | ChatGPT | `core/tasks/drive-agent.mjs` |
-| `AGENT_CHROME_PROFILE` | — | `core/browser.mjs`<br>`core/tasks/boss-scan-dedicated.mjs`<br>`core/tasks/greet-verify.mjs` |
+| `AGENT_CHROME_PROFILE` | — | `core/browser.mjs` |
 | `AGENT_DRIVE_ALLOW_FRONT_RISK` | （开关，设 1 开启） | `core/tasks/drive-agent-cli.mjs`<br>`core/tasks/drive-agent.mjs` |
 | `AGENT_FAKE_LOCKED` | （开关，设 1 开启） | `core/platform.mjs` |
 | `AGENT_FRONT_RISK` | — | `core/background.mjs`<br>`core/tasks/app-matrix.mjs`<br>`scripts/app-resolve.mjs` |
@@ -24,8 +24,6 @@
 | `AGENT_LAUNCH_HIDDEN` | — | `core/tasks/background-stability.mjs` |
 | `AGENT_PROMPT` | 只回复两个字：收到 | `core/tasks/drive-agent.mjs` |
 | `AGENT_SESSION` | — | `core/agentd.mjs` |
-| `ALLOW_CAMPUS` | — | `core/tasks/boss-candidates.mjs` |
-| `ALLOW_INTERN` | — | `core/tasks/boss-candidates.mjs` |
 | `APP_INVENTORY_RUNTIME` | 0 | `scripts/app-inventory.mjs` |
 | `AWAY_ABORT_IDLE_SEC` | 20 | `scripts/away-maintenance.mjs` |
 | `AWAY_LOG_FILE` | latest.log | `scripts/away-maintenance.mjs` |
@@ -55,9 +53,8 @@
 | `DSH_MCP_DEBUG` | — | `core/ocu-mcp.mjs` |
 | `DSH_SUPERVISOR_DEBUG` | — | `overlay/supervisor.js` |
 | `ELECTRON_BIN` | — | `core/electron-task.mjs` |
-| `EXCLUDE_COMPANIES` | 外包,人力,派遣,猎头 | `core/tasks/boss-candidates.mjs` |
 | `FILL_JS_TIMEOUT_MS` | 90000 | `core/tasks/form-fill-local.mjs`<br>`core/tasks/form-fill.mjs` |
-| `FILL_KEYWORD` | Java开发工程师 | `core/tasks/form-fill.mjs` |
+| `FILL_KEYWORD` | form-fill-test | `core/tasks/form-fill.mjs` |
 | `FORM_HOST_APP` | /tmp/OCUFormHost.app | `core/tasks/form-fill-local.mjs` |
 | `FORM_HOST_ELECTRON` | — | `core/tasks/form-fill-local.mjs` |
 | `FORM_HTML_PATH` | — | `core/tasks/form-fill-local.mjs` |
@@ -65,15 +62,10 @@
 | `FPS_CHECK_SECONDS` | — | `scripts/fps-check.mjs` |
 | `FPS_CHECK_TARGET` | — | `scripts/fps-check.mjs` |
 | `FRONT_GUARD` | — | `core/daemon.mjs` |
-| `GREET_CARDS` | — | `core/tasks/greet-inner.mjs` |
-| `GREET_DRY` | — | `core/tasks/greet-inner.mjs` |
-| `GREET_LIMIT` | 2 | `core/tasks/boss-greet.mjs`<br>`core/tasks/greet-inner.mjs` |
-| `GREET_SKIP` | — | `core/tasks/greet-inner.mjs` |
 | `HEADLESS_PROFILE` | — | `core/tasks/headless-demo.mjs` |
 | `KEEP_DAYS` | 7 | `scripts/prune.mjs` |
 | `KEEP_EVIDENCE_DAYS` | 90 | `scripts/prune.mjs` |
 | `KEEP_REPORTS` | 200 | `scripts/prune.mjs` |
-| `KEYWORDS` | Java,Agent,AI,后端,全栈,大模型,工作流 | `core/tasks/boss-candidates.mjs` |
 | `LIVE_ABORT_IDLE_SEC` | 20 | `scripts/live-verify.mjs` |
 | `LIVE_FORCE` | （开关，设 1 开启） | `scripts/live-verify.mjs` |
 | `LIVE_KEEP_AWAKE` | （开关，设 1 开启） | `scripts/live-verify.mjs` |
@@ -81,8 +73,6 @@
 | `MATRIX_APPS_JSON` | — | `core/tasks/app-matrix.mjs` |
 | `MATRIX_DISMISS` | — | `core/tasks/app-matrix.mjs` |
 | `MATRIX_PRESET` | — | `core/tasks/app-matrix.mjs` |
-| `MAX_JOB_LOGS` | 50 | `core/tasks/boss-scan.mjs` |
-| `MIN_JOBS` | 10 | `core/tasks/boss-scan.mjs` |
 | `MONITOR_FAST` | （开关，设 1 开启） | `scripts/monitor.mjs` |
 | `MONITOR_FPS_SECONDS` | 12 | `scripts/monitor.mjs` |
 | `NOTES_CLEANUP_FORCE` | （开关，设 1 开启） | `scripts/cleanup-test-data.mjs` |
@@ -113,17 +103,11 @@
 | `OVERLAY_WIDTH` | — | `overlay/main.js` |
 | `PARALLEL_KEEP_MS` | 8000 | `core/tasks/parallel-real-demo.mjs` |
 | `PRUNE_ON_START` | — | `core/daemon.mjs` |
-| `SALARY_MAX` | 12 | `core/tasks/boss-candidates.mjs` |
-| `SALARY_MIN` | 5 | `core/tasks/boss-candidates.mjs` |
-| `SCAN_ALLOW_TAB_SWITCH` | （开关，设 1 开启） | `core/tasks/boss-scan.mjs` |
-| `SCAN_JS_TIMEOUT_MS` | 90000 | `core/tasks/boss-scan.mjs` |
-| `SCAN_KEYWORD` | AI Agent | `core/tasks/boss-scan-dedicated.mjs` |
-| `SCAN_LIMIT` | 30 | `core/tasks/boss-scan-dedicated.mjs` |
 | `SOAK_ROUNDS` | — | `scripts/soak.mjs` |
 | `SOAK_TASKS` | electron-demo,headless-demo | `scripts/soak.mjs` |
 | `STABLE_ROUNDS` | — | `core/tasks/background-stability.mjs` |
 | `TARGETS` | Finder,Calculator | `core/tasks/multi-app.mjs` |
-| `TARGET_APP` | Google Chrome / notepad | `core/tasks/boss-greet.mjs`<br>`core/tasks/boss-scan.mjs`<br>`core/tasks/form-fill.mjs`<br>`core/tasks/greet-inner.mjs`<br>`core/tasks/mcp-demo.mjs`<br>`core/tasks/platform-demo.mjs`<br>`scripts/bench-ocu.mjs` |
+| `TARGET_APP` | Google Chrome / notepad | `core/tasks/form-fill.mjs`<br>`core/tasks/mcp-demo.mjs`<br>`core/tasks/platform-demo.mjs`<br>`scripts/bench-ocu.mjs` |
 | `TERM_APP` | Ghostty | `core/tasks/terminal-control.mjs` |
 | `TREND_LIMIT` | — | `scripts/trends.mjs` |
 | `USER_ACTIVE_ACTIONS` | — | `core/tasks/user-active-demo.mjs` |

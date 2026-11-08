@@ -1,5 +1,5 @@
 'use strict';
-// form-fill 的页面脚本安全边界：中途异常也必须把用户搜索框恢复原值，
+// form-fill 的页面脚本安全边界：中途异常也必须把用户输入框恢复原值，
 // 而且模板拼接后必须是合法 JS（这类字符串脚本最容易拼坏而运行期才暴露）。
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -28,9 +28,9 @@ test('写入脚本：页内异常时也会走恢复原值', () => {
 });
 
 test('兜底恢复脚本：只做恢复，失败也给结构化结果', () => {
-  const script = buildRestore('Java开发工程师');
+  const script = buildRestore('原始内容');
   assert.ok(script.includes('RESTORE_JSON='));
-  assert.ok(script.includes('Java开发工程师'), '原值要作为参数带进去');
+  assert.ok(script.includes('原始内容'), '原值要作为参数带进去');
   assert.ok(script.includes('ok: false'), '失败路径要返回 ok:false 而不是抛出去');
 });
 

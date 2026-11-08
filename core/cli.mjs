@@ -20,6 +20,8 @@ const DAEMON = path.join(__dirname, 'daemon.mjs');
 const PORT = Number(process.env.AGENTD_PORT || 7789);
 const BASE = 'http://127.0.0.1:' + PORT;
 const PID_FILE = path.join(ROOT, 'logs', 'daemon.pid');
+// 与 core/service.mjs 的 LABEL_DAEMON 保持一致（0.8.0 改名后的新标签）
+const LAUNCHD_LABEL_DAEMON = 'com.goodlifedog.dsh-rig.daemon';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -57,7 +59,7 @@ async function start() {
 function launchdManaged() {
   try {
     const uid = typeof process.getuid === 'function' ? process.getuid() : 501;
-    execFileSync('/bin/launchctl', ['print', 'gui/' + uid + '/com.desktop-agent.daemon'], { stdio: 'ignore', timeout: 3000 });
+    execFileSync('/bin/launchctl', ['print', 'gui/' + uid + '/' + LAUNCHD_LABEL_DAEMON], { stdio: 'ignore', timeout: 3000 });
     return true;
   } catch { return false; }
 }
@@ -70,7 +72,7 @@ async function stop() {
   if (launchdManaged()) {
     // launchd 托管时：KeepAlive 会把杀掉的进程立刻拉回来，所以这里不能谎报「已停止」
     console.log('当前任务已停止；后台服务由 launchd 托管，不会随 stop 退出。');
-    console.log('  暂停服务：launchctl bootout gui/' + (typeof process.getuid === 'function' ? process.getuid() : 501) + '/com.desktop-agent.daemon');
+    console.log('  暂停服务：launchctl bootout gui/' + (typeof process.getuid === 'function' ? process.getuid() : 501) + '/' + LAUNCHD_LABEL_DAEMON);
     console.log('  彻底卸载：npm run service:uninstall');
     console.log('  重启服务：npm run service:restart');
     return;

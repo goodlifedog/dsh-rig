@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>examples/web-click fixture</title>
+<style>
+  body { font: 16px -apple-system, sans-serif; padding: 32px; }
+  label { display: block; margin: 12px 0; }
+  input { font-size: 15px; padding: 6px 8px; min-width: 240px; }
+  button { font-size: 15px; padding: 8px 18px; margin-right: 8px; }
+  #result { margin-top: 20px; font-weight: 600; color: #0a7; }
+</style>
+</head>
+<body>
+  <h1>后台网页点击 fixture</h1>
+  <p>这个页面只用于演示：按可见文字找按钮 → CDP 后台点击 → 读回结果。</p>
+  <label>姓名 <input id="name" type="text" placeholder="输入姓名" autocomplete="off"></label>
+  <button id="submit" type="button">提交</button>
+  <button id="reset" type="button">重置</button>
+  <p id="result"></p>
+  <script>
+    function render() {
+      var name = (document.getElementById('name').value || '').trim();
+      document.getElementById('result').textContent = name ? ('提交成功：' + name) : '提交成功：匿名';
+    }
+    document.getElementById('submit').addEventListener('click', render);
+    document.getElementById('reset').addEventListener('click', function () {
+      document.getElementById('name').value = '';
+      document.getElementById('result').textContent = '';
+    });
+  </script>
+</body>
+</html>

@@ -18,8 +18,16 @@ import { parseListenerPid, diagnoseListener, parseLaunchdPid, deploymentDrift, i
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
-const LABEL_DAEMON = 'com.desktop-agent.daemon';
-const LABEL_OVERLAY = 'com.desktop-agent.overlay';
+// 0.8.0 改名 DSH Rig：launchd 标签换成 com.goodlifedog.dsh-rig.*
+const LABEL_DAEMON = 'com.goodlifedog.dsh-rig.daemon';
+const LABEL_OVERLAY = 'com.goodlifedog.dsh-rig.overlay';
+// 旧版本的标签。升级时必须主动清掉：launchd 不会因为我们改了 plist 名字就停掉旧的，
+// 新旧两套会同时跑、同时抢 7788/7789（用户看到的是「daemon 起不来 / 端口被占」）。
+const LEGACY_LABELS = ['com.desktop-agent.daemon', 'com.desktop-agent.overlay'];
+// Windows 计划任务名（同一个道理：新名前缀 dsh-rig-，旧的 desktop-agent- 要删）
+const WIN_TASK_DAEMON = 'dsh-rig-daemon';
+const WIN_TASK_OVERLAY = 'dsh-rig-overlay';
+const LEGACY_WIN_TASKS = ['desktop-agent-daemon', 'desktop-agent-overlay'];
 
 function run(cmd, args) {
   return new Promise((resolve) => execFile(cmd, args, { timeout: 30000 }, (err, stdout, stderr) =>
@@ -28,9 +36,43 @@ function run(cmd, args) {
 
 function nodeBin() { return process.execPath; }
 
+function launchAgentsDir() {
+  return path.join(os.homedir(), 'Library', 'LaunchAgents');
+}
+
+function uidString() {
+  return String(process.getuid ? process.getuid() : 501);
+}
+
+/**
+ * 清掉旧版本（Desktop Agent）留下的 launchd 服务 —— 升级到 DSH Rig 的关键一步。
+ * 只动本项目那两个旧标签，不碰用户其它的 LaunchAgent。
+ * 返回被清掉的标签列表（给状态/日志用）。
+ */
+async function cleanupLegacyLaunchAgents(dir) {
+  const uid = uidString();
+  const removed = [];
+  for (const label of LEGACY_LABELS) {
+    // 已加载时按 label bootout 最可靠；文件还在再按 plist 路径补一次
+    await run('launchctl', ['bootout', 'gui/' + uid + '/' + label]);
+    const file = path.join(dir, label + '.plist');
+    if (fs.existsSync(file)) {
+      await run('launchctl', ['bootout', 'gui/' + uid, file]);
+      try { await fsp.rm(file, { force: true }); } catch {}
+      removed.push(label);
+    }
+  }
+  if (removed.length) {
+    console.log('已清理旧版本服务（' + removed.join(', ') + '），避免新旧两套同时抢端口');
+  }
+  return removed;
+}
+
 async function macInstall() {
-  const dir = path.join(os.homedir(), 'Library', 'LaunchAgents');
+  const dir = launchAgentsDir();
   await fsp.mkdir(dir, { recursive: true });
+  // 先清旧版本（com.desktop-agent.*），否则新旧两套同时跑会抢 7788/7789
+  await cleanupLegacyLaunchAgents(dir);
   const daemon = [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
@@ -84,7 +126,9 @@ async function macInstall() {
 async function winInstall() {
   const daemonCmd = '\"' + nodeBin() + '\" \"' + path.join(ROOT, 'core', 'daemon.mjs') + '\"';
   const overlayCmd = '\"' + path.join(ROOT, 'overlay', 'node_modules', 'electron', 'dist', 'electron.exe') + '\" \"' + path.join(ROOT, 'overlay') + '\"';
-  for (const [name, cmd] of [['desktop-agent-daemon', daemonCmd], ['desktop-agent-overlay', overlayCmd]]) {
+  // 升级：先删旧任务名，再建新的（否则登录时会同时拉起两套）
+  for (const name of LEGACY_WIN_TASKS) await run('schtasks', ['/Delete', '/TN', name, '/F']);
+  for (const [name, cmd] of [[WIN_TASK_DAEMON, daemonCmd], [WIN_TASK_OVERLAY, overlayCmd]]) {
     await run('schtasks', ['/Delete', '/TN', name, '/F']);
     const r = await run('schtasks', ['/Create', '/TN', name, '/TR', cmd, '/SC', 'ONLOGON', '/RL', 'LIMITED', '/F']);
     console.log(r.ok ? '已创建计划任务 ' + name : '创建失败 ' + name + ': ' + r.err);
@@ -107,6 +151,8 @@ async function uninstall() {
       await fsp.rm(file, { force: true });
       console.log('已移除 ' + name);
     }
+    // 卸载也要顺手清旧版本标签：用户可能直接跑 uninstall 来收拾升级残留
+    await cleanupLegacyLaunchAgents(dir);
     // 清掉占着端口的游离实例（只杀确认属于本项目的），否则会一直占着 7788/7789
     for (const port of [PORT, 7788]) {
       const info = await listenerInfo(port);
@@ -133,9 +179,11 @@ async function uninstall() {
     return;
   }
   if (isWindows) {
-    for (const name of ['desktop-agent-daemon', 'desktop-agent-overlay']) {
+    for (const name of [WIN_TASK_DAEMON, WIN_TASK_OVERLAY, ...LEGACY_WIN_TASKS]) {
       const r = await run('schtasks', ['/Delete', '/TN', name, '/F']);
-      console.log(r.ok ? '已删除 ' + name : '删除失败 ' + name);
+      if (r.ok) console.log('已删除 ' + name);
+      else if (LEGACY_WIN_TASKS.includes(name)) continue;   // 旧任务本来就不存在，不算失败
+      else console.log('删除失败 ' + name);
     }
     return;
   }
@@ -191,12 +239,25 @@ async function status() {
   console.log('部署状态：' + drift + (drift === 'stray' ? ' —— 端口被不受管进程占着，launchd 拉不起来，先跑 npm run service:restart' : ''));
   const overlayDrift = deploymentDrift({ listenerPid: overlayListener.pid, managedPid: overlayManaged });
   console.log('overlay 7788 监听者：' + (overlayListener.pid || '无') + '，launchd 受管 pid：' + (overlayManaged || '无') + '，部署状态：' + overlayDrift);
+  // 升级检查：旧版本（Desktop Agent）的服务还在的话，端口冲突的根因就在这里，必须显式说出来，
+  // 否则用户只看到「daemon 起不来」却不知道是两个 label 在抢同一个端口。
+  const legacy = [];
+  if (isMac) {
+    for (const label of LEGACY_LABELS) {
+      if (await launchdPid(label)) legacy.push(label + '（运行中）');
+      else if (fs.existsSync(path.join(launchAgentsDir(), label + '.plist'))) legacy.push(label + '（残留 plist）');
+    }
+    if (legacy.length) {
+      console.log('⚠ 检测到旧版本服务：' + legacy.join('、')
+        + ' —— 跑 npm run service:install 会自动清理（或先 npm run service:uninstall）');
+    }
+  }
   // 代码新鲜度：改了直接依赖却没重启时，上面的「部署状态」照样是 ok，这里补一句提醒
   const daemonFresh = checkFreshness({ rootDir: ROOT, startedAtMs: processStartMs(listener.pid), files: WATCH_FILES.daemon });
   const overlayFresh = checkFreshness({ rootDir: ROOT, startedAtMs: processStartMs(overlayListener.pid), files: WATCH_FILES.overlay });
   console.log(formatFreshness('daemon', daemonFresh));
   console.log(formatFreshness('overlay', overlayFresh));
-  return { listener, managed, verdict, drift, overlayListener, overlayManaged, overlayDrift };
+  return { listener, managed, verdict, drift, overlayListener, overlayManaged, overlayDrift, legacy };
 }
 
 async function restartDaemon() {

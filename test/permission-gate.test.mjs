@@ -198,7 +198,7 @@ test('覆盖：mcp.callTool 的 AX 工具要辅助功能（get_app_state/query/c
 test('覆盖：ocu js 内层脚本里的 cua.getApp( 要辅助功能', () => {
   const src = [
     "execFile(OCU, ['js', '--file', innerPath]);",
-    '// 内层 greet-inner.mjs:',
+    '// 内层脚本（单独文件）:',
     "var app = await cua.getApp('Google Chrome', { initialState: false });",
     'var s = await app.getAXState({ emit: false });',
   ].join('\n');
@@ -238,7 +238,7 @@ test('覆盖：CDP / headless 写法不能被误判成需要 AX/录屏', () => {
   }
 });
 
-test('dry-run 覆盖清单：真实任务里 mcp-demo / boss-greet 判需要 AX；CDP/headless 任务不误判', async () => {
+test('dry-run 覆盖清单：真实任务里 mcp-demo 判需要 AX；CDP/headless 任务不误判', async () => {
   const fs = await import('node:fs');
   const path = await import('node:path');
   const { fileURLToPath } = await import('node:url');
@@ -248,14 +248,13 @@ test('dry-run 覆盖清单：真实任务里 mcp-demo / boss-greet 判需要 AX�
 
   const need = (name) => inferTaskPermissionNeed(readTask(name)).accessibility;
   assert.equal(need('mcp-demo'), true, 'mcp.callTool(get_app_state) 必须判需要 AX');
-  assert.equal(need('boss-greet'), true, "execFile(OCU, ['js', …]) 必须判需要 AX");
   for (const name of ['browser-demo', 'cdp-channel', 'parallel-demo', 'headless-demo']) {
     assert.equal(need(name), false, name + ' 是 CDP/headless，不能误判需要 AX');
   }
-  // 统计：当前仓库至少 17 个任务需要 AX（旧口径 16 + 本次补齐的 mcp-demo/boss-greet 等）
+  // 统计：当前仓库至少有 15 个任务需要 AX（含 mcp-demo 这类内层调用）
   const names = fs.readdirSync(TASKS).filter((f) => f.endsWith('.mjs')).map((f) => f.replace(/\.mjs$/, ''));
   const needAX = names.filter((name) => inferTaskPermissionNeed(readTask(name)).accessibility);
-  assert.ok(needAX.length >= 17, '需要 AX 的任务数 = ' + needAX.length);
+  assert.ok(needAX.length >= 15, '需要 AX 的任务数 = ' + needAX.length);
 });
 
 // ---------- M3：录屏判定先剥注释（注释里的 screencapture 不算） ----------

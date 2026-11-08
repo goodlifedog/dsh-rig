@@ -1,7 +1,7 @@
 'use strict';
 // 「目标应用没在跑就不要碰它」闸门的单测（P0 批次B）。
 // 背景：ocu 对未运行的应用调用 snapshot/get_app_state/cua.getApp 会把它启动起来并顶到前台
-// （默认对象是用户的 Chrome，还带登录 profile）。所以每个 Chrome/BOSS/演示任务开跑前必须先确认在跑。
+// （默认对象是用户的 Chrome，还带登录 profile）。所以每个 Chrome/演示任务开跑前必须先确认在跑。
 // 这里只测纯逻辑和注入探测，不启动任何应用、不碰屏幕。
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -198,8 +198,6 @@ test('reportAppPresence：跳过时打印并返回 true；放行时打印警示�
 // ---------- 静态回归：闸门必须出现在第一次碰应用之前 ----------
 
 const GUARDED = [
-  { file: 'core/tasks/boss-scan.mjs', firstTouch: 'ocu.frontmost()' },
-  { file: 'core/tasks/boss-greet.mjs', firstTouch: 'readChatItems(' },
   { file: 'core/tasks/form-fill.mjs', firstTouch: 'ocu.frontmost()' },
   { file: 'core/tasks/mcp-demo.mjs', firstTouch: 'getOcuMcp()' },
   // 注意：这里找的是「调用点」不是函数定义（ocuState/spawnCli 的定义在文件前部）

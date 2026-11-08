@@ -55,12 +55,9 @@ node core/cli.mjs foo; echo $? # 应为 2（P1 已实现，无需打补丁）
 
 ## A. 必须先决定的两件事
 
-- [ ] **A1. BOSS 直聘那部分要不要出现在公开仓库**（**执行方案已写好：[`flow/BOSS-EXTRACT.md`](BOSS-EXTRACT.md)**，含要删的 5 个脚本 / 3 份文档 / 3 处代码引用 / 10 个文档引用、验收替代方案、npm 包复查命令、预计 2-3 小时）
-  - 现状：`core/tasks/boss-*.mjs` 4 个、`flow/BOSS-*.md` 3 份（582 行）、README 首页有「案例：BOSS 直聘投递」
-  - 风险：自动投递违反平台用户协议；`BOSS-RULES.md` 有「风控」章节；仓库署真实姓名
-  - 建议：移到私有仓库/本地分支；README 那条方法论（弹窗说已发送 ≠ 真送达）改用中性例子（表单提交/文件下载）来讲
-  - ⚠️ **注意两处**：不只 GitHub 仓库——第 78 轮实测，`npm pack` 出来的包里 `core/tasks/` 也带着 8 个 `boss-*`，打包 whitelist 也要一并排除
-  - 验证：`ls core/tasks | grep boss` 应为空、`grep -c BOSS README.md` 应为 0 或被中性描述替代
+- [x] **A1. 站点专用业务已从公开面移除**（任务、站点专用正则、验收项、相关文档一并删除）
+  - 验证：`ls core/tasks | grep -iE "boss|zhipin"` 应为空；`git grep -inE "zhipin|boss"` 只应剩下这条复查命令本身
+  - npm 包复查：`npm pack --dry-run` 后包内不应出现相关任务文件
 
 - [ ] **A2. 仓库用哪个名字/身份**
   - npm 包名 `desktop-agent` 已被占用，必须用 scoped（如 `@你的名字/desktop-agent`）

@@ -1,9 +1,9 @@
 {
-  "name": "desktop-agent",
-  "version": "0.7.0",
+  "name": "dsh-rig",
+  "version": "0.8.0",
   "private": false,
   "type": "module",
-  "description": "后台电脑控制 + 小窗回显：用 Accessibility 语义树驱动真实 macOS 应用，全程不抢焦点",
+  "description": "DSH Rig：后台电脑控制装置——后台操作 macOS 真实应用、小窗实时回显，不抢焦点、不动鼠标",
   "license": "MIT",
   "author": "goodlifedog <goodlifedog@users.noreply.github.com>",
   "engines": {

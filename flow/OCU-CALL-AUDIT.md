@@ -11,7 +11,7 @@
 
 ## 0. 结论摘要
 
-- **高危直接调用点 11 处**：这些任务在目标应用**没在运行**时会直接调 ocu 读取/输入，ocu 会把应用启动并带出窗口（多数还会抢前台）。其中多数直接读用户自己的应用（Chrome/终端/聊天客户端），有的按参数或固定候选挑应用；`boss-greet` 是发消息任务，副作用最大。
+- **高危直接调用点 11 处**：这些任务在目标应用**没在运行**时会直接调 ocu 读取/输入，ocu 会把应用启动并带出窗口（多数还会抢前台）。其中多数直接读用户自己的应用（Chrome/终端/聊天客户端），有的按参数或固定候选挑应用；`write-task` 是发消息任务，副作用最大。
 - **根因层 3 个模块**：`core/agentd.mjs` 的 `ocu.snapshot/call/calls`、`core/background.mjs` 的 `state/find/click/setValue/typeText`、`core/user-chrome.mjs` 的 `readState/find/clickText/typeText` —— 它们都**没有**「应用在不在运行」的前置条件。`readSafe/findSafe` 只处理「读之后前台被抢」，不处理「读之前应用被启动」。
 - **已有正确模式 2 个，可当模板**：`core/tasks/coverage-probe.mjs:248`（`if (!item.running) → 未测/跳过，理由是「扫描非运行应用会把它启动起来」）、`core/tasks/multi-app.mjs`（本轮已修：`isAppRunning` + `shouldProbeApp`，未运行直接环境跳过）。
 - **「刻意启动器」5 个**（`ensureAppRunning/ensureAppWindow` + 结束 `quitApp`）：`background-control`、`background-stability`、`app-matrix`、`cold-launch`、`concurrent-demo`。它们启动应用是设计行为、且只关自己拉起的；但**用户在场时不应该跑**。
@@ -27,9 +27,9 @@
 | 2 | `core/tasks/terminal-control.mjs:48,64,72,81` | `TERM_APP`（默认 Ghostty） | `readSafe() / find() / typeText() / state()` | Ghostty 没运行会被启动；之后还往新窗口敲 `echo`（type_text 有前台还原，但启动本身收不回） |
 | 3 | `core/tasks/drive-agent.mjs:85,91,98,102,113` | `AGENT_APP`（默认 ChatGPT） | `callTool query/set_value/get_app_state/press_key` | ChatGPT 通常关着；一跑就会启动它并往输入区写提示词、回车。副作用在全仓排前列 |
 | 4 | `core/tasks/drive-agent-cli.mjs:72,105,110` | `CLI_TERM_APP`（默认 Ghostty） | `readSafe() / callTool type_text/press_key` | 同 2；只是敲的命令是 `opencode run` |
-| 5 | `core/tasks/boss-scan.mjs:216,248` | `TARGET_APP`（默认 Google Chrome） | `ocu.snapshot()` ×2 | Chrome 没运行会被启动；这任务读的是用户自己的 Chrome（登录态） |
+| 5 | 原扫描任务（站点专用，已移除） | `TARGET_APP`（默认 Google Chrome） | `ocu.snapshot()` ×2 | Chrome 没运行会被启动；这任务读的是用户自己的 Chrome（登录态） |
 | 6 | `core/tasks/form-fill.mjs:260,266,276,292,298` | `TARGET_APP`（默认 Google Chrome） | `ocu.frontmost()` + 内层 `ocu js`（cua.getApp/getAXState/set_value…） | `frontmost` 本身安全，但内层 JS 会 getApp → 启动 Chrome；随后改搜索框 |
-| 7 | `core/tasks/boss-greet.mjs:80` → `core/tasks/greet-inner.mjs:38` | `TARGET_APP`（默认 Google Chrome） | `execFile(OCU, ['js', '--file', inner])`；内层 `cua.getApp(APP)` | 发消息任务；应用没运行也会被拉起。内层脚本没有运行检查，外层也没补 |
+| 7 | 原写类任务 + 内层脚本（站点专用，已移除） | `TARGET_APP`（默认 Google Chrome） | `execFile(OCU, ['js', '--file', inner])`；内层 `cua.getApp(APP)` | 发消息任务；应用没运行也会被拉起。内层脚本没有运行检查，外层也没补 |
 | 8 | `core/tasks/mcp-demo.mjs:21-26` | `TARGET_APP`（默认 Google Chrome） | `mcp.callTool('get_app_state')` | 演示脚本，直接读目标应用；没运行就启动 |
 | 9 | `core/tasks/platform-demo.mjs:54` | `TARGET_APP`（默认 Google Chrome） | `ocuState(target)` → 内层 `cua.getApp` + `getAXState` | 只防了「读会抢前台」和锁屏，没防「读会启动」 |
 | 10 | `core/tasks/background-control.mjs:188` | 固定「文本编辑」 | `find('文本编辑', { role: 'AXTextArea' })` | 备忘录/计算器有 `ensureAppRunning`（:75/:77）并登记 `launchedByUs`，但文本编辑这一步没有 ensure、没有 running 检查；TextEdit 没运行会被拉起，收尾只关 Notes/Calculator（:100 一带），可能把 TextEdit 留在前台/开着 |
@@ -81,10 +81,10 @@
 
 修复顺序（按用户可见影响排）：
 
-1. `boss-greet.mjs:80` / `greet-inner.mjs:38`（会发消息，副作用最大）
+1. `write-task.mjs:80` / `write-inner.mjs:38`（会发消息，副作用最大）
 2. `drive-agent.mjs:85…`、`drive-agent-cli.mjs:72…`（会往应用里写内容/回车）
 3. `user-active-demo.mjs:40…`、`terminal-control.mjs:48…`、`parallel-real-demo.mjs:37,56`（验证"不打扰"的任务自己先打扰了）
-4. `boss-scan.mjs:216,248`、`form-fill.mjs:266,276,292`、`mcp-demo.mjs:26`、`platform-demo.mjs:54`
+4. `scan.mjs:216,248`、`form-fill.mjs:266,276,292`、`mcp-demo.mjs:26`、`platform-demo.mjs:54`
 5. `background-control.mjs:188`（给文本编辑补 ensure 或运行检查）
 
 统一写法（建议抽公共函数，见 P1）：
@@ -100,7 +100,7 @@ if (!running) {
 // 只有确定在运行才进入 ocu.snapshot / callTool / cua.getApp
 ~~~
 
-内层 `ocu js` 脚本（boss-greet/greet-inner、boss-scan、form-fill、platform-demo）**要在外层 Node 进程先判**：内层拿不到可靠的 isAppRunning，外层判完再决定要不要 `execFile(OCU, ['js', …])`。
+内层 `ocu js` 脚本（write-task/write-inner、scan、form-fill、platform-demo）**要在外层 Node 进程先判**：内层拿不到可靠的 isAppRunning，外层判完再决定要不要 `execFile(OCU, ['js', …])`。
 
 ### P1：根因层收口（防止以后又有人直接调）
 
@@ -172,10 +172,10 @@ export async function requireRunning(app) {
 | applescript-channel.mjs | 否（只用 `isAppRunning:79`） | 有 | 安全 |
 | background-control.mjs | 是（Notes/Calc 已 ensure；文本编辑 `find:188` 没 ensure） | 部分 | **高**（文本编辑漏网） |
 | background-stability.mjs | 是（`ensureAppWindow:50`） | 有 | 中：刻意启动 + 结尾 quit |
-| boss-candidates.mjs | 否（无 ocu 读取） | — | 安全 |
-| boss-greet.mjs | 是（内层 `ocu js:80` → `greet-inner:38 getApp`） | 无 | **高** |
-| boss-scan-dedicated.mjs | 否（专用 profile 离屏 Chrome） | — | 安全（不碰用户窗口） |
-| boss-scan.mjs | 是（`snapshot:216,248`） | 无 | **高** |
+| candidates.mjs | 否（无 ocu 读取） | — | 安全 |
+| write-task.mjs | 是（内层 `ocu js:80` → `write-inner:38 getApp`） | 无 | **高** |
+| scan-dedicated.mjs | 否（专用 profile 离屏 Chrome） | — | 安全（不碰用户窗口） |
+| scan.mjs | 是（`snapshot:216,248`） | 无 | **高** |
 | browser-background.mjs | 否（CDP 浏览器） | — | 安全 |
 | browser-demo.mjs | 否（CDP 独立 profile） | — | 安全 |
 | cdp-channel.mjs | 否（自己 spawn headless Chrome + CDP） | — | 安全 |
@@ -188,8 +188,8 @@ export async function requireRunning(app) {
 | electron-demo.mjs | 否（自建离屏宿主 + CDP） | — | 安全 |
 | form-fill-local.mjs | 是（对自己 spawn 的宿主） | 显式启动（自建宿主） | 安全（`finally` 杀宿主） |
 | form-fill.mjs | 是（`runOcuJs:266,276,292`） | 无 | **高** |
-| greet-inner.mjs | 是（内层 `cua.getApp:38`） | 无 | **高**（由 boss-greet 驱动） |
-| greet-verify.mjs | 否（专用 profile Chrome，读消息列表） | — | 安全 |
+| write-inner.mjs | 是（内层 `cua.getApp:38`） | 无 | **高**（由 write-task 驱动） |
+| write-verify.mjs | 否（专用 profile Chrome，读消息列表） | — | 安全 |
 | headless-demo.mjs | 只用 `ocu call list_apps` 读前台 | — | 安全（不针对应用） |
 | human-demo.mjs | 否（独立浏览器 + CDP） | — | 安全 |
 | mcp-demo.mjs | 是（`get_app_state:26`，默认 Chrome） | 无 | **高** |
@@ -235,7 +235,7 @@ export async function requireRunning(app) {
 - 只读审计：没有启动/激活任何应用，没有跑任何任务本体（屏幕锁屏，且 Lead 明令禁止）；结论基于代码路径 + 历史日志/注释，不是运行时复现（multi-app 事故与 coverage-probe 注释已证明机制）。
 - 未审计 ocu 自身实现（第三方），"未运行应用会被启动"来自实测事故与仓库内注释，不再重复验证。
 - 未覆盖 Windows UIA 后端（`core/backends/uia.mjs` 的 snapshot 是否也启动应用未验证，本次只审 ocu/macOS 路径）。
-- `ocu js` 内层脚本只审到已知入口（boss-greet/greet-inner、boss-scan、form-fill、platform-demo）；内层脚本自身没有运行检查，因此外层门禁是必须的。
+- `ocu js` 内层脚本只审到已知入口（write-task/write-inner、scan、form-fill、platform-demo）；内层脚本自身没有运行检查，因此外层门禁是必须的。
 - 行号对应当前工作区版本；其他成员并行改动可能移动行号，修复时以函数名为准。
 
 ## 8. 修复状态（2026-11-08 收尾）
@@ -252,9 +252,9 @@ export async function requireRunning(app) {
 | 2 | `core/tasks/terminal-control.mjs` | 入口 `requireAppRunning`，未运行环境跳过（exit 0），不进入 `readSafe/find/typeText` | `test/task-app-presence-gate.test.mjs` |
 | 3 | `core/tasks/drive-agent.mjs` | 同上，目标 agent 没运行不驱动、不写提示词 | 同上 |
 | 4 | `core/tasks/drive-agent-cli.mjs` | 同上（CLI 类目标） | 同上 |
-| 5 | `core/tasks/boss-scan.mjs` | `requireAppRunning` 后再 `ocu.snapshot`；顺带保留前台风险名单门禁 | 同上 |
+| 5 | 原扫描任务（已移除） | 移除前已加 `requireAppRunning` 门禁 | — |
 | 6 | `core/tasks/form-fill.mjs` | 入口门禁，未运行就不跑内层 `ocu js` | 同上 |
-| 7 | `core/tasks/boss-greet.mjs` | 入口门禁（写类任务副作用最大）；未运行不进入 `greet-inner` | 同上 |
+| 7 | 原写类任务（已移除） | 移除前已加入口门禁 | — |
 | 8 | `core/tasks/mcp-demo.mjs` | 入口门禁后再 `get_app_state` | 同上 |
 | 9 | `core/tasks/platform-demo.mjs` | 入口门禁，未运行不 `ocuState` | 同上 |
 | 10 | `core/tasks/background-control.mjs` | 「文本编辑」步骤先 `isAppRunning`，没运行记为跳过（不再 `find` 触发拉起）；备忘录/计算器仍是显式启动 + `launchedByUs` | `test/task-app-presence-gate.test.mjs` |

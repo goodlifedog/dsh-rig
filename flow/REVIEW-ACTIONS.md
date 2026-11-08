@@ -67,11 +67,10 @@ parallel-demo / parallel-real-demo / scripts/app-resolve.mjs。
 - 仍值得讨论的风险：该归类区分不了「站点改版」和「自身填表逻辑回归」——两者断言都失败。建议断言失败时再取一个环境证据（URL/标题是否仍在预期站点）；还在就按真失败处理
 
 
-### 1. BOSS 直聘内容不该出现在公开仓库
+### 1. 站点专用业务不该出现在公开仓库
 
-- 现状：4 个 `boss-*` 任务、1 个 `greet-inner`、3 份 BOSS 文档（582 行）、README 首页有案例、**npm 包里也带着**
-- 执行方案已写好：[`BOSS-EXTRACT.md`](BOSS-EXTRACT.md)（要删哪些、验收怎么补、怎么复查包）
-- 需要你决定：**摘出去** / 保留但不上首页、加免责声明、删风控章节
+- 现状：**已移除**（任务文件、站点专用正则、验收项、相关文档全部删除；README 已改成通用叙事）
+- 复查：`ls core/tasks | grep -iE "boss|zhipin"` 应为空；`git grep -inE "zhipin|boss"` 只应剩下发布复查命令本身
 
 ### 2. 发布配置（补丁已备，`git apply flow/patch-publish.diff`）
 
@@ -200,7 +199,7 @@ parallel-demo / parallel-real-demo / scripts/app-resolve.mjs。
 - 两个文件写的是一回事：一套在 core 里没人用，一套在 scripts 里带测试
 - **已按方案②出补丁**：`planPrune` 移进 `core/prune.mjs`（清掉四个零引用导出），`scripts/prune.mjs` 改为 import + 只留 CLI，`test/prune.test.mjs` 改 import 路径。临时克隆里 `node scripts/prune.mjs` 正常、全量测试全绿
 
-顺带：`core/driver-resolution.mjs` 的 `DRIVER_ORDER_NOTE` 常量、`core/tasks/greet-verify.mjs` 的 `readChatList` 也是零引用（后者随 BOSS 内容一起走）
+顺带：`core/driver-resolution.mjs` 的 `DRIVER_ORDER_NOTE` 常量、`core/tasks/write-verify.mjs` 的 `readChatList` 也是零引用（后者随 业务内容一起走）
 
 
 ### 3.05 ✅ 已解决：`core/deploy-freshness.mjs` + `service:status` 报「代码新鲜度」
@@ -292,7 +291,7 @@ parallel-demo / parallel-real-demo / scripts/app-resolve.mjs。
 
 ### 13. 孤儿
 
-- 4 个没人引用的任务（`boss-candidates` `human-demo` `parallel-demo` `parallel-real-demo`）
+- 4 个没人引用的任务（`candidates` `human-demo` `parallel-demo` `parallel-real-demo`）
 - 1 个没人引用的脚本（`scripts/ui-gallery.mjs`）
 
 ### 14. ✅ 已解决：依赖 git 的检查标 ⏭️ 跳过（`hasGit`），ZIP 场景不再报红
@@ -346,12 +345,12 @@ parallel-demo / parallel-real-demo / scripts/app-resolve.mjs。
 ### 2.13 31 个任务里 17 个没写文件头用途说明（任务清单生成器会标出来）
 
 - 任务脚本统一约定是文件头 `/** 一句话说明 */`，但有一半没写：
-  `boss-candidates` `boss-greet` `boss-scan` `boss-scan-dedicated` `greet-inner` `greet-verify`
+  `candidates` `write-task` `scan` `scan-dedicated` `write-inner` `write-verify`
   `browser-demo` `coverage-probe` `electron-demo` `form-fill` `form-fill-local`
   `headless-demo` `human-demo` `mcp-demo` `multi-app` `platform-demo` `user-chrome-demo`
 - 影响：`desktop-agent tasks` 只给名字，用户不知道这些任务是干嘛的；任务清单（`npm run tasks:doc`）里只能显示「（文件头没写用途说明）」
 - 建议：采纳 `patch-tasks-catalog.diff` 后，给这 17 个补一行说明；之后可以再加一条 repo:check 规则「每个任务必须有文件头说明」，把它变成硬约束
-- BOSS 相关的六个会随 BOSS 内容一起移除，可以先不动
+- 相关业务的六个会随 业务内容一起移除，可以先不动
 
 ### 2.14 实测跑了一遍完整验收：13 项里 2 项红，都是「测试设计」而非功能回归
 
@@ -421,7 +420,7 @@ scripts/start-all.mjs:18,34          起服务后探活
 ```
 applescript-channel  cdp-driver  multi-app  parallel-real-demo  user-chrome-demo
 form-fill            form-fill-local
-boss-greet           boss-scan        （这两个随 BOSS 内容一起移除，不用管）
+write-task           scan        （这两个随 业务内容一起移除，不用管）
 ```
 
 影响：单人手动跑这些任务时，锁屏状态下看到的是红点，会误以为功能坏了；

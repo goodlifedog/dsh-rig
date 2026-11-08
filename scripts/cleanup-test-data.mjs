@@ -397,7 +397,7 @@ export async function reportOnly(report, options = {}) {
     const urls = runOsa('tell application "Google Chrome" to get URL of every tab of every window', 8000);
     if (urls && urls !== '__ERR__') {
       const list = urls.split(', ').filter(Boolean);
-      const suspicious = list.filter((u) => /zhipin|boss|127\.0\.0\.1|localhost|data:text/i.test(u));
+      const suspicious = list.filter((u) => /127\.0\.0\.1|localhost|data:text|file:/i.test(u));
       report.push({ kind: 'chrome-tabs', total: list.length, suspicious: suspicious.slice(0, 5) });
     }
   }

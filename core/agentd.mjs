@@ -275,18 +275,6 @@ export async function guard(targetApp, fn, options = {}) {
   return { result, before, after };
 }
 
-export function parseJobs(axText) {
-  const jobs = [];
-  // ocu 读失败时可能传 null/undefined，这里统一按空文本处理
-  const lines = String(axText == null ? '' : axText).split('\n');
-  for (const line of lines) {
-    const m = line.match(/link \[([^\]]+)\]\(https:\/\/www\.zhipin\.com\/job_detail\/([^)]+)\)/);
-    if (m) jobs.push({ title: m[1].trim(), url: 'https://www.zhipin.com/job_detail/' + m[2] });
-  }
-  const seen = new Set();
-  return jobs.filter((j) => (seen.has(j.url) ? false : (seen.add(j.url), true)));
-}
-
 export function countElements(axText) {
   return (String(axText == null ? '' : axText).match(/^\s*\d+ /gm) || []).length;
 }

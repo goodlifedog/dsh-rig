@@ -37,7 +37,6 @@
 +    "overlay/docs/ui-live2-*.png",
 +    "!flow/REVIEW-*.md",
 +    "!flow/patch-*.diff",
-+    "!flow/BOSS-EXTRACT.md",
 +    "!flow/PUBLISH-VERDICT.md",
 +    "!flow/PUBLISH-CHECKLIST.md",
 +    "!flow/PATCHES.md",

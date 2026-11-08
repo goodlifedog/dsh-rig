@@ -11,8 +11,8 @@ export const OPEN_BACKGROUND_ALLOWLIST = Object.freeze({
   'core/permissions.mjs': 'openPermissionSettings：用户主动查询权限时打开系统设置隐私面板，必须可见并由用户手动授权，不能后台',
 });
 
-/** 内层脚本：由外层任务在 guard/锁屏检查之后调用，自身不需要重复检查 */
-export const UI_GUARD_ALLOWLIST = ['greet-inner.mjs'];
+/** 内层脚本：由外层任务在 guard/锁屏检查之后调用，自身不需要重复检查。当前没有豁免项（站点专用任务已移除）。 */
+export const UI_GUARD_ALLOWLIST = [];
 
 /** 只看任务目录（这些是真正会动用户应用和屏幕的代码） */
 // 同名方法排除：`list.find(` / `map.click(` 这类不是界面操作，别误判成任务在动界面。
@@ -76,9 +76,7 @@ export const PRESENCE_FILE_ALLOWLIST = Object.freeze({
   'core/human.mjs': '拟人轨迹纯函数：不直接调用 ocu',
   'core/safety-audit.mjs': '本文件是静态检查器：出现的调用写法是规则字面量与白名单文字，不是真实调用',
   // 内嵌 JXA 脚本文本 / 本地同名 helper 造成的静态命中：不是 Node 侧对 ocu 的直接调用
-  'core/tasks/boss-candidates.mjs': '内嵌 JXA 脚本文本：cua.getApp 在字符串里由 ocu js 执行，不是本文件直接调用；外层读的是已运行的用户 Chrome',
   'core/tasks/form-fill-local.mjs': '内嵌 JXA 脚本文本 + 本地 regex 辅助函数；目标是自己 spawn 的 Electron 宿主，不碰用户应用',
-  'core/tasks/greet-inner.mjs': '内层 JXA 脚本：由 boss-greet 驱动并在外层做运行门禁；本文件里的 state 是脚本内辅助函数',
   'core/tasks/user-chrome-demo.mjs': '显式启动用户 Chrome 的演示任务：ensureUserChrome 启动 Chrome 是任务语义（审计里归为「刻意启动器」），不是偷偷拉起',
 });
 
@@ -201,7 +199,7 @@ export const AUTOMATION_PREFLIGHT_FILE_ALLOWLIST = Object.freeze({
  */
 export const AUTOMATION_PREFLIGHT_KNOWN_GAPS = Object.freeze({
   // 2026-11-08：H2 的 10 个已知缺口已全部补上静默预检（6 个任务删掉本地 front() 改共享 frontName、
-  // boss-scan / form-fill / app-matrix 走 runAppleEventGuarded、cleanup-test-data 走 createAppleEventPreflight），
+  // form-fill / app-matrix 走 runAppleEventGuarded、cleanup-test-data 走 createAppleEventPreflight），
   // 清单已清零。以后若确实有「暂时补不了」的入口：在这里登记，理由必须写「已知缺口」，并同时改
   // test/safety-audit-appleevent.test.mjs 里的数量上限（新增缺口要 Lead 明确同意），补完立即删掉。
 });

@@ -1,21 +1,38 @@
 # Changelog
 
-## 0.7.0（未发布）
+## 0.8.0（未发布）
+
+- **改名：Desktop Agent → DSH Rig。** npm 包名 `dsh-rig`、CLI 命令 `dsh-rig`、App 显示名 `DSH Rig`；
+  打包配置 `appId` 改为 `com.goodlifedog.dsh-rig`、`productName` 改为 `DSH Rig`、DMG 标题同步；
+  overlay 子包改名 `dsh-rig-overlay`，与主包版本一起升到 0.8.0（`npm run repo:check` 会校验两者一致）。
+- **launchd 标签换前缀**：`com.desktop-agent.daemon` / `com.desktop-agent.overlay`
+  → `com.goodlifedog.dsh-rig.daemon` / `com.goodlifedog.dsh-rig.overlay`。
+  `service install` 会先 bootout 旧标签、删掉旧 plist，再装新的；`service uninstall` 也顺带清理旧标签残留。
+  不这么做的话，新旧两套 launchd 服务会同时跑、同时抢 7788/7789（表现为 daemon 起不来 / 端口被占）。
+  `service status` 新增一行「检测到旧版本服务仍在运行」的提示。Windows 计划任务同步从
+  `desktop-agent-daemon` / `desktop-agent-overlay` 改为 `dsh-rig-daemon` / `dsh-rig-overlay`，
+  安装与卸载时都会删掉旧任务名。
+- **升级步骤（一次性）**：`npm run service:uninstall` → `npm run service:install` → `npm run service:status`，
+  确认只剩新标签在跑。只装不卸会留下旧服务。
+- **刻意保持不变**：数据目录仍是 `~/.desktop-agent`（token、Chrome profile、报告都在里面，升级不丢数据）；
+  控制面端口仍是 7789、小窗端口 7788；本机仓库目录名 `desktop-agent/` 也不动（只是本地路径）。
+
+## 0.7.0
 
 - 隐私清理（用户要求）：项目里不再出现真实姓名与机器名——LICENSE/package.json/overlay 配置/发布文档统一改成 GitHub 虚拟身份 `goodlifedog`（打包 appId `com.goodlifedog.dsh-desktop-agent`，npm 包占位符 `@goodlifedog/*`）；测试 fixture 与本机路径改成 `tester` / `~/…`；本地 git 历史作者/提交者也统一重写为 `goodlifedog <goodlifedog@users.noreply.github.com>`（旧对象已 gc 清理）。`npm run repo:check` 新增动态隐私规则：用当前机器的用户名/主机名扫描所有 tracked 文本文件，出现即报错（不把真实姓名写进检查代码），并覆盖 yml/diff/plist/txt。旧的构建产物 `dist-app/`（gitignored，v0.5.0，含旧署名）已删除，需要时在 `overlay/` 里 `npm run dist` 重新打包。
 
-- ocu 调用审计（`flow/OCU-CALL-AUDIT.md`）的 11 处高危调用点全部加上运行门禁并补单测：以前这些任务对**没在运行**的应用直接调 ocu 读取/输入（`snapshot/get_app_state/state/find/readSafe/typeText`），ocu 会把应用启动并可能顶到前台——等于「验证不打扰」的任务自己先打扰了用户。现在统一走 `core/app-presence.mjs`（纯函数 `decideAppPresence` + 注入 `isAppRunning` 的 `requireAppRunning`/`reportAppPresence`，判错一律按没运行处理），未运行即环境跳过（exit 0、不算失败、不启动/不关闭/不改用户应用）；覆盖 user-active-demo / terminal-control / drive-agent / drive-agent-cli / boss-scan / form-fill / boss-greet / mcp-demo / platform-demo / background-control（文本编辑步骤）/ parallel-real-demo，脚本层 `bench-ocu` 也门禁（要测冷读必须显式 `--allow-launch`）。新增 4 个测试文件，全量 903 项 / 902 过 / 1 跳过 / 0 失败。
+- ocu 调用审计（`flow/OCU-CALL-AUDIT.md`）的 11 处高危调用点全部加上运行门禁并补单测：以前这些任务对**没在运行**的应用直接调 ocu 读取/输入（`snapshot/get_app_state/state/find/readSafe/typeText`），ocu 会把应用启动并可能顶到前台——等于「验证不打扰」的任务自己先打扰了用户。现在统一走 `core/app-presence.mjs`（纯函数 `decideAppPresence` + 注入 `isAppRunning` 的 `requireAppRunning`/`reportAppPresence`，判错一律按没运行处理），未运行即环境跳过（exit 0、不算失败、不启动/不关闭/不改用户应用）；覆盖 user-active-demo / terminal-control / drive-agent / drive-agent-cli / form-fill / mcp-demo / platform-demo / background-control（文本编辑步骤）/ parallel-real-demo，脚本层 `bench-ocu` 也门禁（要测冷读必须显式 `--allow-launch`）。新增 4 个测试文件，全量 903 项 / 902 过 / 1 跳过 / 0 失败。
 - 把「对具体应用调 ocu 前必须有运行门禁」做成常驻静态检查（P4）：`npm run safety:audit` 新增规则 5，同一文件里没有 `isAppRunning/ensureAppRunning/ensureAppWindow/requireAppRunning` 又直接 `ocu.snapshot/readSafe/state/find/typeText/cua.getApp` 等就报错，逐点可用 `// audit-ok: <理由>` 豁免；根因封装层、CDP/AppleScript 通道、内嵌 JXA 脚本共 14 条文件级白名单（每条写理由，另有「白名单防腐烂」单测）。扫描范围扩到 `core/*.mjs`：120 个文件 / 103 处调用点 / 0 违规；同时修掉 open 规则把 CDP 状态字符串 `'open'` 误判成启动应用的问题，并把「打开系统设置隐私面板」列为必须可见的显式例外。
 - 适配第一批落地（按 `flow/APP-ADAPTER-PLAN.md` 候选）：新门类预设的 `name` 用**本地化显示名**（邮件/日历/提醒事项/预览/音乐/照片）——CGWindowList 的窗口 owner 是中文（实测 备忘录/文本编辑/Safari浏览器），用英文名匹配不到窗口，会把可读的应用误判成「找不到窗口」。bundle/process 保持 Info.plist 的英文值。
 - 适配第一批落地（按 `flow/APP-ADAPTER-PLAN.md` 候选）：`core/app-presets.mjs` 新增 `mail`(Mail) / `calendar`(Calendar+Reminders) / `reading`(Preview) / `photos`(Photos) 四个门类，`media` 补 Music——bundle/process 全部取自 Info.plist；清点从 32 个应用变 38 个，新增 6 个按门类落「未测」桶。每个门类注释写明首启引导风险（登录/iCloud/通知/媒体库），矩阵只读不点按钮、不删数据、不发信。
 - 清点口径修正：从「未测」里细分出「部分验证（通道测过、矩阵未读）」——CDP `cdp-ok` 或 AppleScript 只读通过但没跑 app-matrix 的应用不再被误读成「完全没测」（目前是 ChatGPT）；顺带修 `isCdpOk` 只认 `ok`、对真实报告的 `cdp-ok` 永不生效的口径分裂。新增 `applescriptStatus/channelVerified/matrixTested` 字段（向后兼容），报告/汇总/补测命令都包含新状态。
-- 权限闸门覆盖面补齐：AX 判定现在同时认 `UI_ACTION_RE`、`OCU_APP_CALL_RE`（MCP `callTool` 界面工具、内层 `cua.getApp`）和 `execFile(OCU, ['js'])` 外层写法——修掉 mcp-demo / boss-greet / drive-agent 缺权限时不被闸门跳过的漏判；dry-run 需要 AX 的任务 16→19，CDP/headless 任务 0 误判。
+- 权限闸门覆盖面补齐：AX 判定现在同时认 `UI_ACTION_RE`、`OCU_APP_CALL_RE`（MCP `callTool` 界面工具、内层 `cua.getApp`）和 `execFile(OCU, ['js'])` 外层写法——修掉 mcp-demo / drive-agent 缺权限时不被闸门跳过的漏判；dry-run 需要 AX 的任务 16→19，CDP/headless 任务 0 误判。
 - 前台读取的锁屏语义修正：实测锁屏时 ObjC 的 `NSWorkspace.frontmostApplication` 返回 `loginwindow`，而老实现（System Events）返回「登录后仍是前台的应用」——对前台保护来说后者才对，否则任务跑到一半锁屏会把 front 翻成 `loginwindow`，guard/还原/验收基线可能误判。现在 auto 模式遇到占位名回退老实现（`fallbackReason=locked-front`），`mode=objc` 保留原值排障；实机 20 次采样 auto 与老实现 20/20 一致。
 - 入口守卫统一：新增 `core/direct-run.mjs` 的 `isDirectRun()`（两边 realpath 归一），19 个任务入口改用它——以前手写 `path.resolve(argv[1]) === fileURLToPath(import.meta.url)`，仓库/任务目录经符号链接访问时守卫会判 false，任务不执行 main 却退出 0（静默假成功）。剩 6 处 CLI/脚本入口也在同一批收口。
 - `away:maintain` 安全边界加固（独立复核 2 高危 + 6 中危）：非法环境变量不再击穿门槛（parseEnvMs 校验并回退默认）；父进程被 Ctrl-C/SIGTERM 停掉时会同步收掉 detached 子进程组；新增 `reports/.away.lock` 互斥与每步复查；超时/收不到 close 有兜底结算；轮询 in-flight 保护、kill 只发一次、结算前做组存活确认并补 SIGKILL；服务重启后用 `service:status` 复核「没有落后」；日志文件名不许 `../` 逃出目录；未执行步骤记 skipped。新增 9 条 runStep 行为测试。
 - `npm run apps:probe` 现在认预设显示名：以前 `-- 邮件` 会报「没找到这些应用」（安装清单里是英文 Mail），而中文系统里矩阵必须用中文名才能匹配到窗口 owner。新增纯函数 `resolveProbeNames`：英文名 / 预设中文显示名 / bundle id / 进程名都能解析，命中预设时返回「中文显示名 + 实际 bundle/process」；17 条探测计划单测。
 - 独立复核（两个子 agent 只读审今天全部改动）查出并修掉：**daemon 权限预检窗口的两个高危**（预检 await 期间第二个 /run 能并发起任务；预检期间 /stop 丢失）、失败轮次不归类环境跳过（与验收口径打架）、停止标记残留影响下一任务；权限探测 fail-closed（doctor 字段缺失/非布尔不再当已授权）、doctor 超时 15s→5s、权限缺失不再自动重试；录屏需求判定先剥注释（注释里的 screencapture 不再误判）；前台读取加 objc 失败熔断（连续 3 次失败 → 60s 直接走老实现，避免每次白等 400ms）；Chrome 没运行不发 AppleEvent、osascript -1743/-1744 归环境跳过而不是判 FAIL；清理跳过在报告里可见（note-skipped/textedit-skipped/chrome-skipped + 顶层 envSkip）、验收收尾解析清理结果并用非 AppleEvent 读终态前台；AppleEvent 预检缓存分级（granted 5s / denied 2s / unknown 1s）。新增/补 20+ 条单测，全量 1145 项 / 1143 过 / 2 跳过 / 0 失败。
-- H2 已知缺口清零：10 个裸 AppleEvent 入口全部收口——6 个任务的本地 `front()`（browser-background / drive-agent / drive-agent-cli / parallel-demo / parallel-real-demo / form-fill-local）改用共享 `frontName()`（ObjC，不发 AppleEvent，失败语义保持）；boss-scan / form-fill 的 Chrome 标签读写与 app-matrix 的前台还原改走 `runAppleEventGuarded`（granted 时脚本逐字不变、denied 时 0 次 osascript 并给安全兜底、unknown 仍尝试）；cleanup-test-data 的 TextEdit/Chrome AppleEvent 接 `createAppleEventPreflight`（未授权不读不删不关、deleted=0 并报环境跳过）。`AUTOMATION_PREFLIGHT_KNOWN_GAPS` 清零，安全自查规则 6 对 123 个文件不再有豁免；新增 4 个测试文件 33 条。
+- H2 已知缺口清零：10 个裸 AppleEvent 入口全部收口——6 个任务的本地 `front()`（browser-background / drive-agent / drive-agent-cli / parallel-demo / parallel-real-demo / form-fill-local）改用共享 `frontName()`（ObjC，不发 AppleEvent，失败语义保持）；form-fill / app-matrix 的前台还原走 `runAppleEventGuarded`（granted 时脚本逐字不变、denied 时 0 次 osascript 并给安全兜底、unknown 仍尝试）；cleanup-test-data 的 TextEdit/Chrome AppleEvent 接 `createAppleEventPreflight`（未授权不读不删不关、deleted=0 并报环境跳过）。`AUTOMATION_PREFLIGHT_KNOWN_GAPS` 清零，安全自查规则 6 对 123 个文件不再有豁免；新增 4 个测试文件 33 条。
 - 权限安全按审计（`flow/PERMISSIONS-AUDIT.md`）收口（子 agent 执行、Lead 核验提交）：
   ① **任务前权限闸门**：新增 `core/permission-gate.mjs`，runner/daemon 在 spawn 前静态判断任务要不要辅助功能/屏幕录制，明确没授权就**环境跳过**（exit 0、`code=0 envSkip=true`、不进重试/失败统计、提示直接给设置页深链），探测不出来只 warning 放行，`AGENT_ALLOW_MISSING_PERMISSION=1` 可强制继续；
   ② **前台读取不再发 AppleEvent**：`frontName()` 改成 `osascript -l JavaScript` + ObjC（`NSWorkspace`）读进程名，400ms 超时回退老实现（`AGENT_FRONT_READ=objc|applescript|auto`），新机器不再弹「自动化」授权框、耗时 120ms→49ms；名字语义保持进程名（`Finder` 而不是 `访达`），否则前台保护会悄悄失效；
@@ -44,7 +61,7 @@
 - 团队改为固定 8 个成员复用、不再新增（flow/TEAM-BOARD.md 记录分工与监督规则：Lead 拆单 → 成员 claim → 只跑目标单测/不提交 → Lead 核验后统一 commit）。
 - 修小窗会在别的应用/别的桌面闪出来：`ready-to-show` 原来**无条件** `showInactive()`——任何请求新建会话窗口的瞬间，小窗都会无视「宿主是否在前台、宿主窗口是否可见、当前会话标题是否匹配、有没有活动」直接冒出来一下（实测用户正在别的应用/桌面干活时会看到）。现在必须四条同时满足才显示，否则先隐藏、等有活动且条件恢复再由 attach 循环决定出现；另加兜底：被门控隐藏但窗口实际可见时强制 hide。补 7 项单测，重启 overlay 后冷启动不再弹窗（实测 onscreen 窗口列表为空）
 - 修清理策略会删掉验收证据：`prune` 原来对所有报告一刀切「只留最近 200 个」，把 app-matrix 等历史报告删掉后，清点会把「限制」退回「未测」（OpenCode 已发生）。现在 app-matrix / cdp-driver / applescript-channel 三类证据报告不受数量上限影响，只按 `KEEP_EVIDENCE_DAYS`（默认 90 天）老化；补 3 项单测，MONITORING 文档同步
-- 补全 10 个任务的用途说明（boss-candidates/boss-greet/boss-scan/coverage-probe/form-fill/greet-inner/human-demo/mcp-demo/platform-demo/user-chrome-demo），`flow/TASKS.md` 里 32 个任务现在都有说明、没有「没写用途说明」占位
+- 补全任务的用途说明（coverage-probe/form-fill/human-demo/mcp-demo/platform-demo/user-chrome-demo 等），`flow/TASKS.md` 里 32 个任务现在都有说明、没有「没写用途说明」占位
 - `verify:safe` 增加第 9 项「后台操作稳定性」：实测 15 轮 0 失败、0 次前台抢占、单轮 944–1028ms（中位 973ms），前台始终 DSH；两族并发验证照旧通过。README/USAGE/MAC-APPS 同步成 9 项
 - README 更新到当前能力：并发验证实测（273 次采样 0 抢）写进开头、边界说明改成「风险名单默认跳过 + 还原 + 自动记名单」、补 verify:safe / demo:concurrent 两条命令
 - `guard()` 发现操作中应用被激活时，除了还原还会把该应用记进前台风险名单：任务里第一次被抢，后续读取/矩阵/协商就默认跳过它，不再反复闪；测试注入 noteRisk 防止污染真实名单
@@ -58,8 +75,8 @@
 - 中止处理覆盖到所有会跑 UI 子任务的脚本：`bg:verify`、`apps:probe`、`monitor` 现在把子进程起在独立进程组，自己收到 SIGINT/SIGTERM 时连子进程一起停（先 SIGTERM 让任务应急清理关应用，3 秒后强杀），不再留下孤儿继续动屏幕；`bg:verify` 单项超时也从直接 SIGKILL 改成先 SIGTERM
 - 修中止链条上的孤儿任务：任务是用独立进程组起的，验收被 SIGTERM 后只杀验收自己收不到任务，任务会变成孤儿继续控制应用。现在 acceptance 收到 SIGTERM/SIGINT 会先 `killActiveTask()` 把当前任务进程组一起杀掉再退出；`verify:live` 中止时等 1.5 秒让应急清理跑完再收小窗，并给 3 秒兜底 SIGKILL。补 2 项单测
 - 修任务被中途杀掉会留残窗：验收中止/Ctrl-C 时任务进程直接被 SIGTERM 杀掉，`finally` 里的清理来不及跑（实测留下一只计算器）。新增 `core/task-emergency-cleanup.mjs` + `core/sync-quit.mjs`：信号处理里**同步**优雅退出自己拉起的应用（阻塞等它真退，避开 ocu-mcp 退出钩子的立即 process.exit 竞态），四个会拉应用的任务（background-control / cold-launch / app-matrix / concurrent-demo）都接上；实测 SIGTERM 后计算器被关干净、前台未变。补 6 项单测
-- BOSS 投递中途也会让你：每条投递前复查键鼠空闲，你中途回来就停止后续（不再发下一条），布局文档同步
-- 写类任务让路范围扩大：`boss-greet`（会真的发消息）和 `form-fill`（会改你 Chrome 里的搜索框）也在入口查 `shouldDeferForActiveUser`，你正在操作时直接环境跳过，不打断输入焦点
+- 批量写入任务中途也会让你：每条写入前复查键鼠空闲，你中途回来就停止后续（不再发下一条），布局文档同步
+- 写类任务让路范围扩大：`form-fill`（会改你 Chrome 里的输入框）等写操作任务也在入口查 `shouldDeferForActiveUser`，你正在操作时直接环境跳过，不打断输入焦点
 - 用户正在操作时写类任务主动让路：新增 `core/user-activity.mjs`（`shouldDeferForActiveUser`，键鼠 5 秒内动过就 defer）；`background-control`（会点新建备忘录/写文本区）和 `cold-launch`（会先退出备忘录等应用）在入口检查，宁可不跑也不打断用户输入；4 项单测
 - 应用清点报告补风险标注：前台风险名单里的应用会写明「读取会抢前台（30 天后过期），默认跳过界面读取」，不再让「已适配」看起来还在正常被控制；WPS Office 这类显示名/进程名不一致的靠紧凑归一化也能命中；补 2 项单测
 - 入口文档 `flow/START-HERE.md` 按当前状态重写：单测 636、验收 10/3/0、verify:live 门槛与中途停止、前台风险名单、安全自查、并发验证、已修的数据安全洞
@@ -84,7 +101,7 @@
 - 修两条会随环境漂移的单测：`front-watch` 的「被抢就还原」用例没固定 HID 空闲，用户正在用电脑时会被判成用户意图而偶发失败；现在显式注入「用户很久没动」，跑两遍稳定通过
 - 文档刷新：MAC-APPS 的覆盖表按最新清点（32 个应用：已适配 23 / 可只用画面 2 / 专用方案 1 / 不动 3 / 限制 3）重写并标注风险名单影响，进度节改成当前状态与待办（全量验收命令、服务新鲜度、安全自查）
 - 新增安全边界静态自查 `npm run safety:audit`（`core/safety-audit.mjs`）：扫 `core/tasks` 与 `scripts`，四类致命写法直接报错——启动应用不收尾、强杀进程（`pkill -9`/`killall`）、`open` 不带 `-g`（会切屏）、界面任务没有锁屏/前台/互斥护栏；当前 60 个文件全干净，`npm test` 有同名回归测试，改坏会被拦住
-- 补两个漏护栏的任务：`platform-demo`（直接跑时读 Chrome 界面树可能让它跳前台）和 `boss-candidates`（读 BOSS 页面树）现在都先判锁屏（锁屏环境跳过、退出码 0），读取后统一 settleFront 还原并把抢前台行为记进风险名单；锁屏分支实测 exit=0、没有 AX 调用
+- 补两个漏护栏的任务：`platform-demo`（直接跑时读 Chrome 界面树可能让它跳前台）现在都先判锁屏（锁屏环境跳过、退出码 0），读取后统一 settleFront 还原并把抢前台行为记进风险名单；锁屏分支实测 exit=0、没有 AX 调用
 - 前台风险门控改为**默认生效**：`readSafe`/`findSafe` 不传 `risk` 也会查名单（`risk:false` 或 `AGENT_FRONT_RISK=off` 关闭），任何后台读取都不会再碰到「一读就抢前台」的应用；实测对 Ghostty 的读取 125ms 返回跳过、前台全程未变
 - `settleFront` 再收紧：只还原「抢前台的那个应用」，如果前台换成了第三个应用（用户自己切走了）立刻停手并标 `stoppedByUser`，不再把用户拽回来；期望前台未知（`(unknown)`）时不盲目 set frontmost。Chrome 启动后的延迟还原也只在「前台仍是 Chrome」时才执行，不会再把你从手动切换的应用拉回去。新增 2 项单测
 - 新增不切屏前台风险名单（用户最在意的点）：实测 Ghostty/ChatGPT/QQ/Gemini/Telegram/WPS 等应用被 AX 读取后会自己激活、导致闪前台；现在一旦读到抢前台就记进 `~/.desktop-agent/front-risk.json`（600、30 天过期），矩阵/通道协商对名单里的应用直接跳过读取（连抓帧也不做）并标环境跳过，报告可查；`npm run front:risk` 看/清名单（`--clear`、`--clear-all`、`--seed`），`AGENT_FRONT_RISK=off` 可强制全测。已从 41 份历史矩阵报告补种 9 个应用（ChatGPT 5 次、Telegram 5 次、Steam 4 次、WPS 4 次、UURemote 2 次、Gemini/Ghostty/iRightMouse/QQ 各 1 次）
