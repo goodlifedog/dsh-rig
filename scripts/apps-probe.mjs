@@ -10,10 +10,13 @@
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseProbeArgs, probeEnv } from '../core/app-probe-plan.mjs';
-import { scanDirs, matchAppByNames, userAppDirs, SYSTEM_APP_DIRS } from '../core/app-scan.mjs';
+import { parseProbeArgs, probeEnv, resolveProbeNames } from '../core/app-probe-plan.mjs';
+import { scanDirs, userAppDirs, SYSTEM_APP_DIRS } from '../core/app-scan.mjs';
 import { loadRisk, partitionRisky } from '../core/front-risk.mjs';
-import { presetApps } from '../core/app-presets.mjs';
+import { PRESETS, presetApps } from '../core/app-presets.mjs';
+
+/** 全部门类预设拍平：apps:probe 按名字探测时用来把「邮件」这种预设显示名映射回 bundle */
+const ALL_PRESET_APPS = Object.values(PRESETS).flat();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -57,7 +60,8 @@ function runNode(scriptPath, env) {
 
 async function resolveByName(names) {
   const installed = [...(await scanDirs(USER_DIRS)), ...(await scanDirs(SYSTEM_DIRS))];
-  const { matched, missing } = matchAppByNames(installed, names);
+  // 预设显示名（中文）→ 实际 bundle/process：中文系统里窗口 owner 是本地化名，矩阵要用中文名才匹配得到窗口
+  const { matched, missing } = resolveProbeNames({ names, installed, presets: ALL_PRESET_APPS });
   return { matched, missing, installed };
 }
 
@@ -74,7 +78,7 @@ async function main() {
     const result = await resolveByName(plan.names);
     if (result.missing.length) {
       console.error('没找到这些应用：' + result.missing.join('、'));
-      console.error('已装的应用可以用 npm run apps:inventory 查看清单');
+      console.error('提示：可以写安装清单里的英文名、预设显示名（如 邮件/日历/预览）、bundle id 或进程名；全部清单：npm run apps:inventory');
       process.exit(1);
     }
     resolved = result.matched.map(({ name, bundle, process }) => ({ name, bundle, process }));

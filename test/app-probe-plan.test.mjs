@@ -2,7 +2,7 @@
 // 探测计划解析 + 按名字找应用：以后加应用不用手写 JSON
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseProbeArgs, probeEnv } from '../core/app-probe-plan.mjs';
+import { parseProbeArgs, probeEnv, resolveProbeNames } from '../core/app-probe-plan.mjs';
 import { matchAppByNames, scanDirs } from '../core/app-scan.mjs';
 
 test('默认参数：跑默认列表并刷新清点', () => {
@@ -91,4 +91,51 @@ test('扫描目录：注入假的 plist 读取，不依赖真实安装', async (
   assert.equal(apps.length, 1, '没有 bundle 的目录要跳过');
   assert.equal(apps[0].bundle, 'com.example.foo');
   assert.equal(apps[0].name, 'Foo 应用');
+});
+
+// ---------- 按名字解析：英文名 / 预设中文显示名 / bundle / 进程名 都认 ----------
+
+const PRESETS_FIXTURE = [
+  { name: '邮件', bundle: 'com.apple.mail', process: 'Mail' },
+  { name: '日历', bundle: 'com.apple.iCal', process: 'Calendar' },
+  { name: 'FastZip', bundle: 'cn.better365.FastZip', process: 'FastZip' },
+  { name: '没装的', bundle: 'com.example.none', process: 'None' },
+];
+const INSTALLED_FIXTURE = [
+  { name: 'Mail', bundle: 'com.apple.mail', process: 'Mail' },
+  { name: 'Calendar', bundle: 'com.apple.iCal', process: 'Calendar' },
+  { name: 'FastZip', bundle: 'cn.better365.FastZip', process: 'FastZip' },
+  { name: 'Finder', bundle: 'com.apple.finder', process: 'Finder' },
+];
+
+test('resolveProbeNames：输入预设中文显示名 → 用中文名返回（矩阵要按本地化窗口 owner 匹配）', () => {
+  const r = resolveProbeNames({ names: ['邮件'], installed: INSTALLED_FIXTURE, presets: PRESETS_FIXTURE });
+  assert.deepEqual(r, { matched: [{ name: '邮件', bundle: 'com.apple.mail', process: 'Mail' }], missing: [] });
+});
+
+test('resolveProbeNames：输入英文名/进程名/bundle 也能命中预设', () => {
+  for (const input of ['Mail', 'mail', 'com.apple.mail']) {
+    const r = resolveProbeNames({ names: [input], installed: INSTALLED_FIXTURE, presets: PRESETS_FIXTURE });
+    assert.equal(r.matched.length, 1, input);
+    assert.equal(r.matched[0].name, '邮件', input + ' 应返回预设中文显示名');
+  }
+});
+
+test('resolveProbeNames：不在预设里的已装应用按安装清单原名返回', () => {
+  const r = resolveProbeNames({ names: ['Finder'], installed: INSTALLED_FIXTURE, presets: PRESETS_FIXTURE });
+  assert.deepEqual(r.matched, [{ name: 'Finder', bundle: 'com.apple.finder', process: 'Finder' }]);
+});
+
+test('resolveProbeNames：没装的应用进 missing；重复输入去重', () => {
+  const missing = resolveProbeNames({ names: ['没装的'], installed: INSTALLED_FIXTURE, presets: PRESETS_FIXTURE });
+  assert.deepEqual(missing.matched, []);
+  assert.deepEqual(missing.missing, ['没装的']);
+
+  const dup = resolveProbeNames({ names: ['邮件', 'Mail', 'com.apple.mail'], installed: INSTALLED_FIXTURE, presets: PRESETS_FIXTURE });
+  assert.equal(dup.matched.length, 1, '同一个应用只应解析一次');
+});
+
+test('resolveProbeNames：空输入/非法输入不崩', () => {
+  assert.deepEqual(resolveProbeNames({}), { matched: [], missing: [] });
+  assert.deepEqual(resolveProbeNames({ names: [null, '', '  '], installed: [], presets: [] }), { matched: [], missing: [] });
 });
