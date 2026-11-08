@@ -2,6 +2,7 @@
 
 ## 未发布
 
+- 用户正在操作时写类任务主动让路：新增 `core/user-activity.mjs`（`shouldDeferForActiveUser`，键鼠 5 秒内动过就 defer）；`background-control`（会点新建备忘录/写文本区）和 `cold-launch`（会先退出备忘录等应用）在入口检查，宁可不跑也不打断用户输入；4 项单测
 - 应用清点报告补风险标注：前台风险名单里的应用会写明「读取会抢前台（30 天后过期），默认跳过界面读取」，不再让「已适配」看起来还在正常被控制；WPS Office 这类显示名/进程名不一致的靠紧凑归一化也能命中；补 2 项单测
 - 入口文档 `flow/START-HERE.md` 按当前状态重写：单测 636、验收 10/3/0、verify:live 门槛与中途停止、前台风险名单、安全自查、并发验证、已修的数据安全洞
 - 并发验证覆盖两族：`concurrent-demo` 在原生计算器工作负载之外再叠一个 headless Chromium 任务（开页面读标题，屏幕上无窗口），实测 2.4 秒完成、前台 87 次采样全未变、屏幕上计算器窗口数 0——原生 + 浏览器同时干活也不影响用户
@@ -248,6 +249,3 @@
 - Windows 控制后端：`tools/uia-bridge.ps1` + `core/backends/uia.mjs`（UI Automation，未实机验证）
 - Windows 抓图：`POST /window` 支持标题，按 MainWindowTitle 反查 HWND
 - 服务管理：`core/service.mjs`，macOS 用 launchd、Windows 用 schtasks，支持 install/uninstall
-- 环境自检：`npm run doctor`（控制后端、可执行文件、数据目录、两个服务）
-- 验收：真失败与环境跳过分离，输出 6/6 通过 + 2 跳过
-- 测试：`core/lib/salary.mjs`、`core/lib/score.mjs` 抽出为纯函数，11 个用例 + 三平台 CI

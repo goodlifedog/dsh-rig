@@ -10,6 +10,8 @@ import { overlayBase } from '../ports.mjs';
 import { ensureAppRunning, frontName, state, find, click, setValue, smartType, smartTypeWithCache, clickByText, quitApp } from '../background.mjs';
 import { checkTextEditWritable } from '../text-edit-guard.mjs';
 import { decideNoteWrite } from '../note-write-guard.mjs';
+import { hidIdleMs } from '../front-watch.mjs';
+import { shouldDeferForActiveUser } from '../user-activity.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
 import { countNotes, deleteTestNotes } from '../note-cleanup.mjs';
 import { isScreenLocked } from '../platform.mjs';
@@ -55,6 +57,13 @@ async function main() {
   const foreignAcc = await foreignAcceptanceOwner(ACCEPTANCE_LOCK);
   if (foreignAcc) {
     console.log('环境跳过：另一个验收正在进行（pid ' + foreignAcc.pid + '），避免互相干扰');
+    return;
+  }
+  // 你在打字/点鼠标时不做：这个任务会点「新建备忘录」、往文本区写字，
+  // 即使操作的是后台应用，也可能把你正在写的焦点切到测试笔记上。
+  const activity = shouldDeferForActiveUser(await hidIdleMs());
+  if (activity.defer) {
+    console.log('环境跳过：' + activity.reason);
     return;
   }
   const frontAtStart = await frontName();

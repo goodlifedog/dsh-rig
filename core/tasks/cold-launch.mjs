@@ -11,6 +11,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { ensureAppRunning, frontName, isAppRunning } from '../background.mjs';
 import { isScreenLocked } from '../platform.mjs';
+import { hidIdleMs } from '../front-watch.mjs';
+import { shouldDeferForActiveUser } from '../user-activity.mjs';
 
 const exec = promisify(execFile);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -43,6 +45,12 @@ async function quitApp(app) {
 }
 
 async function main() {
+  // 这个任务会先退出目标应用（包括备忘录）：你正在用电脑时不做，免得把你正在用的窗口关掉
+  const activity = shouldDeferForActiveUser(await hidIdleMs());
+  if (activity.defer) {
+    console.log('环境跳过：' + activity.reason);
+    return;
+  }
   // 锁屏时前台断言没意义，但"能不能后台启动"本身仍可验证：照跑并标注前台断言跳过
   const locked = await isScreenLocked();
   if (locked) console.log('提示：屏幕已锁 —— 前台断言跳过，只验证后台启动是否成功');
