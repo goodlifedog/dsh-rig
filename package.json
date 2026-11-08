@@ -79,6 +79,7 @@
     "verify:safe": "node scripts/verify-safe.mjs",
     "front:risk": "node scripts/front-risk.mjs",
     "tasks:doc": "node scripts/tasks-doc.mjs",
-    "env:doc": "node scripts/env-doc.mjs"
+    "env:doc": "node scripts/env-doc.mjs",
+    "away:maintain": "node scripts/away-maintenance.mjs"
   }
 }
