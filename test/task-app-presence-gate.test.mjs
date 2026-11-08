@@ -61,9 +61,17 @@ test('显式 allowLaunch：放行但提示"可能会把它拉起来"（其它批
   assert.match(d.message, /allowLaunch/);
 });
 
-test('probeArgsForApp：显示名走 appName/processName，bundle id 走 bundleId 分支', () => {
-  assert.deepEqual(probeArgsForApp('Google Chrome'), { appName: 'Google Chrome', processName: 'Google Chrome' });
-  assert.deepEqual(probeArgsForApp('ChatGPT'), { appName: 'ChatGPT', processName: 'ChatGPT' });
+test('probeArgsForApp：显示名补全 bundle/进程名，bundle id 走 bundleId 分支', () => {
+  assert.deepEqual(probeArgsForApp('Google Chrome'), {
+    appName: 'Google Chrome',
+    bundleId: 'com.google.Chrome',
+    processName: 'Google Chrome',
+  });
+  assert.deepEqual(probeArgsForApp('ChatGPT'), {
+    appName: 'ChatGPT',
+    bundleId: 'com.openai.codex',
+    processName: 'ChatGPT',
+  });
   assert.deepEqual(probeArgsForApp('com.openai.codex'), { bundleId: 'com.openai.codex', appName: 'com.openai.codex' });
 });
 

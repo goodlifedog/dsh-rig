@@ -15,6 +15,7 @@ import {
   probeArgsForApp,
   requireAppRunning,
   reportAppPresence,
+  lookupAppAlias,
 } from '../core/app-presence.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -78,21 +79,56 @@ test('decideAppPresence：无参 / 空对象不崩，按跳过处理', () => {
 
 // ---------- 探测参数：显示名 vs bundle id ----------
 
-test('probeArgsForApp：显示名走 appName/processName，bundle id 走 bundleId', () => {
-  assert.deepEqual(probeArgsForApp('Google Chrome'), { appName: 'Google Chrome', processName: 'Google Chrome' });
-  assert.deepEqual(probeArgsForApp('计算器'), { appName: '计算器', processName: '计算器' });
-  assert.deepEqual(probeArgsForApp('com.google.Chrome'), { bundleId: 'com.google.Chrome', appName: 'com.google.Chrome' });
+test('probeArgsForApp：显示名补全成 appName + bundleId + 英文进程名（别名表）', () => {
+  // 只给本地化显示名时，单靠 pgrep -x 中文名 / AppleScript 问中文字符串都可能失败，
+  // 会把「明明在跑」的应用判成没在运行 → 任务白白跳过。所以别名表补 bundle + process。
+  assert.deepEqual(probeArgsForApp('文本编辑'), {
+    appName: '文本编辑',
+    bundleId: 'com.apple.TextEdit',
+    processName: 'TextEdit',
+  });
+  assert.deepEqual(probeArgsForApp('计算器'), {
+    appName: '计算器',
+    bundleId: 'com.apple.calculator',
+    processName: 'Calculator',
+  });
+  assert.deepEqual(probeArgsForApp('Google Chrome'), {
+    appName: 'Google Chrome',
+    bundleId: 'com.google.Chrome',
+    processName: 'Google Chrome',
+  });
+  // bundle id 输入照旧只走 bundleId 分支
+  assert.deepEqual(probeArgsForApp('com.openai.codex'), { bundleId: 'com.openai.codex', appName: 'com.openai.codex' });
   assert.deepEqual(probeArgsForApp('com.apple.TextEdit'), { bundleId: 'com.apple.TextEdit', appName: 'com.apple.TextEdit' });
 });
 
-test('probeArgsForApp：长得不像 bundle id 的（无点/带空格）不要误判', () => {
-  assert.deepEqual(probeArgsForApp('Notes'), { appName: 'Notes', processName: 'Notes' });
-  assert.deepEqual(probeArgsForApp('Clash Verge'), { appName: 'Clash Verge', processName: 'Clash Verge' });
+test('probeArgsForApp：别名表里没有的应用按原样探测，不臆造 bundle', () => {
+  assert.deepEqual(probeArgsForApp('SomeUnknownApp'), { appName: 'SomeUnknownApp', processName: 'SomeUnknownApp' });
   assert.deepEqual(probeArgsForApp(''), { appName: '', processName: '' });
   assert.deepEqual(probeArgsForApp(null), { appName: '', processName: '' });
 });
 
+test('lookupAppAlias：显示名 / bundle id / 进程名 三种写法都能命中，未知返回 null', () => {
+  assert.equal(lookupAppAlias('文本编辑').processName, 'TextEdit');
+  assert.equal(lookupAppAlias('com.apple.calculator').appName, '计算器');
+  assert.equal(lookupAppAlias('TextEdit').bundleId, 'com.apple.TextEdit');
+  assert.equal(lookupAppAlias('textedit').processName, 'TextEdit', '大小写不敏感');
+  assert.equal(lookupAppAlias('文本 编辑').processName, 'TextEdit', '空格归一');
+  assert.equal(lookupAppAlias('没装的应用'), null);
+  assert.equal(lookupAppAlias(''), null);
+  assert.equal(lookupAppAlias(null), null);
+});
+
 // ---------- 探测（注入，不碰真实应用） ----------
+
+test('requireAppRunning：注入 isAppRunning 时传的是补全后的探测参数（含 bundle/进程名）', async () => {
+  const seen = [];
+  const r = await requireAppRunning('文本编辑', {
+    isAppRunning: (args) => { seen.push(args); return true; },
+  });
+  assert.equal(r.ok, true);
+  assert.deepEqual(seen, [{ appName: '文本编辑', bundleId: 'com.apple.TextEdit', processName: 'TextEdit' }]);
+});
 
 test('requireAppRunning：在运行 → ok，不再启动任何东西', async () => {
   const seen = [];

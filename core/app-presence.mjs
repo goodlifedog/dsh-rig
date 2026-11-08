@@ -1,4 +1,5 @@
 'use strict';
+import { PRESETS } from './app-presets.mjs';
 /**
  * 任务开跑前的「目标应用在不在跑」闸门（P0 批次B：#5/#6/#7/#8/#9 + bench-ocu）。
  *
@@ -48,14 +49,72 @@ export function decideAppPresence(input = {}) {
   return { proceed: false, skipped: true, forced: false, message: skipMessage };
 }
 
+/** 名称归一：小写 + 去掉空白/连接符，用于别名表匹配 */
+function normalizeAliasName(value) {
+  return String(value == null ? '' : value).toLowerCase().replace(/[\s\-_.]+/g, '');
+}
+
+/**
+ * 预设表之外、任务里常用但没进预设的应用（只用于把显示名补全成 bundle + 进程名）。
+ * 注意：这里只是「用来判断在不在跑」的元数据，不是启动白名单。
+ */
+const EXTRA_APP_ALIASES = Object.freeze([
+  { name: 'Google Chrome', bundle: 'com.google.Chrome', process: 'Google Chrome' },
+]);
+
+/** 全部别名条目（预设 + 额外表），惰性展开成扁平数组 */
+function appAliasEntries() {
+  const rows = [];
+  for (const list of Object.values(PRESETS)) {
+    for (const item of list) rows.push(item);
+  }
+  for (const item of EXTRA_APP_ALIASES) rows.push(item);
+  return rows;
+}
+
+/**
+ * 按显示名 / bundle id / 进程名查预设别名，补出另外两个标识（纯函数）。
+ *
+ * 为什么需要：任务里的目标应用常常只是一个本地化显示名（`文本编辑`），
+ * 单靠它去 `pgrep -x` 或问 AppleScript 都可能失败——应用明明在跑却被判成没在运行，
+ * 任务就会白白环境跳过（不是安全问题，但会让覆盖失真、日志误导）。
+ *
+ * @param {string} app
+ * @returns {{appName:string, bundleId:string, processName:string}|null}
+ */
+export function lookupAppAlias(app) {
+  const key = normalizeAliasName(app);
+  if (!key) return null;
+  for (const item of appAliasEntries()) {
+    const keys = [item.name, item.bundle, item.process].map(normalizeAliasName);
+    if (keys.includes(key)) {
+      return { appName: String(item.name || app), bundleId: String(item.bundle || ''), processName: String(item.process || '') };
+    }
+  }
+  return null;
+}
+
 /**
  * 给 isAppRunning 用的探测参数：TARGET_APP 可能是显示名（Google Chrome），也可能是 bundle id（com.google.Chrome）。
  * 后者必须走 bundleId 分支，不能拿整串当进程名。
+ *
+ * 显示名会先查别名表（core/app-presets.mjs 的 name/bundle/process 三元组）：
+ * 查到就一并带上 bundle id 和英文进程名，避免「文本编辑 / 计算器」这类本地化名字
+ * 既 pgrep 不到、AppleScript 也问不出来，被误判成没在运行。
  */
 export function probeArgsForApp(app) {
   const name = String(app == null ? '' : app).trim();
   const looksLikeBundle = /^[A-Za-z0-9][A-Za-z0-9-]*(\.[A-Za-z0-9-]+)+$/.test(name);
-  return looksLikeBundle ? { bundleId: name, appName: name } : { appName: name, processName: name };
+  if (looksLikeBundle) return { bundleId: name, appName: name };
+  const alias = lookupAppAlias(name);
+  if (alias) {
+    return {
+      appName: alias.appName || name,
+      bundleId: alias.bundleId || undefined,
+      processName: alias.processName || undefined,
+    };
+  }
+  return { appName: name, processName: name };
 }
 
 /**
@@ -109,6 +168,8 @@ export default {
   NOT_RUNNING_HINT,
   notRunningSkipMessage,
   decideAppPresence,
+  lookupAppAlias,
+  probeArgsForApp,
   requireAppRunning,
   reportAppPresence,
 };
