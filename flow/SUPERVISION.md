@@ -31,3 +31,20 @@
 1. 计算器/访达补点击验证（读已通）
 2. 微信只读（需用户在场，登录态相关）
 3. 发布：仓库地址、npm 名、四个决定
+
+## 四、待验证清单（下一空闲窗口，用户离开 ≥180s）
+
+1. **非空恢复**：先往夹具字段写 USERDATA，再 `--type-text AGENT-TEST --allow-write`，
+   预期：允许覆盖 → 写入成功 → 恢复回 USERDATA（当前只验过「恢复为空」）
+2. 计算器 / 访达 点击验证（读已通）：`--click-text` 后比对节点数变化，确认后还原
+3. 微信只读（需用户在场）：`--app 微信`，只读不点
+
+夹具命令（自建、用完即杀、不碰用户数据）：
+
+```bash
+ELECTRON=overlay/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron
+"$ELECTRON" --no-sandbox examples/adapters/sample.html &
+node core/tasks/adapter-demo.mjs --app Electron --type-text "AGENT-TEST" --allow-write --min-idle 0
+```
+
+旁证：`--help` 已列出 `--allow-write` / `--min-idle`，参数不是暗桩。
