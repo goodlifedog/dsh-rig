@@ -54,6 +54,7 @@ export function runTaskProcess(cmd, args, opts = {}) {
   return new Promise((resolve) => {
     const env = opts.env ? { ...process.env, ...opts.env } : process.env;
     const child = spawn(cmd, args, { cwd: ROOT, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    registerActiveTask(child);
     let stdout = '';
     let stderr = '';
     let aborted = false;
@@ -72,11 +73,13 @@ export function runTaskProcess(cmd, args, opts = {}) {
     child.on('error', (error) => {
       clearInterval(poll);
       clearTimeout(timer);
+      registerActiveTask(null);
       resolve({ code: 1, stdout, stderr: stderr + String(error && error.message || error), aborted, timedOut });
     });
     child.on('close', (code) => {
       clearInterval(poll);
       clearTimeout(timer);
+      registerActiveTask(null);
       resolve({ code: code == null ? 1 : code, stdout, stderr, aborted, timedOut });
     });
   });
@@ -325,9 +328,34 @@ async function cleanupAfterAcceptance() {
 
 let FRONT_AT_START = '';
 
-// Ctrl-C / SIGTERM 也要释放锁，否则下一次会误判「另一个验收正在进行」（pid 被复用时尤其）
+// 当前正在跑的任务子进程（验收被中止时要连它一起杀，否则任务会变成孤儿继续动屏幕）
+let activeTaskChild = null;
+
+/** 注册当前任务子进程（runTaskProcess 内部用；导出便于测试） */
+export function registerActiveTask(child) {
+  activeTaskChild = child || null;
+}
+
+/**
+ * 杀掉当前任务子进程（含它的进程组）。
+ * 任务用 detached 起在独立进程组里，只杀验收自己收不到它——不杀就会在验收退出後继续控制应用。
+ * @param {string} [signal]
+ * @param {Function} [kill] 便于测试注入
+ * @returns {boolean} 有没有杀掉
+ */
+export function killActiveTask(signal = 'SIGTERM', kill = process.kill) {
+  const child = activeTaskChild;
+  if (!child || !child.pid) return false;
+  try { kill(-child.pid, signal); } catch {}
+  try { child.kill(signal); } catch {}
+  return true;
+}
+
+// Ctrl-C / SIGTERM：先杀掉正在跑的任务（它在独立进程组里），再释放锁退出，
+// 否则下一次会误判「另一个验收正在进行」，而且孤儿任务会继续动屏幕。
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.on(signal, () => {
+    killActiveTask(signal);
     releaseAcceptanceLock();
     process.exit(signal === 'SIGINT' ? 130 : 143);
   });

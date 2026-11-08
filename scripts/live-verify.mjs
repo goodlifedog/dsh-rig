@@ -92,6 +92,8 @@ function runStep(step) {
       if (idle >= 0 && idle < ABORT_IDLE_MS) {
         aborted = true;
         killGroup('SIGTERM');
+        // 给任务链一点时间做应急清理（关掉自己拉起的应用）；不听话的 3 秒后强杀
+        setTimeout(() => killGroup('SIGKILL'), 3000);
       }
     }, 1000);
     child.stdout.on('data', (b) => { out += b; });
@@ -135,6 +137,8 @@ async function main() {
     if (result.aborted) {
       steps.push({ name: step.name, status: 'SKIP', ms: result.ms, detail: '环境跳过：你一碰键鼠就停了（已杀掉当前步骤，不再动屏幕）' });
       console.log('⏭ SKIP  你回到电脑前，已立刻停止  ' + (result.ms / 1000).toFixed(1) + 's');
+      // 等任务链把应急清理做完（关掉自己拉起应用），再收小窗
+      await new Promise((r) => setTimeout(r, 1500));
       await tidyOverlay();
       break;
     }
