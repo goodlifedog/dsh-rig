@@ -15,7 +15,7 @@
 | `AGENT_APP` | ChatGPT | `core/tasks/drive-agent.mjs` |
 | `AGENT_CHROME_PROFILE` | — | `core/browser.mjs`<br>`core/tasks/boss-scan-dedicated.mjs`<br>`core/tasks/greet-verify.mjs` |
 | `AGENT_FAKE_LOCKED` | （开关，设 1 开启） | `core/platform.mjs` |
-| `AGENT_FRONT_RISK` | — | `core/tasks/app-matrix.mjs`<br>`scripts/app-resolve.mjs` |
+| `AGENT_FRONT_RISK` | — | `core/background.mjs`<br>`core/tasks/app-matrix.mjs`<br>`scripts/app-resolve.mjs` |
 | `AGENT_KEEP_MS` | 8000 | `core/tasks/drive-agent-cli.mjs`<br>`core/tasks/drive-agent.mjs` |
 | `AGENT_LAUNCH_HIDDEN` | — | `core/tasks/background-stability.mjs` |
 | `AGENT_PROMPT` | 只回复两个字：收到 | `core/tasks/drive-agent.mjs` |

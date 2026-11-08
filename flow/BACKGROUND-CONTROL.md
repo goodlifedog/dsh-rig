@@ -24,8 +24,10 @@
 | secondaryAction(app, index, action) | 触发元素自带次要动作（删除/置顶/显示简介） |
 | scrollElement(app, {...}) | 滚动列表或文档 |
 | selectTextIn(app, {...}) | 选中文本或放置光标 |
-| readSafe(app, {...}) | 带前台保护的读取（被抢就还原并标记） |
-| findSafe(app, query, {...}) | 带前台保护的元素查询 |
+| readSafe(app, {...}) | 带前台保护的读取（被抢就还原并标记）；默认查前台风险名单，命中直接跳过不读（`risk:false` 关闭） |
+| findSafe(app, query, {...}) | 带前台保护的元素查询（同样受前台风险名单保护） |
+| frontRiskGate() | 默认前台风险门控：名单里的应用「一读就自己跳前台」，已被记录证据，读取时直接跳过（`AGENT_FRONT_RISK=off` 关闭） |
+| resetFrontRiskGate() | 丢掉缓存的名单（改了环境变量/名单文件后重新读；测试用） |
 | withRetry(fn, {...}) | 只对瞬时错误重试 |
 | isTransientAxError(message) | 判定是否瞬时错误（索引过期/超时等） |
 | capabilityFile() | 能力缓存文件路径（~/.desktop-agent/capabilities.json） |
@@ -38,6 +40,17 @@
 | pickOnboardingButton(buttons, {...}) | 从按钮里挑一个能安全点掉的（白名单之外一律返回 null，纯函数） |
 | dismissOnboarding(app, {...}) | 只点白名单按钮关掉首启欢迎弹窗，点完复查前台 |
 | quitApp({appName, bundleId, processName}) | 收尾：先优雅退出，退不掉再按进程 TERM |
+
+## 前台风险名单（默认生效）
+
+有些应用被 AX 读取后会自己 activate（Ghostty / ChatGPT / QQ / Gemini / Telegram / WPS 实测），
+虽然 `settleFront` 会立刻还原，用户仍会看到一次闪动。所以：
+
+- 读到抢前台就记进 `~/.desktop-agent/front-risk.json`（`core/front-risk.mjs`，600 权限、默认 30 天过期）
+- `readSafe` / `findSafe` **默认**查名单，命中直接返回 `skipped:'front-risk'`，一次 AX 都不发
+- 矩阵/通道协商因此不再把这些应用闪一遍；报告里标「该应用读取会抢前台，已跳过」
+- `npm run front:risk` 看名单，`--clear "应用名"` 重测，`--clear-all` 全清，`--seed` 从历史矩阵报告补种
+- 临时强制全测：`AGENT_FRONT_RISK=off`
 
 ## 一、能力边界在哪
 
