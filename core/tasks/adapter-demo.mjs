@@ -879,7 +879,7 @@ export async function runAdapterDemo(options = {}, depsInput = {}) {
 // ------------------------- CLI -------------------------
 
 const HELP = [
-  '用法: node core/tasks/adapter-demo.mjs --app <显示名> [--file <样例>] [--click-text <文字>] [--type-text <文字>] [--allow-launch] [--allow-write] [--min-idle <秒>]',
+  '用法: node core/tasks/adapter-demo.mjs --app <显示名> [--file <样例>] [--click-text <文字>] [--type-text <文字>] [--type-index <元素索引>] [--allow-launch] [--allow-write] [--min-idle <秒>]',
   '',
   '示例:',
   '  node core/tasks/adapter-demo.mjs --app TextEdit --file examples/adapters/sample.txt --type-text "[AGENT-TEST] typed"',
