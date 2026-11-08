@@ -6,7 +6,10 @@
 // 设计要点：
 // 1. 锁文件内容用「临时文件 + link」原子落地，读的人不会读到空内容/半截 pid；
 // 2. 只有「确认pid已死」或「没有可解析 pid 且锁已过期」才回收，绝不去 unlink 别人刚抢到的锁；
-// 3. 抢不到时返回 busy 而不是静默继续，调用方据此退出。
+// 3. 抢不到时返回 busy 而不是静默继续，调用方据此退出；
+// 4. 写锁失败（权限/磁盘满/父路径异常等非 EEXIST 错误）默认 fail-closed：返回 ok:false，
+//    宁可这一次验收不跑，也不能在没加锁的状态下和另一个验收一起切窗口。
+//    只有显式 AGENT_ALLOW_UNLOCKED=1 才降级为「未加锁继续 + 警告」（给排障/应急用）。
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -25,9 +28,9 @@ export function pidAlive(pid) {
   }
 }
 
-export function readLockPid(file) {
+export function readLockPid(file, fss = fs) {
   try {
-    const info = String(fs.readFileSync(file, 'utf8')).trim().split(' ');
+    const info = String(fss.readFileSync(file, 'utf8')).trim().split(' ');
     const pid = Number(info[0]);
     return Number.isInteger(pid) && pid > 0 ? pid : 0;
   } catch {
@@ -36,55 +39,76 @@ export function readLockPid(file) {
 }
 
 /** 原子写锁：先写临时文件，再 link 到目标名（目标已存在时 link 会 EEXIST，天然互斥） */
-function writeLockAtomic(file, pid) {
+function writeLockAtomic(file, pid, fss = fs) {
   const tmp = file + '.' + pid + '.tmp';
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(tmp, pid + ' ' + new Date().toISOString());
+  fss.mkdirSync(path.dirname(file), { recursive: true });
+  fss.writeFileSync(tmp, pid + ' ' + new Date().toISOString());
   try {
-    fs.linkSync(tmp, file);
+    fss.linkSync(tmp, file);
   } finally {
-    try { fs.unlinkSync(tmp); } catch {}
+    try { fss.unlinkSync(tmp); } catch {}
   }
 }
 
-function lockAgeMs(file) {
-  try { return Date.now() - fs.statSync(file).mtimeMs; } catch { return 0; }
+function lockAgeMs(file, fss = fs) {
+  try { return Date.now() - fss.statSync(file).mtimeMs; } catch { return 0; }
+}
+
+/** 是否显式允许「拿不到锁也照跑」。只认 "1"，其余（0/true/空）一律当不允许 */
+export function unlockedAllowed(env = process.env) {
+  return String((env || {}).AGENT_ALLOW_UNLOCKED || '') === '1';
 }
 
 /**
- * 拿锁。抢不到返回 busy，调用方应直接退出。
+ * 拿锁。抢不到返回 busy；写锁失败默认 fail-closed（ok:false + reason:'lock-unwritable'）。
+ * 调用方拿到 ok:false 就必须退出，不能自己「当作没锁」继续跑。
  * @param {string} file 锁文件路径
- * @param {{pid?: number, alive?: (pid: number) => boolean, now?: number}} [options]
- * @returns {{ok: true, warning?: string} | {ok: false, reason: 'busy', pid: number}}
+ * @param {{pid?: number, alive?: (pid: number) => boolean, fs?: object, env?: object}} [options]
+ *   fs/env 仅用于测试注入（模拟 EACCES/ENOSPC，或在不污染真实环境的情况下验证 AGENT_ALLOW_UNLOCKED）
+ * @returns {{ok: true, unlocked?: boolean, warning?: string}
+ *          | {ok: false, reason: 'busy', pid: number}
+ *          | {ok: false, reason: 'lock-unwritable', error: string}}
  */
 export function acquireLock(file, options = {}) {
   const pid = options.pid || process.pid;
   const alive = options.alive || pidAlive;
+  const fss = options.fs || fs;
+  const env = options.env || process.env;
   for (let attempt = 0; attempt < 4; attempt += 1) {
-    if (fs.existsSync(file)) {
-      const owner = readLockPid(file);
+    if (fss.existsSync(file)) {
+      const owner = readLockPid(file, fss);
       if (owner && alive(owner)) return { ok: false, reason: 'busy', pid: owner };
       if (owner) {
         // 有明确 pid 且已死：残留锁，回收
-        try { fs.unlinkSync(file); } catch {}
-      } else if (lockAgeMs(file) > CORRUPT_LOCK_GRACE_MS) {
+        try { fss.unlinkSync(file); } catch {}
+      } else if (lockAgeMs(file, fss) > CORRUPT_LOCK_GRACE_MS) {
         // 没有可解析 pid：可能是写一半崩掉的残留，过期才回收，避免误删刚创建的锁
-        try { fs.unlinkSync(file); } catch {}
+        try { fss.unlinkSync(file); } catch {}
       } else {
         return { ok: false, reason: 'busy', pid: 0 };
       }
     }
     try {
-      writeLockAtomic(file, pid);
+      writeLockAtomic(file, pid, fss);
       return { ok: true };
     } catch (error) {
       // 只有「锁文件本身已存在」才是并发抢锁，回去看持有者是谁；
-      // 其它 EEXIST（比如父路径是个普通文件，建目录失败）不能当成并发，否则会误报 busy 卡住验收。
-      if (error && error.code === 'EEXIST' && fs.existsSync(file)) continue;
-      return { ok: true, warning: '拿不到验收锁（' + ((error && error.message) || error) + '），按未加锁继续' };
+      // 其它 EEXIST（比如父路径是个普通文件，建目录失败）以及一切非 EEXIST 的写失败，
+      // 都说明这把锁压根没锁上——这时按未加锁继续就可能两个验收一起切窗口，所以默认 fail-closed。
+      if (error && error.code === 'EEXIST' && fss.existsSync(file)) continue;
+      const detail = '拿不到验收锁（' + ((error && (error.message || error.code)) || String(error)) + '）';
+      if (unlockedAllowed(env)) {
+        return { ok: true, unlocked: true, warning: detail + '；AGENT_ALLOW_UNLOCKED=1，按未加锁继续（有并发验收风险）' };
+      }
+      return {
+        ok: false,
+        reason: 'lock-unwritable',
+        error: detail + '。已按 fail-closed 中止，避免两个验收同时跑；先修好权限/磁盘/路径，'
+          + '确需在无锁状态跑再显式设 AGENT_ALLOW_UNLOCKED=1',
+      };
     }
   }
-  return { ok: false, reason: 'busy', pid: readLockPid(file) };
+  return { ok: false, reason: 'busy', pid: readLockPid(file, fss) };
 }
 
 /**

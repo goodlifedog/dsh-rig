@@ -250,16 +250,34 @@ async function runTask(name, timeoutMs = 180000, env) {
 
 const LOCK_FILE = path.join(ROOT, 'reports', '.acceptance.lock');
 
+/**
+ * 锁失败时给用户看的话（纯函数，便于单测）：
+ *   busy            = 正常让路，说明谁在跑；
+ *   lock-unwritable = 环境异常（权限/磁盘/路径），必须说清这是 fail-closed 不是普通让路。
+ */
+export function acceptanceLockFailureMessage(result) {
+  const r = result || {};
+  if (r.reason === 'busy') {
+    if (r.pid) return '另一个验收正在进行（pid ' + r.pid + '），本次退出（避免重复切窗口）。';
+    return '验收锁刚被另一个进程创建，本次退出（避免重复切窗口）。';
+  }
+  return '验收锁写不进去，已按 fail-closed 退出（不会在未加锁状态下跑，避免两个验收同时切窗口）：'
+    + (r.error || '未知原因');
+}
+
 /** 验收会切窗口、启动应用：同一时刻只允许一个，避免外部会话反复跑把用户屏幕切成幻灯片 */
 function acquireAcceptanceLock() {
   const result = acquireLock(LOCK_FILE);
   if (!result.ok) {
-    if (result.pid) console.error('另一个验收正在进行（pid ' + result.pid + '），本次退出（避免重复切窗口）。');
-    else console.error('验收锁刚被另一个进程创建，本次退出（避免重复切窗口）。');
-    return false;
+    console.error(acceptanceLockFailureMessage(result));
+    if (result.reason === 'lock-unwritable') {
+      console.error('提示：先检查 reports/ 的写权限、磁盘空间、reports 是否被换成了普通文件；'
+        + '确实要在无锁状态跑，显式设 AGENT_ALLOW_UNLOCKED=1（同一时刻仍然只能有一个验收）。');
+    }
+    return result;
   }
   if (result.warning) console.warn(result.warning);
-  return true;
+  return result;
 }
 
 function releaseAcceptanceLock() {
@@ -362,7 +380,13 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 }
 
 async function main() {
-  if (!acquireAcceptanceLock()) return;
+  const lock = acquireAcceptanceLock();
+  if (!lock.ok) {
+    // busy 是正常让路（退出码 0）；「锁写不进去」是环境异常，必须让外层（live-verify / CI）看得见（退出码 3），
+    // 否则 fail-closed 变成悄无声息地少跑一轮验收。
+    process.exitCode = lock.reason === 'lock-unwritable' ? 3 : 0;
+    return;
+  }
   if (userRecentlyActive()) { releaseAcceptanceLock(); return; }
   // 跨会话互斥：别的会话正在跑 bg:verify / 矩阵 / 后台控制时，任务会互相干扰成假失败
   const foreign = await findForeignUiRunsNow({ selfPids: [process.pid, process.ppid] });
