@@ -13,10 +13,32 @@ import { quitAppSync } from './sync-quit.mjs';
 import { overlay } from './agentd.mjs';
 import { overlayBase } from './ports.mjs';
 import { tokenHeadersFor } from './local-token.mjs';
+import { createAppleEventPreflight, runAppleEventGuarded, SYSTEM_EVENTS_BUNDLE_ID } from './appleevent-preflight.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
 const RESULTS = [];
+// H2：AppleEvent 未授权被跳过时记下的 warning，最后写进验收报告（不能静默）
+const APPLEEVENT_WARNINGS = [];
+
+/** 记录一条「因未授权跳过了 AppleEvent」的 warning（去重，报告里单独成节） */
+export function noteAppleEventWarning(message) {
+  const text = String(message || '').trim();
+  if (!text || APPLEEVENT_WARNINGS.includes(text)) return;
+  APPLEEVENT_WARNINGS.push(text);
+  console.warn('  ⚠ ' + text);
+}
+
+/** 当前累计的 AppleEvent warning（测试/报告用） */
+export function appleEventWarnings() {
+  return APPLEEVENT_WARNINGS.slice();
+}
+
+/** 验收报告里的「自动化授权告警」小节；没有 warning 时返回空数组 */
+export function appleEventWarningSection() {
+  if (!APPLEEVENT_WARNINGS.length) return [];
+  return ['', '## 自动化授权告警', '', ...APPLEEVENT_WARNINGS.map((text) => '- ' + text)];
+}
 
 function run(cmd, args, opts = {}) {
   return new Promise((resolve) => {
@@ -126,35 +148,26 @@ async function checkOverlay() {
   return h;
 }
 
-/** 把宿主切换前台：让"活动触发显示"每次都真跑，不依赖用户当时开着什么应用 */
-function activateHost() {
-  if (process.platform !== 'darwin') return false;
-  try {
-    execFileSync('/usr/bin/osascript', ['-e', 'tell application "System Events" to set frontmost of first process whose bundle identifier is "com.deepseek.dsh" to true'], { timeout: 5000 });
-    return true;
-  } catch {
-    return false;
-  }
+/** 把宿主切换前台（先静默预检自动化授权；已授权时 osascript 参数与旧实现完全一致） */
+async function activateHost() {
+  return defaultAppleEventOps.activateHost();
 }
 
-/** 还原前台到指定 bundle（拿不到就交给验收收尾统一还原） */
-function restoreBundle(bundle) {
-  if (!bundle || process.platform !== 'darwin') return;
-  try {
-    execFileSync('/usr/bin/osascript', ['-e', 'tell application "System Events" to set frontmost of first process whose bundle identifier is ' + JSON.stringify(bundle) + ' to true'], { timeout: 5000 });
-  } catch {}
+/** 还原前台到指定 bundle（先静默预检；拿不到就交给验收收尾统一还原） */
+async function restoreBundle(bundle) {
+  return defaultAppleEventOps.restoreBundle(bundle);
 }
 
 async function checkIdleHide() {
   const before = await overlay.health();
   if (!before.ok) return record('空闲自动隐藏', false, 'overlay 不在线');
-  const frontBefore = frontmostBundle();
+  const frontBefore = await frontmostBundle();
   await overlay.visible(false);
   await new Promise((r) => setTimeout(r, 500));
   const hidden = await overlay.health();
   record('手动隐藏生效', hidden.visible === false, 'visible=' + hidden.visible);
   // 主动把宿主切前台，再触发活动：这样这一项是确定性检查，不会因为"前台恰好是计算器"而跳过
-  const activated = activateHost();
+  const activated = await activateHost();
   if (!activated) {
     record('活动触发显示', true, '环境跳过：切不到宿主（锁屏或系统事件不可用）', true);
     return;
@@ -166,13 +179,13 @@ async function checkIdleHide() {
   await overlay.status('验收中', 'running', titleHint);
   await new Promise((r) => setTimeout(r, 900));
   const shown = await overlay.health();
-  restoreBundle(frontBefore);
+  await restoreBundle(frontBefore);
   if (shown.visible === true) {
     record('活动触发显示', true, '');
   } else {
     // 小窗按设计只在 DSH 前台时显示；以下都算环境状态，不该判失败：
     //   前台是别的应用 / 锁屏 / 取不到前台 / 宿主窗口本身不可见
-    const front = frontmostBundle();
+    const front = await frontmostBundle();
     if (shown.screenLocked) {
       record('活动触发显示', true, '环境跳过：锁屏时小窗按设计不显示', true);
     } else if (!front) {
@@ -187,21 +200,12 @@ async function checkIdleHide() {
   }
 }
 
-function frontmostApp() {
-  try {
-    return execFileSync('/usr/bin/osascript', ['-e', 'tell application "System Events" to get name of first process whose frontmost is true'], { encoding: 'utf8', timeout: 4000 }).trim();
-  } catch {
-    return '';
-  }
+async function frontmostApp() {
+  return defaultAppleEventOps.frontmostApp();
 }
 
-function frontmostBundle() {
-  if (process.platform !== 'darwin') return null;
-  try {
-    return execFileSync('/usr/bin/osascript', ['-e',
-      'tell application "System Events" to get bundle identifier of first process whose frontmost is true'],
-      { encoding: 'utf8', timeout: 3000 }).trim();
-  } catch { return null; }
+async function frontmostBundle() {
+  return defaultAppleEventOps.frontmostBundle();
 }
 
 
@@ -222,14 +226,102 @@ export function shouldRestoreFront(current, frontAtStart, testApps = TEST_APPS) 
   return (testApps || []).some((name) => cur === name || cur.includes(name)) || cur === start;
 }
 
-function restoreUserFront() {
-  if (process.platform !== 'darwin' || !FRONT_AT_START) return false;
-  const current = frontmostApp();
-  if (!shouldRestoreFront(current, FRONT_AT_START)) return false;
-  try {
-    execFileSync('/usr/bin/osascript', ['-e', 'tell application "System Events" to set frontmost of first process whose name is ' + JSON.stringify(FRONT_AT_START) + ' to true'], { timeout: 5000 });
-    return true;
-  } catch { return false; }
+/**
+ * 验收里的 AppleEvent 操作统一从这里走：先静默预检「自动化」授权，再决定是否发事件（H2）。
+ *
+ * 语义：
+ *   - granted → 原样执行 execFileSync，参数/返回值与改造前逐字一致；
+ *   - denied / needs-consent → 不发 AppleEvent，返回安全兜底（activateHost=false、
+ *     frontmostApp=''、frontmostBundle=null、restoreUserFront=false），并调 onWarning 记录；
+ *   - unknown / 预检超时 / 预检抛错 → 仍然尝试（探测抖动不能让前台还原失效）。
+ *
+ * 可注入 exec/preflight/platform/onWarning，单测全部走假实现，不碰真实系统。
+ */
+export function createAppleEventOps(deps = {}) {
+  const exec = typeof deps.exec === 'function' ? deps.exec : execFileSync;
+  const platform = deps.platform || process.platform;
+  const onWarning = typeof deps.onWarning === 'function' ? deps.onWarning : () => {};
+  const preflight = deps.preflight || createAppleEventPreflight({ bundleId: SYSTEM_EVENTS_BUNDLE_ID });
+  const guard = (action, run, fallback) => runAppleEventGuarded({
+    action,
+    bundleId: SYSTEM_EVENTS_BUNDLE_ID,
+    preflight,
+    run,
+    fallback,
+    onWarning,
+  });
+
+  async function frontmostApp() {
+    const outcome = await guard('读取前台应用名', () => {
+      try {
+        return String(exec('/usr/bin/osascript', ['-e', 'tell application "System Events" to get name of first process whose frontmost is true'], { encoding: 'utf8', timeout: 4000 })).trim();
+      } catch {
+        return '';
+      }
+    }, '');
+    return outcome.value;
+  }
+
+  async function frontmostBundle() {
+    if (platform !== 'darwin') return null;
+    const outcome = await guard('读取前台 bundle', () => {
+      try {
+        return String(exec('/usr/bin/osascript', ['-e',
+          'tell application "System Events" to get bundle identifier of first process whose frontmost is true'],
+          { encoding: 'utf8', timeout: 3000 })).trim();
+      } catch {
+        return null;
+      }
+    }, null);
+    return outcome.value;
+  }
+
+  async function activateHost() {
+    if (platform !== 'darwin') return false;
+    const outcome = await guard('激活宿主', () => {
+      try {
+        exec('/usr/bin/osascript', ['-e', 'tell application "System Events" to set frontmost of first process whose bundle identifier is "com.deepseek.dsh" to true'], { timeout: 5000 });
+        return true;
+      } catch {
+        return false;
+      }
+    }, false);
+    return outcome.value;
+  }
+
+  async function restoreBundle(bundle) {
+    if (!bundle || platform !== 'darwin') return;
+    await guard('还原前台到 bundle', () => {
+      try {
+        exec('/usr/bin/osascript', ['-e', 'tell application "System Events" to set frontmost of first process whose bundle identifier is ' + JSON.stringify(bundle) + ' to true'], { timeout: 5000 });
+      } catch {}
+    }, undefined);
+  }
+
+  async function restoreUserFront(frontAtStart) {
+    const start = String(frontAtStart || '');
+    if (platform !== 'darwin' || !start) return false;
+    const current = await frontmostApp();
+    if (!shouldRestoreFront(current, start)) return false;
+    const outcome = await guard('还原用户前台', () => {
+      try {
+        exec('/usr/bin/osascript', ['-e', 'tell application "System Events" to set frontmost of first process whose name is ' + JSON.stringify(start) + ' to true'], { timeout: 5000 });
+        return true;
+      } catch {
+        return false;
+      }
+    }, false);
+    return outcome.value;
+  }
+
+  return { activateHost, restoreBundle, frontmostApp, frontmostBundle, restoreUserFront };
+}
+
+// 验收运行时用的默认实例：未授权被跳过时把 warning 写进报告
+const defaultAppleEventOps = createAppleEventOps({ onWarning: noteAppleEventWarning });
+
+async function restoreUserFront() {
+  return defaultAppleEventOps.restoreUserFront(FRONT_AT_START);
 }
 
 // 验收开始时的测试应用运行集合（基线）：只收「之后新出现的」，用户自己开着的绝不动
@@ -306,7 +398,7 @@ async function runTask(name, timeoutMs = 180000, env) {
   // 否则下一个任务的起点基线还是歪的（16:09 那次就是计算器顶在前面）。
   await cleanupUnexpectedApps('任务 ' + name + ' 之后');
   // 下一个任务的判定基线必须是「用户原来的应用」
-  if (restoreUserFront()) console.log('  （已把前台还给 ' + FRONT_AT_START + '）');
+  if (await restoreUserFront()) console.log('  （已把前台还给 ' + FRONT_AT_START + '）');
   return ok;
 }
 
@@ -400,7 +492,7 @@ async function cleanupAfterAcceptance() {
   await tidyOverlayWindows();
   // 收尾再采样一次：失败/中止的情况下，前面 per-task 的清理可能还没来得及跑
   await cleanupUnexpectedApps('验收收尾');
-  restoreUserFront();
+  await restoreUserFront();
   try {
     // 清理脚本现在是安全模式：笔记默认只报告（要 --force 才删）、TextEdit 只关带测试标记的文稿、
     // 只会退出测试应用，所以验收后可以直接真跑，把环境收拾干净。
@@ -463,7 +555,7 @@ async function main() {
     return;
   }
   console.log('=== 桌面代理端到端验收 ===');
-  FRONT_AT_START = frontmostApp();
+  FRONT_AT_START = await frontmostApp();
   // 基线：验收开始时这批测试应用里谁在跑。用户自己开着的（比如本来就开着计算器）之后永远不动。
   // 采样带可信度：空集可能只是「pgrep 没跑成」，那种基线不能用来判定「新增」。
   const baseline = sampleRunningApps(TEST_APPS);
@@ -521,10 +613,11 @@ async function main() {
   }
 
   // 收尾再还原一次（正常情况下每个任务之后已经还过了）
-  restoreUserFront();
+  await restoreUserFront();
 
   await cleanupAfterAcceptance();
   if (CLEANUP_NOTES.length) console.log('\n收尾：' + CLEANUP_NOTES.join('；'));
+  if (APPLEEVENT_WARNINGS.length) console.log('\n自动化授权告警：' + APPLEEVENT_WARNINGS.join('；'));
 
   const { total, passed, skipped, failed } = summarizeResults(RESULTS);
   // 分母要写总项数：以前写 passed/(total-skipped)，13 项里 2 项跳过会显示「11/11」，
@@ -551,6 +644,7 @@ async function main() {
     ...(CLEANUP_NOTES.length
       ? ['', '## 收尾说明', '', ...CLEANUP_NOTES.map((t) => '- ' + t)]
       : []),
+    ...appleEventWarningSection(),
   ];
   fs.writeFileSync(file, lines.join('\n') + '\n');
   console.log('报告：' + file);
