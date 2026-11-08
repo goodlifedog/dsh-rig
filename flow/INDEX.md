@@ -14,6 +14,7 @@
 | 团队分工与监督规则（固定 8 个成员） | [TEAM-BOARD.md](TEAM-BOARD.md) |
 | 安全评审发现了什么（高危/中危/已确认安全） | [../docs/SECURITY-REVIEW-2026-11-08.md](../docs/SECURITY-REVIEW-2026-11-08.md) |
 | 哪些任务会把没运行的应用偷偷拉起、现在怎么修的 | [OCU-CALL-AUDIT.md](OCU-CALL-AUDIT.md) |
+| 哪些通道要什么系统权限、缺权限会怎样 | [PERMISSIONS-AUDIT.md](PERMISSIONS-AUDIT.md) |
 | 看 ocu（底层能力）怎么接进来的 | [OCU-INTEGRATION.md](OCU-INTEGRATION.md) |
 | 打包、发布、CI | [PACKAGING.md](PACKAGING.md) + [PUBLISH.md](PUBLISH.md) |
 | Windows 上跑（未实机验证） | [WINDOWS-TESTING.md](WINDOWS-TESTING.md) + [CROSS-PLATFORM.md](CROSS-PLATFORM.md) |

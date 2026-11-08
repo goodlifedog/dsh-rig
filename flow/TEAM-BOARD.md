@@ -32,9 +32,23 @@
 - ocu-recipe：L4（--force-all 上限）、L4b（清理默认只关自己启动的应用）
 - 全部由 Lead 核验目标单测 + diff 后统一提交；全量回归见下。
 
+## 已完成批次（2026-11-08 第三轮：ocu 调用审计收口）
+
+| 任务 | 成员 | 交付 | Lead 核验 |
+| --- | --- | --- | --- |
+| task-42 | headless-engineer | 批次 A 预检（terminal-control / drive-agent / drive-agent-cli） | 目标单测 + diff，提交 `50ebe5a` |
+| task-43 | human-input | 批次 B（boss-scan / form-fill / boss-greet / mcp-demo / platform-demo） | 同上 |
+| task-44 | overlay-dev | 批次 C（user-active-demo / background-control 文本编辑 / user-chrome-demo） | 同上 |
+| task-45 | ocu-recipe | 批次 D（parallel-real-demo 双应用预检） | 同上 |
+| task-46 | boss-researcher | P6 文档硬约束（docs/SECURITY.md、docs/MAC-APPS.md 第 9 条） | `repo:check` 全绿后提交 `d9ea159` |
+| task-47 | headless-engineer | P4 常驻静态检查（规则 5 + 14 条白名单 + fixture 单测） | `safety:audit` / 全量测试后提交 `ec6053d`；Lead 另把扫描范围扩到 `core/*.mjs` 并修 open 规则误判 |
+| task-48 | cdp-bridge | P1 根因层可选运行门禁（background 读写入口 opt-in） | 9 条单测 + 默认路径回归，提交 `b573cc6` |
+| task-49 | human-input | 权限安全审计（TCC 权限矩阵与 fail-closed 审查） | 见 flow/PERMISSIONS-AUDIT.md |
+
 ## 当前状态
 
-- 安全评审 1 高危 + 5 中危 + 1 衍生（M-1b）全部修复并提交；全量 743 项测试通过。
+- 安全评审 1 高危 + 5 中危 + 1 衍生（M-1b）全部修复并提交。
 - 小窗显示路径 R1–R6 修复完成，冷启动实测无窗口弹出。
-- 完整验收 2026-11-08 抓出并修复 3 个前台污染问题（multi-app 拉起应用、矩阵还原漏别名、验收残留应用），全量 799 项测试通过；因屏幕自动锁定，完整验收待解锁后复跑。
-- 待办：等用户离开足够久时跑一次 `verify:live` 完整验收（含会动屏幕的步骤）。
+- 完整验收 2026-11-08 抓出并修复 3 个前台污染问题（multi-app 拉起应用、矩阵还原漏别名、验收残留应用）。
+- ocu 调用审计 11 处高危调用点全部加运行门禁并提交（`50ebe5a`）；补 4 个测试文件，全量 923 项 / 922 过 / 1 跳过 / 0 失败。
+- 待办：等用户离开足够久时跑一次 `verify:live` 完整验收（含会动屏幕的步骤），确认修复后 app-matrix 不再被抢前台。
