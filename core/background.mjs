@@ -469,6 +469,20 @@ export async function clickByText(app, text, options = {}) {
 export async function readSafe(app, options = {}) {
   const opts = options || {};
   const deps = Object.assign({ frontName, state, restoreFront }, opts.deps || {});
+  // 前台风险名单：应用之前实测过"一读就自己跳到前台"，就别再读它了——
+  // 每次读虽然会还原，但用户已经看到一次闪动，反复跑矩阵会一直闪。
+  const risk = opts.risk || null;
+  if (risk && typeof risk.shouldSkip === 'function' && risk.shouldSkip(app)) {
+    return {
+      text: '',
+      error: '',
+      frontStolen: false,
+      frontBefore: '',
+      frontAfter: '',
+      skipped: 'front-risk',
+      reason: '该应用读取会抢前台，已跳过（避免反复切屏；确认修好后运行 npm run front:risk -- --clear "' + app + '" 重测）',
+    };
+  }
   const before = await deps.frontName();
   let text = '';
   let error = '';
@@ -485,6 +499,9 @@ export async function readSafe(app, options = {}) {
   // 还原统一交给 settleFront 做（它还会兜住"操作完才异步激活"的情况），这里不再重复还原，
   // 否则一次读取会触发两次前台还原，日志和统计都会失真。
   const frontStolen = Boolean(before && after && before !== after) || settle.stolen;
+  if (frontStolen && risk && typeof risk.note === 'function') {
+    try { risk.note(app); } catch {}
+  }
   return { text, error, frontStolen, frontBefore: before, frontAfter: after };
 }
 
@@ -492,6 +509,18 @@ export async function readSafe(app, options = {}) {
 export async function findSafe(app, query, options = {}) {
   const opts = options || {};
   const deps = Object.assign({ frontName, find, restoreFront }, opts.deps || {});
+  const risk = opts.risk || null;
+  if (risk && typeof risk.shouldSkip === 'function' && risk.shouldSkip(app)) {
+    return {
+      matches: [],
+      error: '',
+      frontStolen: false,
+      frontBefore: '',
+      frontAfter: '',
+      skipped: 'front-risk',
+      reason: '该应用读取会抢前台，已跳过（避免反复切屏）',
+    };
+  }
   const before = await deps.frontName();
   let matches = [];
   let error = '';
@@ -506,6 +535,9 @@ export async function findSafe(app, query, options = {}) {
     : await settleFront(before, { waitMs: 180, retries: 2, deps });
   // 同 readSafe：还原只由 settleFront 负责，避免重复还原
   const frontStolen = Boolean(before && after && before !== after) || settle.stolen;
+  if (frontStolen && risk && typeof risk.note === 'function') {
+    try { risk.note(app); } catch {}
+  }
   return { matches, error, frontStolen, frontBefore: before, frontAfter: after };
 }
 /** 能力缓存文件位置 */

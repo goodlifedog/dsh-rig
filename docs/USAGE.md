@@ -16,7 +16,7 @@
 | 端到端验收 | `npm run accept`（你在用电脑时会被拒绝；`ACCEPT_FORCE=1` 强跑） |
 | 排查服务/部署 | `npm run service:status`、`npm run service:restart`、`npm run doctor` |
 | 清理与轮转 | `npm run cleanup:test`（默认只报告；`--force` 只删带 `[AGENT-TEST]` 标记的笔记；历史测试词（后台控制验证等）和「标题读不到时按条数删」都要显式 `--force-all`）、`npm run prune` |
-| 应用适配 | `npm run apps:inventory`、`npm run app:runtime -- <应用>`、`npm run app:resolve -- <应用>` |
+| 应用适配 | `npm run apps:inventory`、`npm run app:runtime -- <应用>`、`npm run app:resolve -- <应用>`、`npm run front:risk`（看/清「读取会抢前台」名单） |
 | 自家弹窗守卫 | `npm run dialogs:guard`（`--dry-run` 只报告） |
 | 其余都是内部/演示任务 | `package.json` 里的脚本，按需查 |
 
@@ -449,6 +449,7 @@ curl -s -H "X-Agent-Token: $TOKEN" http://127.0.0.1:7788/health | head -c 400   
 | `npm run restart:check` | `node scripts/restart-check.mjs` | 真重启两服务并验证健康 |
 | `npm run accept` | `node core/acceptance.mjs` | 端到端验收（需要两服务在线） |
 | `npm run verify:live` | `node scripts/live-verify.mjs` | 解锁后一条命令跑完全部屏幕类验收（acceptance + bg:verify + 小窗回归 + 会话隔离 + 帧率），锁屏时如实环境跳过（`LIVE_KEEP_AWAKE=1` 用 caffeinate 防跑一半锁屏） |
+| `npm run front:risk` | `node scripts/front-risk.mjs` | 前台风险名单：哪些应用「一读就把自己顶到前台」会被矩阵/协商跳过（默认 30 天过期）；`--clear "应用名"` 清掉重测、`--seed` 从历史报告补种、`--clear-all` 全清；`AGENT_FRONT_RISK=off` 临时强制全测 |
 | `npm run demo:platform` | `node core/runner.mjs run platform-demo` | 平台通路演示 |
 | `npm run bench:ocu` | `node scripts/bench-ocu.mjs 4` | ocu 效率基线（CLI vs MCP 常驻） |
 | `npm run check:ocu` | `node scripts/check-ocu.mjs` | 对比随包 ocu 与 npm 最新版 |

@@ -180,18 +180,51 @@ export async function withAppLock(app, fn, { timeoutMs = 120000, staleMs = 18000
 }
 
 // ---------- 安全护栏 ----------
-export async function guard(targetApp, fn, { label = '' } = {}) {
-  const before = await ocu.frontmost();
+
+/** 把前台还原给指定应用；名字不可信（带引号/控制字符）时直接放弃，避免拼出坏 AppleScript */
+export async function restoreFrontTo(appName) {
+  const name = String(appName || '').trim();
+  if (!name || name === '(unknown)' || !/^[^"\\\r\n]{1,120}$/.test(name)) return false;
+  try {
+    await run('/usr/bin/osascript', ['-e', 'tell application "System Events" to set frontmost of process ' + JSON.stringify(name) + ' to true'], { timeout: 4000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 后台操作护栏：开始前目标不能已经是前台，操作后目标不能被激活。
+ *
+ * 只报错不还原是不够的——实测部分应用是在 AX 读取「完成后」才异步激活自己的，
+ * 只抛错会把它留在前台，用户看到的就是一次切屏。所以这里检测到被激活时
+ * 先把前台还给操作前的应用（尽力而为），再抛错。
+ *
+ * @param {string} targetApp
+ * @param {Function} fn
+ * @param {{label?:string, deps?:{frontmost?:Function, restoreFront?:Function, log?:Function}}} [options]
+ */
+export async function guard(targetApp, fn, options = {}) {
+  const opts = options || {};
+  const label = opts.label || '';
+  const deps = opts.deps || {};
+  const frontmost = typeof deps.frontmost === 'function' ? deps.frontmost : () => ocu.frontmost();
+  const restoreFront = typeof deps.restoreFront === 'function' ? deps.restoreFront : restoreFrontTo;
+  const log = typeof deps.log === 'function' ? deps.log : (text) => overlay.log(text);
+
+  const before = await frontmost();
   if (before === targetApp) {
     throw new Error('目标应用当前就是前台，为避免干扰用户，拒绝在后台执行：' + targetApp);
   }
   const result = await fn();
-  const after = await ocu.frontmost();
+  const after = await frontmost();
   if (after === targetApp) {
-    await overlay.log('警告：操作期间 ' + targetApp + ' 变成了前台，已中止后续动作');
-    throw new Error('前台发生了变化：' + targetApp + ' 被激活，操作已中止');
+    const restored = await restoreFront(before).catch(() => false);
+    const where = restored ? '已把前台还原到 ' + before : '前台还原失败';
+    await log('警告：操作期间 ' + targetApp + ' 变成了前台，' + where + '，已中止后续动作').catch(() => {});
+    throw new Error('前台发生了变化：' + targetApp + ' 被激活，' + where + '，操作已中止');
   }
-  if (label) await overlay.log(label + '（前台始终：' + after + '）');
+  if (label) await log(label + '（前台始终：' + after + '）');
   return { result, before, after };
 }
 

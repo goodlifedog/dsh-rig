@@ -19,6 +19,7 @@ import { probeDebugPort, debugPortFor } from '../core/cdp-driver.mjs';
 import { checkAutomationPermission } from '../core/applescript-driver.mjs';
 import { closeOcuMcp } from '../core/ocu-mcp.mjs';
 import { localHeaders } from '../core/local-token.mjs';
+import { createRiskGate } from '../core/front-risk.mjs';
 
 const OVERLAY = overlayBase();
 
@@ -55,14 +56,14 @@ async function overlayWindowCount(app) {
 
 const DIRS = allAppDirs();
 
-async function resolveOne(app, profile) {
+async function resolveOne(app, profile, risk) {
   const before = await frontName();
   const result = await negotiateChannels(
     { appName: app.name, bundleId: app.bundle, processName: app.process, appPath: app.appPath, runtime: profile.type },
     {
       deps: {
         isRunning: (check) => isAppRunning(check),
-        readSafe: (name) => readSafe(name, { timeoutMs: 3000 }),
+        readSafe: (name) => readSafe(name, { timeoutMs: 3000, risk }),
         windowCount: (name) => windowCount(name, { altNames: [app.process] }),
         probeCdp: (port) => probeDebugPort(port, { timeoutMs: 800 }),
         sdefCommands: async () => profile.applescript.commands,
@@ -115,12 +116,14 @@ async function main() {
     targets = matched;
   }
 
+  // 前台风险名单：读界面会抢前台的应用不再试探读取（AGENT_FRONT_RISK=off 可强制重测）
+  const risk = createRiskGate({ enabled: process.env.AGENT_FRONT_RISK !== 'off' });
   const out = [];
   for (const app of targets) {
     if (!asJson) console.error('[resolve] 采集画像：' + app.name);
     const profile = await profileApp(app.appPath);
     if (!asJson) console.error('[resolve] 协商通道：' + app.name);
-    const r = await resolveOne(app, profile);
+    const r = await resolveOne(app, profile, risk);
     out.push(r);
     if (asJson) console.log(JSON.stringify(r));
     else if (allUser) console.log(app.name + ' | ' + r.runtime + ' | ' + (r.usable ? r.plan.join('>') : '无可用通道'));

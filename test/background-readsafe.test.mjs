@@ -55,6 +55,40 @@ test('可以关闭自动还原（交给上层统一处理）', async () => {
   assert.equal(d.restored.length, 0);
 });
 
+test('风险名单里的应用：直接跳过读取，一次 AX 都不发（避免闪屏）', async () => {
+  const d = makeDeps({ stealOnState: 'Ghostty' });
+  let stateCalls = 0;
+  const origState = d.deps.state;
+  d.deps.state = async (...args) => { stateCalls += 1; return origState(...args); };
+  const noted = [];
+  const risk = { shouldSkip: () => true, note: (app) => noted.push(app) };
+  const r = await readSafe('Ghostty', { deps: d.deps, risk });
+  assert.equal(r.skipped, 'front-risk');
+  assert.match(r.reason, /front:risk/);
+  assert.equal(stateCalls, 0, '跳过时不该调 AX 读取');
+  assert.deepEqual(d.restored, []);
+  assert.deepEqual(noted, []);
+});
+
+test('风险名单没命中但读的时候被抢：记进名单，下次就能跳过', async () => {
+  const d = makeDeps({ stealOnState: 'ChatGPT' });
+  const noted = [];
+  const risk = { shouldSkip: () => false, note: (app) => noted.push(app) };
+  const r = await readSafe('ChatGPT', { deps: d.deps, risk });
+  assert.equal(r.frontStolen, true);
+  assert.deepEqual(noted, ['ChatGPT']);
+});
+
+test('查询也走风险名单', async () => {
+  const d = makeDeps({ stealOnFind: 'QQ' });
+  let findCalls = 0;
+  const origFind = d.deps.find;
+  d.deps.find = async (...args) => { findCalls += 1; return origFind(...args); };
+  const r = await findSafe('QQ', { role: 'AXButton' }, { deps: d.deps, risk: { shouldSkip: () => true } });
+  assert.equal(r.skipped, 'front-risk');
+  assert.equal(findCalls, 0);
+});
+
 test('查询同样有前台保护', async () => {
   const d = makeDeps({ stealOnFind: 'ChatGPT', matches: [{ index: 1, title: '按钮' }] });
   const r = await findSafe('ChatGPT', { role: 'AXButton' }, { deps: d.deps });

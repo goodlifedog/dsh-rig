@@ -24,6 +24,7 @@ import { recommendStrategy } from '../app-strategy.mjs';
 import { closeOcuMcp } from '../ocu-mcp.mjs';
 import { localHeaders } from '../local-token.mjs';
 import { decideRestore } from '../front-restore.mjs';
+import { createRiskGate } from '../front-risk.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ACCEPTANCE_LOCK = fileURLToPath(new URL('../../reports/.acceptance.lock', import.meta.url));
@@ -188,6 +189,11 @@ async function main() {
   const frontStart = await frontName();
   const rows = [];
   let seq = 0;
+  // 前台风险名单：之前实测「一读就把自己顶到前台」的应用直接跳过，
+  // 否则每跑一次矩阵就把用户的屏幕闪一遍。AGENT_FRONT_RISK=off 可强制全部重测。
+  const risk = createRiskGate({ enabled: process.env.AGENT_FRONT_RISK !== 'off' });
+  const riskApps = risk.enabled ? APPS.filter((a) => risk.shouldSkip(a.name)).map((a) => a.name) : [];
+  if (riskApps.length) console.log('前台风险名单生效，跳过读取：' + riskApps.join('、') + '（确认修好后：npm run front:risk -- --clear "应用名"）');
 
   for (const app of APPS) {
     seq += 1;
@@ -196,6 +202,12 @@ async function main() {
     if (await isScreenLocked()) {
       rows.push({ app: app.name, skipped: true, reason: '中途锁屏' });
       console.log(JSON.stringify({ app: app.name, skipped: true, reason: '中途锁屏' }));
+      continue;
+    }
+    if (risk.shouldSkip(app.name)) {
+      const reason = '该应用读取会抢前台，已跳过（避免反复切屏；确认修好后：npm run front:risk -- --clear "' + app.name + '"）';
+      rows.push({ app: app.name, skipped: true, frontRisk: true, reason });
+      console.log(JSON.stringify({ app: app.name, skipped: true, reason }));
       continue;
     }
     const installed = findByBundle(installedApps, app.bundle);
@@ -238,7 +250,7 @@ async function main() {
 
     // 用带前台保护的读取：某些应用（Ghostty/ChatGPT 实测）一读就被顶到前台
     let tree = '';
-    const readRes = await readSafe(app.name);
+    const readRes = await readSafe(app.name, { risk });
     tree = readRes.text || '';
     row.readStoleFront = readRes.frontStolen;
     steps.read = await frontName();
@@ -246,15 +258,15 @@ async function main() {
     row.nodes = (tree.match(/^\s*\d+ /gm) || []).length;
 
     try {
-      const btn = await findSafe(app.name, { role: 'AXButton', limit: 60 });
+      const btn = await findSafe(app.name, { role: 'AXButton', limit: 60 }, { risk });
       row.buttons = btn.matches.length;
       row.queryStoleFront = Boolean(row.queryStoleFront || btn.frontStolen);
-      const area = await findSafe(app.name, { role: 'AXTextArea', limit: 10 });
+      const area = await findSafe(app.name, { role: 'AXTextArea', limit: 10 }, { risk });
       row.textAreas = area.matches.length;
-      const field = await findSafe(app.name, { role: 'AXTextField', limit: 10 });
+      const field = await findSafe(app.name, { role: 'AXTextField', limit: 10 }, { risk });
       row.textFields = field.matches.length;
       // 菜单命令：很多关键动作只在菜单里（保存/新建/切换标签）
-      const menu = await findSafe(app.name, { role: 'AXMenuItem', limit: 40 });
+      const menu = await findSafe(app.name, { role: 'AXMenuItem', limit: 40 }, { risk });
       row.menuItems = menu.matches.length;
       row.windowControls = (await windowControls(app.name)).length;
     } catch (e) {

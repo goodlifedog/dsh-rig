@@ -2,6 +2,8 @@
 
 ## 未发布
 
+- 新增不切屏前台风险名单（用户最在意的点）：实测 Ghostty/ChatGPT/QQ/Gemini/Telegram/WPS 等应用被 AX 读取后会自己激活、导致闪前台；现在一旦读到抢前台就记进 `~/.desktop-agent/front-risk.json`（600、30 天过期），矩阵/通道协商对名单里的应用直接跳过读取（连抓帧也不做）并标环境跳过，报告可查；`npm run front:risk` 看/清名单（`--clear`、`--clear-all`、`--seed`），`AGENT_FRONT_RISK=off` 可强制全测。已从 41 份历史矩阵报告补种 9 个应用（ChatGPT 5 次、Telegram 5 次、Steam 4 次、WPS 4 次、UURemote 2 次、Gemini/Ghostty/iRightMouse/QQ 各 1 次）
+- 修 `guard()` 只报错不还原的问题：检测到目标应用被激活时，先把前台还原给操作前的应用再抛错（以前会把被抢的应用留在前台，用户看到的就是一次切屏）；新增 5 项单测
 - 修应用清点漏扫：原来只扫 `/Applications`，装在 `~/Applications` 的应用（Homebrew/Steam 快捷方式、部分国产安装器）会被当成「没装/没测」，问「还有哪些软件能适配」时会漏答；现在清点/探测/通道协商/矩阵统一从 `core/app-scan.mjs` 取目录（用户目录 + 系统目录 + CoreServices），并单独列出只有 run.sh 启动器、没有 bundle id 的快捷方式壳（如 Steam 游戏），报告里注明「未计入统计、不在后台接管范围」。新增 7 项单测
 - 修会话泄漏：矩阵/浏览器任务用完不关 overlay 会话，攒到上限 12 后新会话直接 409（实测导致后台浏览器「画面回显」失败、稳定性任务异常）；矩阵每轮 `/close`、浏览器任务收尾 `/close`，overlay 到上限时先回收最久没活动且不可见的闲置会话（保护 default 与用户正在看的会话），不再直接拒绝
 - 修稳定性任务假设过时：清理脚本会关掉计算器/备忘录/文本编辑，任务却假设它们已开着，导致 15 轮全失败、单轮 6 秒；现在任务自己后台拉起目标应用（`AGENT_LAUNCH_HIDDEN=0` 保证窗口建出来）、跑完只关自己拉起的。实测 15 轮 0 失败、单轮中位 912ms、前台全程 Chrome
