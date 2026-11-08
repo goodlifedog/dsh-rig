@@ -16,6 +16,7 @@ import { loadCache, saveCache, methodOrder, recordMethod } from './capabilities.
 import { isSafeIdentifier, pidMatchesProcess } from './safety.mjs';
 import { createRiskGate } from './front-risk.mjs';
 import { requireAppRunning } from './app-presence.mjs';
+import { readFrontNameDetailed, UNKNOWN_FRONT } from './front-read.mjs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -77,14 +78,16 @@ async function requireRunningGate(app, options, deps) {
   };
 }
 
-/** 当前前台应用（中文名） */
+/**
+ * 当前前台应用（进程名，如 Finder / Google Chrome / Calculator）。
+ *
+ * H2：默认改成 JXA + ObjC（NSWorkspace.frontmostApplication）读，不再对 System Events 发 AppleEvent，
+ * 因此新机器上不会弹「自动化」授权框；新实现失败/超时/结果不可信时自动回退老的 AppleScript 实现。
+ * 返回语义与历史完全一致：拿不到就 '(unknown)'。实现细节与安全红线见 core/front-read.mjs。
+ */
 export async function frontName() {
-  try {
-    const { stdout } = await exec('/usr/bin/osascript', ['-e', 'tell application "System Events" to get name of first process whose frontmost is true'], { timeout: 4000 });
-    return stdout.trim();
-  } catch {
-    return '(unknown)';
-  }
+  const detail = await readFrontNameDetailed();
+  return detail.name || UNKNOWN_FRONT;
 }
 
 /**
