@@ -15,7 +15,7 @@
 - 权限安全（按 `flow/PERMISSIONS-AUDIT.md` 收口）：任务前权限闸门（缺辅助功能/录屏按环境跳过而不是整轮失败）、前台读取改 ObjC 不发 AppleEvent、Safari 探针/清理/验收/浏览器引导全部先静默预检、小窗抓图前查屏幕录制权限；权限审计 H1/H3/H4/H5 + M1/M2 已修
 - 并发验证：`npm run demo:concurrent`（原生计算器 + headless 浏览器同时干活，前台采样 87 次全未变、屏幕上无新窗口）
 - 已修的数据安全洞：文本编辑只在「未命名 + 测试格式正文」时才关、备忘录新建失败不写、终端已输入半截命令时不敲、保存确认是 AXSheet 也认、验收中止会收起所有小窗
-- 发布待办：仍只差 `patch-publish.diff` + 四个决定（见下）
+- 发布待办：发布配置已直接落进 `package.json`（旧的 `flow/patch-publish.diff` 已删除），剩下的是四个决定（见下）
 
 ## 你要做的三件事（都只要一次决定）
 
@@ -25,12 +25,12 @@
 | 3 | **GitHub 仓库地址** | 替换补丁里的 `github.com/goodlifedog/desktop-agent` |
 | 4 | **git 提交身份** | `git config user.email "<id>+<用户名>@users.noreply.github.com"` |
 
-做完这四件，应用 `flow/patch-publish.diff`，再跑一遍 `npm run verify`，就能发。
+做完这四件，直接在 `package.json` 里确认发布字段（name/repository/files/publishConfig），再跑一遍 `npm run verify`，就能发。
 
 ## 发布前的最后一屏
 
 ```bash
-git apply flow/patch-publish.diff
+# 发布配置已在 package.json 里，无需再打补丁
 # 改两处占位：npm 用户名、GitHub 仓库地址
 npm run verify
 npm pack --dry-run      # 应为 145 文件 / 1.1 MB
