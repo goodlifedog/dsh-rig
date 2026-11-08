@@ -6,6 +6,7 @@ import path from 'node:path';
 
 import { resolveOcu } from './platform.mjs';
 import { localHeaders } from './local-token.mjs';
+import { frontRiskGate } from './background.mjs';
 const OCU = resolveOcu() || path.join(os.homedir(), '.local/bin/ocu');
 const OVERLAY = overlayBase();
 // 当前 agent 所属的 DSH 会话：每个会话召唤自己的小窗，缺省 default（旧行为不变）
@@ -211,6 +212,10 @@ export async function guard(targetApp, fn, options = {}) {
   const frontmost = typeof deps.frontmost === 'function' ? deps.frontmost : () => ocu.frontmost();
   const restoreFront = typeof deps.restoreFront === 'function' ? deps.restoreFront : restoreFrontTo;
   const log = typeof deps.log === 'function' ? deps.log : (text) => overlay.log(text);
+  // 被激活的应用记进前台风险名单：以后再读它（readSafe/矩阵/协商）就默认跳过，不再反复闪
+  const noteRisk = typeof deps.noteRisk === 'function'
+    ? deps.noteRisk
+    : (app) => { try { frontRiskGate().note(app); } catch {} };
 
   const before = await frontmost();
   if (before === targetApp) {
@@ -220,6 +225,7 @@ export async function guard(targetApp, fn, options = {}) {
   const after = await frontmost();
   if (after === targetApp) {
     const restored = await restoreFront(before).catch(() => false);
+    try { noteRisk(targetApp); } catch {}
     const where = restored ? '已把前台还原到 ' + before : '前台还原失败';
     await log('警告：操作期间 ' + targetApp + ' 变成了前台，' + where + '，已中止后续动作').catch(() => {});
     throw new Error('前台发生了变化：' + targetApp + ' 被激活，' + where + '，操作已中止');
