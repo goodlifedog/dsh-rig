@@ -53,6 +53,8 @@
 | task-56 | boss-researcher | （作废）H2 剩余入口只读计划：子 agent 失败未产出，Lead 改为直接派实现单 | 已删除 |
 | task-57 | overlay-multi | H2：acceptance 五处 AppleEvent 入口接静默预检 + 新增公共 helper | 核验后提交 `0a52f69` |
 | task-58 | ocu-recipe | H2：browser / headless-demo 的 AppleEvent 入口补预检 | 核验后提交 `32cd7a8` |
+| task-59 | headless-engineer | 规则 6：发 AppleEvent 前必须有自动化预检（静态防回归 + 10 条已知缺口登记） | 核验后提交 `9eb3fce`；Lead 追加缺口数量上限断言 |
+| task-60 | boss-researcher | 应用适配广度调研（7 个候选 + 10 条不建议 + 最小可行步骤） | 核验后提交 `385c369`；INDEX 收录 |
 
 ## 当前状态
 
@@ -61,4 +63,5 @@
 - 完整验收 2026-11-08 抓出并修复 3 个前台污染问题（multi-app 拉起应用、矩阵还原漏别名、验收残留应用）。
 - ocu 调用审计 11 处高危调用点全部加运行门禁并提交（`50ebe5a`）；补 4 个测试文件，全量 923 项 / 922 过 / 1 跳过 / 0 失败。
 - 权限安全审计的 H1/H3/H4/H5 + M1/M2 已修复并提交（全量 1012 项 / 1010 过 / 2 跳过 / 0 失败）；H2 核心（前台读取不发 AppleEvent）已落地，剩余 acceptance/browser/headless-demo 的裸 AppleEvent 入口记为待办。
-- 待办：等用户离开足够久时跑一次 `verify:live` 完整验收（含会动屏幕的步骤），确认修复后 app-matrix 不再被抢前台、权限闸门不会把正常步骤误跳过。
+- 静态防回归补齐：规则 5（raw ocu 运行门禁）+ 规则 6（AppleEvent 自动化预检），`npm run safety:audit` 现在扫 123 个文件；全量 1049 项 / 1047 过 / 2 跳过 / 0 失败。
+- 待办：等屏幕解锁 + 用户离开足够久（≥15 分钟）时跑一次 `verify:live` 完整验收（含会动屏幕的步骤），确认修复后 app-matrix 不再被抢前台、权限闸门不会把正常步骤误跳过。当前屏幕处于锁定状态，`verify:live` 无法在锁屏下跑（AX/截图不可用），后台 watcher 会等「已解锁 + 空闲 ≥20 分钟」自动开跑。

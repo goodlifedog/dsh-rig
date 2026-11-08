@@ -276,7 +276,7 @@ TCC 服务名：`kTCCServiceAccessibility`（辅助功能）、`kTCCServiceApple
 | M2 无录屏时窗口标题静默为空 | ✅ 已修 | `classifyWindowTitles` 判「全空/大量为空」，`/health.windowTitles` 暴露；抓图失败文案与「目标窗口已失效」区分 | `2bd5f8a` |
 | M3 授权主体说法不统一 | 🟡 文档已统一 | `docs/USAGE.md` 4.4 改成「启动方式 → 被授权条目」对照表（终端 / launchd daemon 的 node / 打包 App / ocu 自己截图 / AppleScript 发起方 × 目标应用），并补上自动化权限与三项症状速查；daemon 自检 hint 已按 H5 分项指对设置页 | 本次（见 CHANGELOG） |
 | M4 ocu 首次截图是否弹授权框 | ⬜ 待办 | 需要干净 TCC 环境实测，不能靠静态推断 | — |
-| M5 openPermissionSettings 死代码 | ⬜ 待办 | 删掉或让 overlay 复用；属小重构 | — |
+| M5 openPermissionSettings 死代码 | ⬜ 暂缓（有意不删） | 它现在**没有调用方但也不构成风险**；删掉或让 overlay 复用需要跨 CJS/ESM 模块改导出形态，属独立小重构，等 overlay 下次改动时一起做（先记在这里，避免为删代码引入新的耦合） | — |
 
 ### 7.1 修复边界（不能修成新的问题）
 
