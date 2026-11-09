@@ -26,3 +26,6 @@ dist-app/
 
 # ui-check 自动生成的截图（不入库）
 overlay/docs/ui-ui-*.png
+
+# 一次性过程记录归档（不进仓库、不进包）
+_archive/
