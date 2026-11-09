@@ -17,7 +17,7 @@ import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { ensureAppRunning, frontName, isAppRunning, quitApp } from '../core/background.mjs';
 import { closeOcuMcp } from '../core/ocu-mcp.mjs';
-import { countNotes, deleteTopNotes, deleteMarkedTestNotes, LEGACY_TEST_WORDS } from '../core/note-cleanup.mjs';
+import { countNotes, deleteTopNotes, deleteMarkedTestNotes, LEGACY_TEST_WORDS, purgeRecentlyDeletedNotes } from '../core/note-cleanup.mjs';
 import { shouldQuitApp, shouldRunNoteCleanup } from '../core/cleanup-policy.mjs';
 import { resolveMaxTop, resolveTopDelete } from '../core/cleanup-limits.mjs';
 import { isDisposableTestDocument } from '../core/text-edit-guard.mjs';
@@ -208,11 +208,28 @@ async function cleanupNotes(report) {
   if (launch.launched) launchedByUs.add('com.apple.Notes');
   await sleep(1000);
   // dry-run 永远不删：连 purgeNotes 都不调用，只报告会做什么。
-  if (dryRun) { report.push({ kind: 'note-dry-run', note: 'dry-run：只报告，不删除任何笔记' }); return 0; }
+  if (dryRun) {
+    const trash = await purgeRecentlyDeletedNotes({ dryRun: true });
+    report.push({ kind: 'note-dry-run', note: 'dry-run：只报告，不删除任何笔记' });
+    report.push({
+      kind: 'note-trash',
+      note: trash.error
+        ? '最近删除统计失败：' + trash.error
+        : '最近删除：命中测试标记 ' + trash.count + ' 条（dry-run 不删，--force 才会永久删除）',
+    });
+    return 0;
+  }
   const removed = await purgeNotes(report);
-  // 「最近删除」没法安全自动化：Notes 辅助功能读不到标题、侧边栏行也无法脚本选中，
-  // 只能提示用户手动清（或等 30 天系统自动清）
-  report.push({ kind: 'note-trash', note: '最近删除需手动清空：打开备忘录 → 最近删除 → 删除全部' });
+  // 「最近删除」：辅助功能读不到标题、侧边栏也没法脚本选中，
+  // 但 AppleScript 可以按标题读出并永久删除测试笔记（评审侧实测有效）。
+  const trash = await purgeRecentlyDeletedNotes({ dryRun });
+  if (trash.error) {
+    report.push({ kind: 'note-trash', note: '最近删除清理失败：' + trash.error });
+  } else if (dryRun) {
+    report.push({ kind: 'note-trash', note: '最近删除：命中测试标记 ' + trash.count + ' 条（dry-run 不删，--force 才会永久删除）' });
+  } else {
+    report.push({ kind: 'note-trash', note: '最近删除：命中 ' + trash.count + ' 条，已永久删除 ' + trash.removed + ' 条' });
+  }
   if (!launch.launched) report.push({ kind: 'note-app', note: 'Notes 本来就在运行，未关闭' });
   return removed;
 }

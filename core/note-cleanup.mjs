@@ -1,4 +1,5 @@
 'use strict';
+import { execFileSync } from 'node:child_process';
 /**
  * 笔记清理：删掉测试期间新增的备忘录。
  *
@@ -170,7 +171,7 @@ const DELETE_TOP_SCRIPT = [
   '        set tbl to table 1 of scroll area 2 of splitter group 1 of w',
   '        set rs to rows of tbl',
   '        repeat with i from (count of rs) to 1 by -1',
-  '          try',
+  '        try',
   '            set rr to item i of rs',
   '            if (count of actions of rr) >= 2 then',
   '              perform action 2 of rr',
@@ -361,4 +362,105 @@ export async function deleteTestNotes(options = {}) {
   }
   console.warn('无法识别测试笔记，未删除（需要显式 --force-all/allowTopFallback）');
   return 0;
+}
+
+// ---------- 「最近删除」清理（AppleScript，不经辅助功能） ----------
+/** 「最近删除」文件夹在 AppleScript 里的名字（中文系统也返回英文名） */
+export const TRASH_FOLDER_NAME = 'Recently Deleted';
+
+/** 命中即视为测试笔记的标题片段：新标记 + 历史标记 */
+export const TRASH_TEST_MARKERS = Object.freeze([TEST_NOTE_MARKER, ...LEGACY_TEST_WORDS]);
+
+function appleString(text) {
+  return '"' + String(text).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+}
+
+function markerCondition(varName, markers) {
+  const list = (markers && markers.length ? markers : TRASH_TEST_MARKERS).map(appleString);
+  if (!list.length) return 'false';
+  return list.map((m) => '(' + varName + ' contains ' + m + ')').join(' or ');
+}
+
+/** 生成「统计最近删除里测试笔记」的 AppleScript（纯函数，便于单测断言） */
+export function buildTrashCountScript(options = {}) {
+  const opts = options || {};
+  const cond = markerCondition('t', opts.markers);
+  return [
+    'tell application "Notes"',
+    '  set c to 0',
+    '  repeat with f in folders',
+    '    set fn to ""',
+    '    try',
+    '      set fn to name of f as text',
+    '    end try',
+    '    if fn is ' + appleString(TRASH_FOLDER_NAME) + ' then',
+    '      repeat with n in notes of f',
+    '        set t to ""',
+    '        try',
+    '          set t to name of n as text',
+    '        end try',
+    '        if ' + cond + ' then set c to c + 1',
+    '      end repeat',
+    '    end if',
+    '  end repeat',
+    '  return c as text',
+    'end tell',
+  ].join('\n');
+}
+
+/** 生成「永久删除最近删除里的测试笔记」的 AppleScript（纯函数） */
+export function buildTrashPurgeScript(options = {}) {
+  const opts = options || {};
+  const cond = markerCondition('t', opts.markers);
+  return [
+    'tell application "Notes"',
+    '  set ids to {}',
+    '  repeat with f in folders',
+    '    set fn to ""',
+    '    try',
+    '      set fn to name of f as text',
+    '    end try',
+    '    if fn is ' + appleString(TRASH_FOLDER_NAME) + ' then',
+    '      repeat with n in notes of f',
+    '        set t to ""',
+    '        try',
+    '          set t to name of n as text',
+    '        end try',
+    '        if ' + cond + ' then set end of ids to (id of n)',
+    '      end repeat',
+    '    end if',
+    '  end repeat',
+    '  set removed to 0',
+    '  repeat with theId in ids',
+    '    try',
+    '      delete note id (theId as text)',
+    '      set removed to removed + 1',
+    '    end try',
+    '  end repeat',
+    '  return removed as text',
+    'end tell',
+  ].join('\n');
+}
+
+/**
+ * 清理「最近删除」里的测试笔记。
+ * 默认 dry-run 只数不删；dryRun=false 时永久删除并返回条数。
+ * exec(runOsa) 可注入，单测不真发 AppleEvent。
+ */
+export async function purgeRecentlyDeletedNotes(options = {}) {
+  const opts = options || {};
+  const exec = typeof opts.exec === 'function'
+    ? opts.exec
+    : (script) => execFileSync('/usr/bin/osascript', ['-e', script], { timeout: 20000 });
+  const markerOpts = { markers: opts.markers };
+  try {
+    const count = Number(String(exec(buildTrashCountScript(markerOpts)) || '').trim()) || 0;
+    // 默认 dry-run：只有显式 dryRun === false 才真删（防止误永久删除）
+    if (opts.dryRun !== false) return { count, removed: 0, dryRun: true };
+    if (!count) return { count: 0, removed: 0, dryRun: false };
+    const removed = Number(String(exec(buildTrashPurgeScript(markerOpts)) || '').trim()) || 0;
+    return { count, removed, dryRun: false };
+  } catch (error) {
+    return { count: 0, removed: 0, error: String((error && error.message) || error).slice(0, 160) };
+  }
 }

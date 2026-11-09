@@ -2,7 +2,7 @@
 // H-1：deleteTestNotes 的 top-fallback 必须是显式闸门，默认不得按条数删用户笔记
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { deleteTestNotes } from '../core/note-cleanup.mjs';
+import { deleteTestNotes, buildTrashCountScript, buildTrashPurgeScript, purgeRecentlyDeletedNotes } from '../core/note-cleanup.mjs';
 
 // 单测用假探测：默认已授权，绝不发真实 AppleEvent（真实预检走 AEDeterminePermissionToAutomateTarget）
 const granted = async () => ({ status: 'granted' });
@@ -52,4 +52,34 @@ test('H-1: allowTopFallback 只认严格 true，truthy 字符串不放行', asyn
   const removed = await deleteTestNotes({ count: 1, allowTopFallback: 'true', deps });
   assert.equal(removed, 0, '非布尔 true 不许放行');
   assert.equal(calls.length, 1);
+});
+
+test('最近删除清理：脚本只按测试标记匹配，且带「Recently Deleted」文件夹', () => {
+  const count = buildTrashCountScript();
+  assert.match(count, /Recently Deleted/);
+  assert.match(count, /AGENT-TEST/);
+  assert.match(count, /后台控制验证/);
+  assert.match(count, /return c as text/);
+  const purge = buildTrashPurgeScript();
+  assert.match(purge, /delete note id/);
+  assert.match(purge, /return removed as text/);
+});
+
+test('最近删除清理：默认 dry-run 只数不删；显式 dryRun=false 才删除', async () => {
+  const scripts = [];
+  const exec = (script) => { scripts.push(script); return '3'; };
+  const dry = await purgeRecentlyDeletedNotes({ exec });
+  assert.deepEqual(dry, { count: 3, removed: 0, dryRun: true });
+  assert.equal(scripts.length, 1);
+  scripts.length = 0;
+  const run = await purgeRecentlyDeletedNotes({ exec, dryRun: false });
+  assert.deepEqual(run, { count: 3, removed: 3, dryRun: false });
+  assert.equal(scripts.length, 2);
+});
+
+test('最近删除清理：exec 抛错时返回 error，不抛出', async () => {
+  const exec = () => { throw new Error('osascript failed'); };
+  const r = await purgeRecentlyDeletedNotes({ exec, dryRun: false });
+  assert.equal(r.count, 0);
+  assert.match(r.error, /osascript failed/);
 });
