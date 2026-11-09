@@ -143,9 +143,9 @@ async function checkHttpServer() {
     assert.equal(result.body.entry.text, '点击搜索框');
     assert.equal(listOf(received.logs, 'default').length, 1);
 
-    result = await post('/status', { text: '正在筛选职位' });
+    result = await post('/status', { text: '正在读取示例页面' });
     assert.equal(result.status, 200);
-    assert.equal(result.body.text, '正在筛选职位');
+    assert.equal(result.body.text, '正在读取示例页面');
     assert.equal(result.body.activity, 'running');
     assert.equal(result.body.session, 'default');
 

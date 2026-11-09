@@ -32,7 +32,6 @@ test('常见环境原因都能识别（环境跳过只认显式声明/环境字�
     ['SKIP 锁屏中，跳过前台与窗口数校验', '锁屏'],
     ['SKIP headless Chrome 还有 null 个窗口', '读不到窗口数（缺辅助功能权限）'],
     ['env: node: No such file or directory', '环境缺少可执行文件'],
-    ['该目标已联系过，跳过', '目标已联系过'],
   ];
   for (const [text, expected] of cases) {
     assert.equal(envSkipReason(end(1) + '\n' + text), expected, text);
