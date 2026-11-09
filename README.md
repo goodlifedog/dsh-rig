@@ -8,7 +8,7 @@
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![node](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](package.json)
 
-![DSH Rig：小窗实时回显后台浏览器在做什么（示例页面，4 秒实拍）](docs/assets/demo.gif)
+![DSH Rig：小窗实时回显后台浏览器在做什么（示例页面，4 秒实拍）](https://raw.githubusercontent.com/goodlifedog/dsh-rig/main/docs/assets/demo.gif)
 
 *headless Chrome 在后台打开示例页面，小窗实时回显代理看到的画面；录制期间前台一直是 DSH，没有切屏、没有抢焦点。*
 
@@ -240,15 +240,15 @@ flow/               # 每个流程的方法论与踩坑记录
 
 小窗收起时（300×190，后台正在读一个示例页面，右下角是状态胶囊与虚拟光标）：
 
-![收起态](overlay/docs/ui-live-small.png)
+![收起态](https://raw.githubusercontent.com/goodlifedog/dsh-rig/main/overlay/docs/ui-live-small.png)
 
 点 `⤢` 放大看细节（960×600，画面按 2× 出图，1920×1200 像素）：
 
-![放大态](overlay/docs/ui-live-expanded.jpg)
+![放大态](https://raw.githubusercontent.com/goodlifedog/dsh-rig/main/overlay/docs/ui-live-expanded.jpg)
 
 多会话并存时，每个会话一个窗口：
 
-![小窗](overlay/docs/multi-session.png)
+![小窗](https://raw.githubusercontent.com/goodlifedog/dsh-rig/main/overlay/docs/multi-session.png)
 
 ## 控制层
 
