@@ -180,3 +180,34 @@ grep 搜不到字面量，只有看图才能发现；发布前必须处理。
 
 - 计算器点击：`--click-text "7"` → 显示 0→7（AX 出现「4 文本 7」）→ `--click-text "清除"` → 回到 0；两次前台都是 DeepSeek Harness 未变。ADAPTERS 的 S 级结论成立。
 - 新增 `docs/assets/demo.gif`（165KB / 18 帧 / 480×304）：抽查第 1、7、13、18 帧，内容是「等待目标窗口」与小窗胶囊「专用浏览器运行中/已关闭」的状态变化，没有个人信息、没有用户窗口内容。
+
+## 十四、发布前检查表（评审侧 2026-11-09 12:14 实跑）
+
+### 已通过（都有可复跑证据）
+
+| 项 | 结果 | 复跑命令 |
+| --- | --- | --- |
+| 单测 | 1280 项 / 0 失败 | `npm test` |
+| 发布自检 | 全部通过 | `npm run verify` |
+| 仓库体检 | 全部通过 | `npm run repo:check` |
+| 发布彩排 | 6 PASS / 0 SKIP / 0 FAIL | `node scripts/release-rehearsal.mjs --quick` |
+| 包内容 | 173 文件 / 压缩约 600KB，无 flow/test/_archive 泄漏 | `npm pack --dry-run --json` |
+| 隐私 | 跟踪文件无真实姓名/用户名/主机名/简历（命中项都是检查器自身与其测试） | 见 repo-check 隐私规则 |
+| 服务 | 健康项 19 条全绿、daemon/overlay 代码新鲜度 ok | `npm run health`、`npm run service:status` |
+| 包身份 | name=dsh-rig、bin=dsh-rig、repo=goodlifedog/dsh-rig、README 图片已换绝对地址 | `package.json` / `README.md` |
+| 适配证据 | Safari/计算器/访达/备忘录/Chrome(CDP) 五个 S 级均已独立复现 | `adapter-demo`、`npm run cdp:channel` |
+
+### 发布前必须由人决定的四件
+
+1. **配置 remote 并推送**：仓库当前分支 main 但没有 remote；README 图片/徽章指向 raw.githubusercontent.com/goodlifedog/dsh-rig/main，不推就是 404。
+2. **CI 矩阵**：`.github/workflows/ci.yml` 是 ubuntu/macos/windows 三平台、且没有 `npm ci` 步骤。本机模拟「无 node_modules 干净副本」跑 `npm test` 是通过的（1278/0），但 ubuntu/windows 的 macOS 依赖测试无法本地验证，徽章大概率红。建议收窄为 macos-latest，或给非 macOS job 加 continue-on-error。
+3. **flow/SUPERVISION.md 去留**：这是评审侧监控日志，无个人信息与绝对路径，但属于过程记录；发布前建议移入 `_archive/`（已 gitignore）。
+4. **微信适配**：需要登录态，建议用户在场时只读验证一次。
+
+### 发布动作（用户确认后）
+
+```
+git remote add origin git@github.com:goodlifedog/dsh-rig.git
+git push -u origin main
+npm publish        # 0.8.0，publishConfig 已指向 npmjs，access=public
+```
