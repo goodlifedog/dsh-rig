@@ -67,7 +67,7 @@ test('真实姓名 / 本机用户名命中（大小写不敏感）', () => {
 test('白名单放行：npm scope / appId / bundle id / 测试占位符 / GitHub 身份', () => {
   const text = [
     '"author": "goodlifedog <goodlifedog@users.noreply.github.com>"',
-    '"appId": "com.goodlifedog.dsh-desktop-agent"',
+    '"appId": "com.goodlifedog.dsh-rig"',
     'npm 包占位符 @goodlifedog/dsh-rig',
     "HOST_BUNDLE_ID = 'com.local.ocuformhost'",
     'hostname: Test-MacBook-Pro.local',

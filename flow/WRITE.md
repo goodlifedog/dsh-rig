@@ -34,7 +34,7 @@
 命令：
 
 ~~~sh
-cd desktop-agent
+cd dsh-rig
 PATH="$HOME/.local/bin:$PATH" node core/tasks/form-fill.mjs
 ~~~
 
@@ -75,7 +75,7 @@ PATH="$HOME/.local/bin:$PATH" node core/tasks/form-fill.mjs
 命令：
 
 ~~~sh
-cd desktop-agent
+cd dsh-rig
 PATH="$HOME/.local/bin:$PATH" node core/tasks/form-fill-local.mjs
 ~~~
 
@@ -153,7 +153,7 @@ Chrome 都会把自己带到前台（打开新标签/加载页面时自动激活
 ## 6. 复现与环境变量
 
 ~~~sh
-cd desktop-agent
+cd dsh-rig
 PATH="$HOME/.local/bin:$PATH" node core/tasks/form-fill.mjs        # 真实应用
 PATH="$HOME/.local/bin:$PATH" node core/tasks/form-fill-local.mjs  # 本地对照
 ~~~

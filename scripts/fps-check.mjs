@@ -50,7 +50,7 @@ const median = (arr) => {
 
 async function main() {
   const before = await getJson(OVERLAY + '/health?session=' + SESSION);
-  const pid = (() => { try { return execFileSync('pgrep', ['-f', 'desktop-agent.*overlay'], { encoding: 'utf8' }).trim().split('\n')[0]; } catch { return ''; } })();
+  const pid = (() => { try { return execFileSync('pgrep', ['-f', '(desktop-agent|dsh-rig).*overlay'], { encoding: 'utf8' }).trim().split('\n')[0]; } catch { return ''; } })();
 
   const hello = await getJson(OVERLAY + '/health?session=__none__');
   if (!hello || !hello.ok) { console.log('❌ 小窗没起来（7788）'); process.exit(1); }
