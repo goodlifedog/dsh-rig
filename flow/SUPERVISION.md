@@ -105,7 +105,7 @@ Finder 的重命名字段解析出来是：kind=textField, label="report.pdf"（
 
 ### 已交付并验证的能力
 
-- 仓库对外化：无 BOSS、无隐私（含历史）、无内部台账；名字 DSH Rig / dsh-rig / 0.8.0
+- 仓库对外化：无站点专用能力、无隐私（含历史）、无内部台账；名字 DSH Rig / dsh-rig / 0.8.0
 - 克隆即用：ocu 是 npm 依赖，resolveOcu 走 node_modules；全局安装后 CLI 与 ocu 都就位
 - 通用适配引擎 adapter-demo：读树 / 按文字点击 / 回显 / 写入（默认拒写、空值写入、显式索引覆盖后恢复）
 - 安全行为实测：锁屏跳过、用户活跃让路、用户回来即停、front-risk 不可绕过、点击无变化判失败
@@ -121,3 +121,24 @@ Finder 的重命名字段解析出来是：kind=textField, label="report.pdf"（
 
 新会话直接读本文件与 docs/ADAPTERS.md 即可接续；所有结论都有对应提交与可复核命令，
 关键判据是：不看报告、自己跑 npm test / repo:check / release-rehearsal / adapter-demo。
+
+## 十、必须处理：README 三张截图仍暴露已删的 BOSS 功能（2026-11-09 11:34）
+
+评审侧逐张看了 README 引用的三张图，**删除 BOSS 不彻底——证据还在图片里**：
+
+| 文件 | 图上可见 | 问题 |
+| --- | --- | --- |
+| overlay/docs/ui-live-small.png | 小窗胶囊「正在后台读取**岗位列表**」 | BOSS 残留字样 |
+| overlay/docs/ui-live-expanded.jpg | 胶囊「正在后台读取**岗位列表** · 拟人节奏 1m36s」；顶部还有用户自己的会话标题「规划布局探讨…」 | BOSS 残留 + 用户工作内容 |
+| overlay/docs/multi-session.png | 右侧会话「alpha · 正在读**职位列表**」 | BOSS 残留字样 |
+
+README 正文已经把「岗位列表」改成「示例页面」，图却还是旧图——**图文不一致，而且图片是公开可读的**。
+grep 搜不到字面量，只有看图才能发现；发布前必须处理。
+
+建议修法（任选一种，优先第一种）：
+1. 用中性目标页重新截：打开 examples/adapters/sample.html 或任一公开文档站，胶囊文案自然会变成通用描述；
+   同时把 DSH 窗口标题挪出画面或换成不含个人会话名的标题；
+2. 直接裁掉底部胶囊区域（保留画面主体），但会丢掉「状态胶囊」这个卖点展示；
+3. 若要保留胶囊，至少把文案改成中性（需要重新截图，不能靠改图）。
+
+范围确认：README 只引用了这 3 张（grep overlay/docs 只有 3 处）；其它图片未被 README/docs 引用。
