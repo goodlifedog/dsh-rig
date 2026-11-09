@@ -17,7 +17,7 @@ import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { ensureAppRunning, frontName, isAppRunning, quitApp } from '../core/background.mjs';
 import { closeOcuMcp } from '../core/ocu-mcp.mjs';
-import { countNotes, deleteTopNotes, deleteMarkedTestNotes, LEGACY_TEST_WORDS, purgeRecentlyDeletedNotes } from '../core/note-cleanup.mjs';
+import { countNotes, deleteTopNotes, deleteMarkedTestNotes, LEGACY_TEST_WORDS, purgeRecentlyDeletedNotes, purgeMarkedLiveNotes } from '../core/note-cleanup.mjs';
 import { shouldQuitApp, shouldRunNoteCleanup } from '../core/cleanup-policy.mjs';
 import { resolveMaxTop, resolveTopDelete } from '../core/cleanup-limits.mjs';
 import { isDisposableTestDocument } from '../core/text-edit-guard.mjs';
@@ -209,7 +209,12 @@ async function cleanupNotes(report) {
   await sleep(1000);
   // dry-run 永远不删：连 purgeNotes 都不调用，只报告会做什么。
   if (dryRun) {
+    const live = await purgeMarkedLiveNotes({ dryRun: true });
     const trash = await purgeRecentlyDeletedNotes({ dryRun: true });
+    report.push({
+      kind: 'note-live',
+      note: live.error ? ('活笔记统计失败：' + live.error) : ('活笔记：命中测试标记 ' + live.count + ' 条（dry-run 不删）'),
+    });
     report.push({ kind: 'note-dry-run', note: 'dry-run：只报告，不删除任何笔记' });
     report.push({
       kind: 'note-trash',
@@ -220,6 +225,14 @@ async function cleanupNotes(report) {
     return 0;
   }
   const removed = await purgeNotes(report);
+  // AX 读不到笔记列表时（本机实测常见），用 AppleScript 按标题兜底删活笔记
+  const liveFallback = await purgeMarkedLiveNotes({ dryRun: false });
+  report.push({
+    kind: 'note-live',
+    note: liveFallback.error
+      ? '活笔记兜底清理失败：' + liveFallback.error
+      : '活笔记：命中 ' + liveFallback.count + ' 条，已删除 ' + liveFallback.removed + ' 条',
+  });
   // 「最近删除」：辅助功能读不到标题、侧边栏也没法脚本选中，
   // 但 AppleScript 可以按标题读出并永久删除测试笔记（评审侧实测有效）。
   const trash = await purgeRecentlyDeletedNotes({ dryRun });

@@ -2,7 +2,7 @@
 // H-1：deleteTestNotes 的 top-fallback 必须是显式闸门，默认不得按条数删用户笔记
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { deleteTestNotes, buildTrashCountScript, buildTrashPurgeScript, purgeRecentlyDeletedNotes } from '../core/note-cleanup.mjs';
+import { deleteTestNotes, buildTrashCountScript, buildTrashPurgeScript, purgeRecentlyDeletedNotes, buildMarkedLiveNotesScript, purgeMarkedLiveNotes } from '../core/note-cleanup.mjs';
 
 // 单测用假探测：默认已授权，绝不发真实 AppleEvent（真实预检走 AEDeterminePermissionToAutomateTarget）
 const granted = async () => ({ status: 'granted' });
@@ -82,4 +82,27 @@ test('最近删除清理：exec 抛错时返回 error，不抛出', async () => 
   const r = await purgeRecentlyDeletedNotes({ exec, dryRun: false });
   assert.equal(r.count, 0);
   assert.match(r.error, /osascript failed/);
+});
+
+test('活笔记兜底：脚本排除最近删除文件夹并按测试标记匹配', () => {
+  const count = buildMarkedLiveNotesScript('count');
+  assert.match(count, /AGENT-TEST/);
+  assert.match(count, /后台控制验证/);
+  assert.match(count, /is not "Recently Deleted"/);
+  assert.match(count, /return c as text/);
+  const purge = buildMarkedLiveNotesScript('purge');
+  assert.match(purge, /delete note id/);
+  assert.match(purge, /return removed as text/);
+});
+
+test('活笔记兜底：默认 dry-run 只数不删，显式 dryRun=false 才删除', async () => {
+  const scripts = [];
+  const exec = (script) => { scripts.push(script); return '2'; };
+  const dry = await purgeMarkedLiveNotes({ exec });
+  assert.deepEqual(dry, { count: 2, removed: 0, dryRun: true });
+  assert.equal(scripts.length, 1);
+  scripts.length = 0;
+  const run = await purgeMarkedLiveNotes({ exec, dryRun: false });
+  assert.deepEqual(run, { count: 2, removed: 2, dryRun: false });
+  assert.equal(scripts.length, 2);
 });

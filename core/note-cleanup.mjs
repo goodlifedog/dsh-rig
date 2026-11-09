@@ -464,3 +464,84 @@ export async function purgeRecentlyDeletedNotes(options = {}) {
     return { count: 0, removed: 0, error: String((error && error.message) || error).slice(0, 160) };
   }
 }
+
+// ---------- 活笔记的 AppleScript 兜底清理（AX 读不到时用） ----------
+/**
+ * 生成「按标题标记统计/删除活笔记」的 AppleScript。
+ * 跳过 Recently Deleted（那是另一条 trash 清理路径）；返回条数（count 或 removed）。
+ */
+export function buildMarkedLiveNotesScript(mode = 'count', options = {}) {
+  const opts = options || {};
+  const cond = markerCondition('t', opts.markers);
+  const action = mode === 'purge'
+    ? [
+        '  set removed to 0',
+        '  repeat with theId in ids',
+        '    try',
+        '      delete note id (theId as text)',
+        '      set removed to removed + 1',
+        '    end try',
+        '  end repeat',
+        '  return removed as text',
+      ].join('\n')
+    : '  return c as text';
+  const head = mode === 'purge'
+    ? [
+        '  set ids to {}',
+        '  repeat with f in folders',
+        '    set fn to ""',
+        '    try',
+        '      set fn to name of f as text',
+        '    end try',
+        '    if fn is not "Recently Deleted" then',
+        '      repeat with n in notes of f',
+        '        set t to ""',
+        '        try',
+        '          set t to name of n as text',
+        '        end try',
+        '        if ' + cond + ' then set end of ids to (id of n)',
+        '      end repeat',
+        '    end if',
+        '  end repeat',
+      ].join('\n')
+    : [
+        '  set c to 0',
+        '  repeat with f in folders',
+        '    set fn to ""',
+        '    try',
+        '      set fn to name of f as text',
+        '    end try',
+        '    if fn is not "Recently Deleted" then',
+        '      repeat with n in notes of f',
+        '        set t to ""',
+        '        try',
+        '          set t to name of n as text',
+        '        end try',
+        '        if ' + cond + ' then set c to c + 1',
+        '      end repeat',
+        '    end if',
+        '  end repeat',
+      ].join('\n');
+  return ['tell application "Notes"', head, action, 'end tell'].join('\n');
+}
+
+/**
+ * 用 AppleScript 清理活笔记里的测试笔记（不依赖辅助功能）。
+ * 默认 dry-run 只数；dryRun === false 才真删。exec 可注入便于单测。
+ */
+export async function purgeMarkedLiveNotes(options = {}) {
+  const opts = options || {};
+  const exec = typeof opts.exec === 'function'
+    ? opts.exec
+    : (script) => execFileSync('/usr/bin/osascript', ['-e', script], { timeout: 20000 });
+  const markerOpts = { markers: opts.markers };
+  try {
+    const count = Number(String(exec(buildMarkedLiveNotesScript('count', markerOpts)) || '').trim()) || 0;
+    if (opts.dryRun !== false) return { count, removed: 0, dryRun: true };
+    if (!count) return { count: 0, removed: 0, dryRun: false };
+    const removed = Number(String(exec(buildMarkedLiveNotesScript('purge', markerOpts)) || '').trim()) || 0;
+    return { count, removed, dryRun: false };
+  } catch (error) {
+    return { count: 0, removed: 0, error: String((error && error.message) || error).slice(0, 160) };
+  }
+}
