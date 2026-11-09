@@ -77,6 +77,7 @@ const SELF_WINDOW_PATTERN = new RegExp([
   HOST_PROCESS.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
   ...HOST_BUNDLES.map((b) => b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
   '^Desktop Agent$',
+  '^DSH Rig$',
 ].join('|'), 'i');
 const MAX_LOGS = 200;
 const MAX_SESSIONS = Math.max(1, Math.round(Number(process.env.OVERLAY_MAX_SESSIONS) || 12));
@@ -1076,7 +1077,7 @@ function applyClickThrough(s) {
   }
 }
 
-// 与渲染进程的热区保持一致：边缘/顶部 8px + 右上角两个按钮 + 左上角日志入口 + 错误操作按钮
+// 与渲染进程的热区保持一致：边缘/顶部 8px + 中央放大按钮 + 右上角关闭 + 左上角日志入口 + 错误操作按钮
 function cursorInHotspot(s, win, point) {
   let b;
   try {
@@ -1090,9 +1091,10 @@ function cursorInHotspot(s, win, point) {
   const h = b.height;
   if (x < 0 || y < 0 || x >= w || y >= h) return false;
   if (x <= 8 || y <= 8 || x >= w - 8 || y >= h - 8) return true;      // 拖拽条
-  if (x >= w - 68 && x <= w - 4 && y >= 4 && y <= 36) return true;     // ⤢ / ✕
-  // ■ 停止按钮（right:65 → 占 x ∈ [w-87, w-65]），只在任务运行时存在
-  if (s && s.state.activity === 'running' && x >= w - 90 && x < w - 64 && y >= 4 && y <= 36) return true;
+  if (x >= w - 68 && x <= w - 4 && y >= 4 && y <= 36) return true;     // ✕ 关闭（右上角）
+  // ⤢ 放大：38×38 居中（与 index.html 的 #expand 一致，外扩 2px 容差）。
+  // 按钮 hover 才显示，但主进程热区按静态几何兜底，指针一进来就能接管点击。
+  if (Math.abs(x - w / 2) <= 21 && Math.abs(y - h / 2) <= 21) return true;
   if (x >= 4 && x <= 60 && y >= 4 && y <= 32) return true;             // 左上角日志入口
   // 底部错误操作按钮（打开设置/重试）：只有按钮真的显示时才接管鼠标
   if (s && s.flags && s.flags.hasAction && y >= h - 42 && y <= h - 8 && x >= 8 && x <= w - 8) return true;
@@ -1827,7 +1829,7 @@ async function listWindows() {
         const owner = String(item.owner || '');
         const title = String(item.title || '');
         // 自己和宿主不算「被控目标」；其余所有应用窗口都列出来（含其它桌面）
-        const ownOverlay = /Desktop Agent|^Electron$/i.test(owner);
+        const ownOverlay = /Desktop Agent|DSH Rig|^Electron$/i.test(owner);
         const isSelf = ownOverlay || owner === HOST_PROCESS || SELF_WINDOW_PATTERN.test(title);
         if (isSelf) { selfWindowIds.add(item.windowId); continue; }
         windows.push({
@@ -1897,7 +1899,7 @@ function createWindowForSession(s) {
     alwaysOnTop: false,
     skipTaskbar: true,
     roundedCorners: true,
-    title: 'Desktop Agent · ' + s.id,
+    title: 'DSH Rig · ' + s.id,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

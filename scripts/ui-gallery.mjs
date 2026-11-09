@@ -53,7 +53,7 @@ async function main() {
   console.log('生成状态截图…');
   // 先重启小窗，保证从干净状态开始（错误态会一直挂到下一次成功抓帧）
   try {
-    execFileSync('launchctl', ['kickstart', '-k', 'gui/' + String(process.getuid()) + '/com.desktop-agent.overlay']);
+    execFileSync('launchctl', ['kickstart', '-k', 'gui/' + String(process.getuid()) + '/com.goodlifedog.dsh-rig.overlay']);
     await sleep(7000);
   } catch (e) { console.log('  重启失败:', e.message); }
 
@@ -93,7 +93,7 @@ async function main() {
 
   // 1. running
   await post('/visible', { visible: true });
-  await post('/status', { text: '正在后台读取岗位列表（拟人节奏）' });
+  await post('/status', { text: '正在后台读取示例页面（拟人节奏）' });
   await sleep(1500);
   await captureState('running');
 

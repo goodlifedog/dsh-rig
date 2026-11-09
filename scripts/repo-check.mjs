@@ -348,10 +348,9 @@ export async function main() {
     const flowDir = path.join(ROOT, 'flow');
     const names = (await fsp.readdir(flowDir)).filter((f) => f.endsWith('.md'));
     const index = await fsp.readFile(path.join(flowDir, 'INDEX.md'), 'utf8');
-    const EXEMPT = new Set(['INDEX.md']);   // 索引自己，以及公开发布前要移除的 BOSS-*
+    const EXEMPT = new Set(['INDEX.md']);   // 索引自己不用收录自己
     const missingDocs = names.filter((f) => {
       if (EXEMPT.has(f)) return false;
-      if (/^BOSS-/.test(f)) return false;    // 见 BOSS-EXTRACT：公开前移除
       return !index.includes(f);
     });
     add('flow 文档都能从 INDEX 找到', missingDocs.length === 0,

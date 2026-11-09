@@ -15,7 +15,7 @@
 | 看 ocu（底层能力）怎么接进来、怎么跟进上游 | [OCU-INTEGRATION.md](OCU-INTEGRATION.md) + [OCU-SYNC.md](OCU-SYNC.md) |
 | 打包、发布、CI | [PACKAGING.md](PACKAGING.md) + [PUBLISH.md](PUBLISH.md) |
 | Windows / 跨平台怎么跑 | [WINDOWS-TESTING.md](WINDOWS-TESTING.md) + [CROSS-PLATFORM.md](CROSS-PLATFORM.md) |
-| 写写入/投递类任务（不碰用户数据） | [WRITE.md](WRITE.md) |
+| 写入/提交类任务（不碰用户数据） | [WRITE.md](WRITE.md) |
 | 写任务时日志怎么标（PASS / FAIL / 环境跳过 / ❌） | [TASK-OUTPUT.md](TASK-OUTPUT.md) |
 | 代码风格与工程约定 / 技术选型 | [CODEX-STANDARD.md](CODEX-STANDARD.md) + [CODEX-TECH-STACK.md](CODEX-TECH-STACK.md) |
 | 外部监控侧现在看到什么（评审侧维护的日志） | [SUPERVISION.md](SUPERVISION.md) |

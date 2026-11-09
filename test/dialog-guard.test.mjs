@@ -21,7 +21,7 @@ test('只点安全按钮，不碰危险项', () => {
 });
 test('默认只处理自家进程，不去点用户的 Chrome', async () => {
   const mod = await import('../core/dialog-guard.mjs');
-  assert.deepEqual(mod.DEFAULT_TARGETS, ['Electron', 'Desktop Agent']);
+  assert.deepEqual(mod.DEFAULT_TARGETS, ['Electron', 'DSH Rig', 'Desktop Agent']);
   assert.ok(!mod.DEFAULT_TARGETS.includes('Google Chrome'));
 });
 

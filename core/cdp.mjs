@@ -12,7 +12,7 @@
  *
  * 用法（库）：
  *   import { CDP, listTargets, getVersion } from './cdp.mjs';
- *   const cdp = await CDP.attach({ port: 9333, target: 'Desktop Agent' });
+ *   const cdp = await CDP.attach({ port: 9333, target: 'DSH Rig' });
  *   console.log(await cdp.getTitle());
  *   await cdp.clickSelector('#pill');
  *   cdp.close();
@@ -21,7 +21,7 @@
  *   node cdp.mjs version --port=9333
  *   node cdp.mjs targets --port=9333
  *   node cdp.mjs eval    --port=9333 --expr="document.title"
- *   node cdp.mjs inspect --port=9333 --target="Desktop Agent"
+ *   node cdp.mjs inspect --port=9333 --target="DSH Rig"
  *   node cdp.mjs click   --port=9333 --selector="#pill"
  *   node cdp.mjs shot    --port=9333 --out=/tmp/overlay-cdp.png
  */

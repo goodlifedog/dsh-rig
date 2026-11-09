@@ -401,10 +401,10 @@ headless 浏览器在用户屏幕上没有窗口，画面只能靠 CDP 截图推
 - 悬停暂停：真实鼠标停在窗上，8 秒仍 visible=true；继续停到 20 秒，兜底强制 visible=false（hardHideMs=15000）。
 - 拖拽条：鼠标在顶部 8px 条内 clickThrough=false；从上边条拖 80px，窗口 y 坐标 49→129；之后空闲仍隐藏，位置保持。
 - 点击穿透：clickThrough=true 时点击小窗中心（1346,200），点击落到下面的测试窗口（日志记录 CLICK 714,48 H1），小窗自身无反应；把鼠标移到**中央 ⤢** 上 clickThrough 变 false，点击可触发放大（expanded=true）。
-- UI 变更说明（2026-11-08）：已删掉红色「■ 停止任务」按钮；放大 ⤢ 从右上角移到**窗口中央**（浏览器全屏按钮样式，hover 才出现）。下面这些截图大多摄于旧版 UI（右上角 ⤢、含红色停止钮），以实际界面为准；待重拍清单见 `overlay/docs/` 与验收任务。
+- UI 变更说明（2026-11-08）：已删掉红色「■ 停止任务」按钮；放大 ⤢ 从右上角移到**窗口中央**（浏览器全屏按钮样式，hover 才出现）。README 首屏两张截图（`overlay/docs/ui-live-small.png`、`overlay/docs/ui-live-expanded.jpg`）已按新界面重拍；本文件下面其余截图大多摄于改版前，作为历史留档，以实际界面为准。
 - 放大截图：docs/clarity-expanded.png；小窗清晰度截图：docs/clarity-small.png；多会话截图：docs/multi-session.png。
 - 外观改版数据（外部帧 example.com 1280×800，窗口仍 300×190）：改前 fps=10、frameBytes=59031、clickThrough=true；改后 fps=9.2、frameBytes=59031、clickThrough=true；运行中状态胶囊显示「正在读取页面内容（headless CDP） 2s」，悬停/日志交互不变；空闲 7 秒后 visible=false（未 pinned），pinned 时按规则保持；放大态 960×600 截图状态胶囊位置/字号一致（docs/ui-after.png、docs/ui-after-error.png、docs/ui-before.png）。
-- 宿主可见性：把宿主进程名临时改成不存在的应用后重启，/health hostVisible=false、hostBoundsStale=true、visible=false，CGWindowList 里没有任何 Desktop Agent 窗口；恢复后 hostVisible=true、hostBoundsStale=false、小窗重新出现。DSH 真身隐藏（System Events set visible=false）在锁屏状态下 CGWindowList 仍会列出窗口，属于系统锁屏行为，解锁后按 OnScreenOnly 判定。
+- 宿主可见性：把宿主进程名临时改成不存在的应用后重启，/health hostVisible=false、hostBoundsStale=true、visible=false，CGWindowList 里没有任何小窗窗口；恢复后 hostVisible=true、hostBoundsStale=false、小窗重新出现。DSH 真身隐藏（System Events set visible=false）在锁屏状态下 CGWindowList 仍会列出窗口，属于系统锁屏行为，解锁后按 OnScreenOnly 判定。
 - 外部帧 / headless：连续推 20 帧 example.com（1280×800 JPEG），20/20 返回 200，耗时约 2.2 秒；/health fps=11.9、frameBytes=59031（真实字节）、frames=25、frameWidth=1280、frameHeight=800、clickThrough=true、thumbnail.state=live；第一帧就带 cursor 时立即出现光标；无 width/height 的 3024×1964 PNG 也能从 IHDR 自动认出尺寸；非法 width 返回 400。截图 docs/headless-cdp-frame.png、docs/headless-cdp-click.png。
 
 ## 自检

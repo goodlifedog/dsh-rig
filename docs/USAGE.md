@@ -304,12 +304,12 @@ curl -s -H "X-Agent-Token: $TOKEN" http://127.0.0.1:7788/health | head -c 400   
 
    ```bash
    curl -s -m 2 -H "X-Agent-Token: $TOKEN" http://127.0.0.1:7788/health || echo OFFLINE
-   launchctl list | grep desktop-agent
+   launchctl list | grep dsh-rig
    ```
 
    - 连接失败 → 小窗进程没起。`launchctl list` 的格式是「PID 上次退出码 Label」，第二列就是退出码（`0` 正常，`-15` 表示被 SIGTERM 杀掉，其它非 0 是异常退出）。
    - 看日志找原因：`tail -30 logs/launchd-overlay.err`（未捕获异常、`SyntaxError`、模块加载失败都在这里）。
-   - 重启：`launchctl kickstart -k gui/$(id -u)/com.desktop-agent.overlay`（装了服务时）；没装服务就 `npm run overlay` 前台起，报错直接可见。
+   - 重启：`launchctl kickstart -k gui/$(id -u)/com.goodlifedog.dsh-rig.overlay`（装了服务时）；没装服务就 `npm run overlay` 前台起，报错直接可见。
    - 端口被占：`lsof -nP -iTCP:7788 -sTCP:LISTEN`。
 
 2. **服务在，但 `visible:false`** —— 这是设计内行为，逐项对照：
@@ -558,13 +558,13 @@ curl -s -X POST -H "X-Agent-Token: $TOKEN" -H 'Content-Type: application/json' h
 ### 5.5 launchctl（macOS 服务）
 
 ```bash
-launchctl list | grep desktop-agent                 # 看两个服务是否加载 + 上次退出码
-launchctl kickstart -k gui/$(id -u)/com.desktop-agent.daemon     # 重启 daemon
-launchctl kickstart -k gui/$(id -u)/com.desktop-agent.overlay    # 重启小窗
-launchctl print gui/$(id -u)/com.desktop-agent.daemon | head -30 # 看 plist 生效内容与运行状态
+launchctl list | grep dsh-rig                       # 看两个服务是否加载 + 上次退出码
+launchctl kickstart -k gui/$(id -u)/com.goodlifedog.dsh-rig.daemon     # 重启 daemon
+launchctl kickstart -k gui/$(id -u)/com.goodlifedog.dsh-rig.overlay    # 重启小窗
+launchctl print gui/$(id -u)/com.goodlifedog.dsh-rig.daemon | head -30 # 看 plist 生效内容与运行状态
 ```
 
-plist 在 `~/Library/LaunchAgents/`：`com.desktop-agent.daemon.plist`、`com.desktop-agent.overlay.plist`。
+plist 在 `~/Library/LaunchAgents/`：`com.goodlifedog.dsh-rig.daemon.plist`、`com.goodlifedog.dsh-rig.overlay.plist`。
 
 ### 5.6 日志与临时文件
 

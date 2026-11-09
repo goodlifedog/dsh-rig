@@ -15,7 +15,7 @@
 ```
 ┌──────────────────────────────────────────────────────────┐
 │ 任务层  core/tasks/*.mjs                                 │
-│  具体业务：读界面、点按钮、填表单、投递                    │
+│  具体业务：读界面、点按钮、填表单、提交                    │
 ├──────────────────────────────────────────────────────────┤
 │ 控制层  ocu over MCP（常驻连接）/ UIA 桥（无 ocu 时兜底）   │
 │  统一接口：getApp / getAXState / click / typeText / pressKey│
@@ -97,7 +97,7 @@ overlay ──screencapture 约 6fps──▶ 每个会话独立的窗口（真�
 ## 八、验证
 
 ```bash
-npm test            # 纯逻辑单测（打分、薪资、平台探测、标题门控、失败归类、HTTP 接口）
+npm test            # 纯逻辑单测（平台探测、标题门控、失败归类、HTTP 接口、适配引擎）
 npm run doctor      # 环境自检
 npm run monitor     # 一键巡检：健康 + 小窗回归 + 会话隔离 + 帧率，写 reports/monitor-*.md
 npm run accept      # 端到端验收，输出 Markdown 报告

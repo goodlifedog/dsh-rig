@@ -59,10 +59,10 @@ async function main() {
     pageTargets.map((t) => ({ title: t.title, url: t.url })));
 
   // 2. WebSocket + evaluate
-  const cdp = await CDP.attach({ host: HOST, port: PORT, target: 'Desktop Agent' });
+  const cdp = await CDP.attach({ host: HOST, port: PORT, target: 'DSH Rig' });
   try {
     const title = await cdp.getTitle();
-    check('Runtime.evaluate 返回 document.title', title === 'Desktop Agent', title);
+    check('Runtime.evaluate 返回 document.title', title === 'DSH Rig', title);
 
     // 3. 读 DOM
     const dom = await cdp.inspectDom();

@@ -2,11 +2,11 @@
 
 ## 0.8.0（未发布）
 
-- **摘掉招聘相关能力（BOSS）**：删除 6 个招聘任务、4 份站点文档、2 个探针脚本（合计 12 个文件、2556 行），并把 form-fill 重写成通用「当前标签页表单填充」（按无障碍 role 找文本栏→写值→读回→恢复），验收里的旧扫描任务换成通用网页点击示例；README/CAPABILITIES/ARCHITECTURE/USAGE/CHANGELOG 的招聘叙事全部改成通用后台操作表述。
+- **摘掉特定站点能力**：删除 6 个站点专用任务、4 份站点文档、2 个探针脚本（合计 12 个文件、2556 行），并把 form-fill 重写成通用「当前标签页表单填充」（按无障碍 role 找文本栏→写值→读回→恢复），验收里的旧扫描任务换成通用网页点击示例；README/CAPABILITIES/ARCHITECTURE/USAGE 的站点业务叙事全部改成通用后台操作表述，遗留的岗位打分 / 薪资解析两个模块连同单测一并删除。
 - **克隆即用（内置 ocu）**：`open-computer-use` 变成 npm 依赖，`resolveOcu` 按 OCU_BIN → node_modules → third_party → 全局的顺序查找；打包只从 node_modules 拷 ocu 运行时与 LICENSE / NOTICE / THIRD_PARTY_NOTICES（不整包打 node_modules）；README/THIRD-PARTY 注明「底层能力来自 open-computer-use（MIT），未修改其源码」。
-- **通用网页点击示例**：新增 `examples/web-click`——headless Chrome + CDP，任意页面按可见文字找按钮 → 后台点击 → 读回结果 → 断言，全程不抢前台；已接进验收替代旧的招聘扫描步骤（8 条单测）。
+- **通用网页点击示例**：新增 `examples/web-click`——headless Chrome + CDP，任意页面按可见文字找按钮 → 后台点击 → 读回结果 → 断言，全程不抢前台；已接进验收替代旧的站点扫描步骤（8 条单测）。
 - **适配工具与本轮实测**：新增 `core/tasks/adapter-demo.mjs`（读界面树 / 按文字点击 / 键入 / 小窗回显证据，带锁屏/用户活跃/front-risk/运行门禁、临时样例副本与清理）；Safari 端到端 S 级实测通过（读 105 节点/40 按钮 → 点「显示边栏」节点 105→112 → 回显 → 前台不变 → 点「隐藏边栏」还原）；front-unchanged 加了系统浮层忽略与基线稳定校验（通知横幅不再造成假失败/假通过）；适配候选与证据等级见 `docs/ADAPTERS.md`。
-- **小窗 UI 精简**：删掉红色「停止任务」按钮（AI 自动化不需要），放大按钮从右上角移到窗口中央、改成浏览器全屏按钮样式（hover 才出现，隐藏时不挡点击）；✕/Esc 关闭保留。
+- **小窗 UI 精简**：删掉红色「停止任务」按钮（AI 自动化不需要），放大按钮从右上角移到窗口中央、改成浏览器全屏按钮样式（hover 才出现，隐藏时不挡点击），主进程点击穿透热区同步改成中央区域并去掉停止按钮旧热区；✕/Esc 关闭保留。README 首屏两张小窗截图已按新界面重拍（收起态 / 放大态，底图为示例页面，不含个人数据）。
 - **发布彩排脚本**：新增 `scripts/release-rehearsal.mjs`——干净副本六步（archive → install → test → pack 校验 ocu 许可 → 临时 prefix 全局安装 + doctor → publish dry-run），支持 --dry-run/--quick/--keep；真实跑通 6 PASS / 0 SKIP / 0 FAIL，不污染本机环境。
 - **服务迁移实测**：`service:uninstall` → `service:install` 后只剩 `com.goodlifedog.dsh-rig.daemon/overlay` 两套（单 daemon、单 overlay、单实例占 7789/7788），旧 `com.desktop-agent.*` 标签与 plist 被清理。
 
@@ -162,7 +162,7 @@
 - 补进程收尾的最后一层（外部评审 21 轮）：runner 收到 SIGTERM 时转发给任务进程组（原来 daemon 只杀到 runner 组，任务因为自成组会继续跑），4 秒后补 SIGKILL 再退出；任务子进程 pid 记进运行日志（`task-spawned`），排查"任务拉起了什么"有据可查
 - 实测：runner 收 TERM 后同组任务与孙进程全部结束；真实任务运行日志里能看到 `taskPid`
 - 修进程收尾三个缺口（外部评审实锤：一个孤儿 app-agent 活了 26 小时）：runner 任务改为独立进程组、超时先 TERM 整组 5 秒后补 KILL；daemon 收到 SIGTERM 先结束当前任务进程组再退出；daemon 启动时清理孤儿 app-agent（只清 ppid=1、当前用户、命令属于本项目依赖的），实测清掉 37097/48216 两个残留、保留父进程还活着的那个
-- 修失败归类放水（外部评审）：从环境跳过规则里移除过宽的 `No such file or directory` 和 `未送达`，只保留 `env: node: No such file` 与业务状态 `已联系`；补负向测试确保「投递未送达」「依赖缺失」这类真失败不会再被当成环境跳过（验收假通过的根源）
+- 修失败归类放水（外部评审）：从环境跳过规则里移除过宽的 `No such file or directory` 和 `未送达`，只保留 `env: node: No such file` 与业务状态 `已联系`；补负向测试确保「提交未送达」「依赖缺失」这类真失败不会再被当成环境跳过（验收假通过的根源）
 - README 安全边界补：浏览器来源拦截、控制面 token、pid 复核、service:status/restart 用法
 - 服务部署守卫：daemon 端口被占时打印占用者 pid 并以退出码 78 结束（原来静默崩溃、launchd 一直重试）；新增 `npm run service:status`（监听者 pid / launchd 受管 pid / 漂移判定）与 `npm run service:restart`（只杀确认是本项目 daemon.mjs 的监听者，再 kickstart 并验证新 pid）；launchd plist 加 ThrottleInterval 10；5 项单测
 - 实测 `service:restart`：旧 pid 49698 → launchd 拉起 50606，漂移状态 ok，token 闸门复验 401 生效

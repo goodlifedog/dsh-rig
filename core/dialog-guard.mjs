@@ -39,7 +39,7 @@ const SYSTEM_PROCESS_HINTS = /SecurityAgent|UserNotificationCenter|coreauthd|tcc
 const SAFE_BUTTONS = ['确定', '好', '关闭', '稍后', '以后再说', '取消', 'OK', 'Dismiss', 'Close', 'Later', 'Cancel'];
 
 /** 默认只处理自家进程：别去点用户正在用的 Chrome/办公软件 */
-export const DEFAULT_TARGETS = ['Electron', 'Desktop Agent'];
+export const DEFAULT_TARGETS = ['Electron', 'DSH Rig', 'Desktop Agent'];
 
 /**
  * 弹窗分类（结构优先，语言兜底）。
