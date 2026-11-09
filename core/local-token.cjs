@@ -178,7 +178,7 @@ function shouldSendToken(url, options = {}) {
     let target = '';
     try { target = new URL(String(url)).host; } catch {}
     try {
-      console.warn('[desktop-agent] ' + REMOTE_TOKEN_ENV + '=1：X-Agent-Token 将发往非回环地址 '
+      console.warn('[dsh-rig] ' + REMOTE_TOKEN_ENV + '=1：X-Agent-Token 将发往非回环地址 '
         + (target || '(无法解析的 URL)') + '。只在你完全信任这条隧道时开启。');
     } catch {}
   }

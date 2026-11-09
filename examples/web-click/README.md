@@ -6,7 +6,7 @@
 ## 怎么跑
 
 ~~~sh
-cd desktop-agent
+cd dsh-rig
 node examples/web-click/run.mjs
 ~~~
 

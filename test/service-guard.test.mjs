@@ -19,16 +19,16 @@ test('解析 lsof -t 的 pid', () => {
 });
 
 test('只认本项目的 daemon 命令行，别的一概不当自己人', () => {
-  const root = '/repo/desktop-agent';
+  const root = '/repo/dsh-rig';
   assert.equal(isOurDaemonCommand(root + '/core/daemon.mjs', { rootDir: root }), true);
-  assert.equal(isOurDaemonCommand('/usr/local/bin/node /x/desktop-agent/core/daemon.mjs'), true);
+  assert.equal(isOurDaemonCommand('/usr/local/bin/node /x/dsh-rig/core/daemon.mjs'), true);
   assert.equal(isOurDaemonCommand('/usr/bin/python3 -m http.server 7789'), false);
   assert.equal(isOurDaemonCommand('/Applications/Foo.app/Contents/MacOS/Foo'), false);
   assert.equal(isOurDaemonCommand('', { rootDir: root }), false);
 });
 
 test('监听者诊断：没监听 / 自己人 / 外人', () => {
-  const root = '/repo/desktop-agent';
+  const root = '/repo/dsh-rig';
   assert.equal(diagnoseListener({ listenerPid: 0 }), 'no-listener');
   assert.equal(diagnoseListener({ listenerPid: 100, listenerCommand: root + '/core/daemon.mjs', rootDir: root }), 'ok');
   assert.equal(diagnoseListener({ listenerPid: 100, listenerCommand: '/usr/bin/python3 -m http.server', rootDir: root }), 'foreign-process');
@@ -47,7 +47,7 @@ test('部署漂移：监听者与受管进程不一致就是 stray', () => {
   assert.equal(deploymentDrift({ listenerPid: 40329, managedPid: 0 }), 'no-managed');
 });
 test('overlay 进程识别：只认本仓库 overlay 目录下的 Electron', () => {
-  const root = '/repo/desktop-agent';
+  const root = '/repo/dsh-rig';
   assert.equal(isOurOverlayCommand(root + '/overlay/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron .', { rootDir: root }), true);
   assert.equal(isOurOverlayCommand('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'), false);
   assert.equal(isOurOverlayCommand('/Applications/Some App/Electron', { rootDir: root }), false);

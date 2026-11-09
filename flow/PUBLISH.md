@@ -5,7 +5,7 @@
 ## 一、推送前自检
 
 ```bash
-cd desktop-agent
+cd dsh-rig
 npm run repo:check     # 版本一致、无依赖产物、无大文件、无隐私泄漏
 npm test               # 单测
 ```
@@ -17,13 +17,13 @@ npm test               # 单测
 推荐用 GitHub CLI，一条命令建仓库并推：
 
 ```bash
-gh repo create desktop-agent --public --source=. --remote=origin --push
+gh repo create dsh-rig --public --source=. --remote=origin --push
 ```
 
 手动方式：
 
 ```bash
-git remote add origin git@github.com:你的用户名/desktop-agent.git
+git remote add origin git@github.com:你的用户名/dsh-rig.git
 git branch -M main
 git push -u origin main
 ```

@@ -4,12 +4,12 @@
  * CDP 兜底路径的验收脚本（在受控的 overlay 上跑）。
  *
  * 前置：overlay 必须先带调试端口启动：
- *   cd desktop-agent/overlay
+ *   cd dsh-rig/overlay
  *   env -u ELECTRON_RUN_AS_NODE ./node_modules/.bin/electron . --remote-debugging-port=9333
  *
  * 运行：
- *   node desktop-agent/scripts/cdp-probe.mjs            # 默认 port=9333
- *   node desktop-agent/scripts/cdp-probe.mjs 9334       # 指定端口
+ *   node dsh-rig/scripts/cdp-probe.mjs            # 默认 port=9333
+ *   node dsh-rig/scripts/cdp-probe.mjs 9334       # 指定端口
  *
  * 检查项：
  *   1. HTTP /json/version + /json/list 能拿到 target；

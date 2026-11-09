@@ -126,7 +126,7 @@ codesign -d --entitlements :- "/Applications/<App>.app"
 ## 6. 复现本报告（只读）
 
 ~~~bash
-cd desktop-agent
+cd dsh-rig
 # 1) 已有的 CDP 实测结论
 ls reports/cdp-driver-*.json
 # 2) AX 对照

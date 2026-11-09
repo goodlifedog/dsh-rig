@@ -375,7 +375,7 @@ cd overlay && npx electron-builder --mac dir --config electron-builder.yml
 ## 打包上传
 
 ```bash
-bash scripts/export.sh    # 生成 dist/desktop-agent-<version>.tar.gz，排除依赖与运行时产物
+bash scripts/export.sh    # 生成 dist/dsh-rig-<version>.tar.gz，排除依赖与运行时产物
 ```
 
 首次在 Windows 上运行，请按 [flow/WINDOWS-TESTING.md](flow/WINDOWS-TESTING.md) 的清单逐项确认。

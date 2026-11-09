@@ -128,7 +128,7 @@ agent 侧（core/agentd.mjs）读取环境变量 AGENT_SESSION（缺省 default�
 
 Electron 二进制不随仓库提交，首次需要安装（约 100–200 MB，会联网下载）：
 
-    cd desktop-agent/overlay
+    cd dsh-rig/overlay
     npm install
 
 启动（本机环境里有 ELECTRON_RUN_AS_NODE=1，必须显式去掉，否则 Electron 会以 Node 模式运行、起不来窗口）：
@@ -411,7 +411,7 @@ headless 浏览器在用户屏幕上没有窗口，画面只能靠 CDP 截图推
 
 不需要 Electron 也能验证接口层与参数解析：
 
-    cd desktop-agent/overlay
+    cd dsh-rig/overlay
     npm run check     # 全部 JS 语法检查
     npm run smoke     # 起临时端口 HTTP 服务并断言各接口与错误分支
 

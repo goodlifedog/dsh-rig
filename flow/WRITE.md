@@ -3,8 +3,8 @@
 对应任务：task-5「后台写操作任务：完成一次真实表单填写并校验」
 交付代码：
 
-- desktop-agent/core/tasks/form-fill.mjs —— 真实应用（Chrome + 页面输入框）
-- desktop-agent/core/tasks/form-fill-local.mjs —— 本地对照（file:// + 最小 HTML 表单）
+- dsh-rig/core/tasks/form-fill.mjs —— 真实应用（Chrome + 页面输入框）
+- dsh-rig/core/tasks/form-fill-local.mjs —— 本地对照（file:// + 最小 HTML 表单）
 - 本文 —— 四类控件可写性结论、复现方法与限制
 
 ---

@@ -5,7 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/dist"
 VERSION="$(node -p "require('$ROOT/package.json').version")"
-NAME="desktop-agent-$VERSION"
+NAME="dsh-rig-$VERSION"
 
 mkdir -p "$OUT"
 rm -f "$OUT/$NAME.tar.gz"

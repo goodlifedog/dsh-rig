@@ -43,7 +43,7 @@
 ## 验收
 
 ```bash
-cd desktop-agent && node core/acceptance.mjs
+cd dsh-rig && node core/acceptance.mjs
 ```
 
 当前结果：全部通过（明细见 `reports/acceptance-<时间戳>.md`；环境不具备的项会标「环境跳过」，不算失败）。

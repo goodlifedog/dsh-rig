@@ -325,10 +325,10 @@ export async function main() {
       try { text = await fsp.readFile(path.join(ROOT, doc), 'utf8'); } catch { continue; }
       for (const m of text.matchAll(/`([A-Za-z0-9_./-]+\.(?:mjs|js|cjs|ps1|html|yml))`/g)) {
         let name = m[1];
-        // 忽略 URL 片段与本机绝对路径；文档里常写 desktop-agent/ 前缀（相对父目录），去掉再判
+        // 忽略 URL 片段与本机绝对路径；文档里常写 dsh-rig/ 前缀（相对父目录），去掉再判
         if (name.startsWith('/')) continue;
         if (/^https?:/.test(name)) continue;
-        name = name.replace(/^desktop-agent\//, '');
+        name = name.replace(/^(?:desktop-agent|dsh-rig)\//, '');
         // 带路径的按仓库根判断；只写文件名的按已知文件名集合判断
         if (name.includes('/')) {
           const found = await fsp.access(path.join(ROOT, name)).then(() => true).catch(() => false);

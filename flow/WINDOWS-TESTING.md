@@ -39,7 +39,7 @@ npm run overlay
 
 ```powershell
 npm run service:install
-schtasks /Query /TN desktop-agent-daemon
+schtasks /Query /TN dsh-rig-daemon
 ```
 
 预期：两个计划任务创建成功，`ONLOGON` 触发。

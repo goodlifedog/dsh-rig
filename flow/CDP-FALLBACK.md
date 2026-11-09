@@ -47,14 +47,14 @@ Telegram 的 AX 原文（节选）：
 ## 2. 实验环境
 
 - macOS 26.5.1 arm64
-- overlay：`desktop-agent/overlay`，Electron 41.7.1，Chromium 146.0.7680.216
+- overlay：`dsh-rig/overlay`，Electron 41.7.1，Chromium 146.0.7680.216
 - Node：v20.18.0（**全局 WebSocket 为 undefined**，见第 5 节）
 - ocu 1.1.3（`~/.local/bin/ocu`）
 
 启动命令（本机有 `ELECTRON_RUN_AS_NODE=1`，必须显式去掉）：
 
 ~~~bash
-cd desktop-agent/overlay
+cd dsh-rig/overlay
 env -u ELECTRON_RUN_AS_NODE ./node_modules/.bin/electron . --remote-debugging-port=9333
 ~~~
 
@@ -98,7 +98,7 @@ curl -s http://127.0.0.1:9333/json/list
   "id": "CC5610D3DA4C864504D17DC30010B286",
   "title": "Desktop Agent",
   "type": "page",
-  "url": "file:///.../desktop-agent/overlay/index.html",
+  "url": "file:///.../dsh-rig/overlay/index.html",
   "webSocketDebuggerUrl": "ws://127.0.0.1:9333/devtools/page/CC5610D3DA4C864504D17DC30010B286"
 }]
 ~~~
@@ -106,7 +106,7 @@ curl -s http://127.0.0.1:9333/json/list
 ### 3.3 WebSocket 侧：执行 JS、读 DOM 标题
 
 ~~~bash
-node desktop-agent/core/cdp.mjs eval --port=9333 --expr="document.title"
+node dsh-rig/core/cdp.mjs eval --port=9333 --expr="document.title"
 ~~~
 
 ~~~text
@@ -116,13 +116,13 @@ node desktop-agent/core/cdp.mjs eval --port=9333 --expr="document.title"
 ### 3.4 读 DOM（AX 读不到的部分）
 
 ~~~bash
-node desktop-agent/core/cdp.mjs inspect --port=9333
+node dsh-rig/core/cdp.mjs inspect --port=9333
 ~~~
 
 ~~~json
 {
   "title": "Desktop Agent",
-  "url": "file:///.../desktop-agent/overlay/index.html",
+  "url": "file:///.../dsh-rig/overlay/index.html",
   "readyState": "complete",
   "nodes": 25,
   "interactive": 2,
@@ -139,7 +139,7 @@ node desktop-agent/core/cdp.mjs inspect --port=9333
 ### 3.5 执行 JS 并产生副作用（证明不是只读）
 
 ~~~bash
-node desktop-agent/core/cdp.mjs eval --port=9333 \
+node dsh-rig/core/cdp.mjs eval --port=9333 \
   --expr="(document.documentElement.setAttribute('data-cdp-probe','ok'), document.documentElement.getAttribute('data-cdp-probe'))"
 ~~~
 
@@ -157,7 +157,7 @@ node desktop-agent/core/cdp.mjs eval --port=9333 \
 实测用后者点 overlay 的状态胶囊 `#pill`（它的行为是开/关日志抽屉，状态体现在 `#logs.open`）：
 
 ~~~bash
-node desktop-agent/core/cdp.mjs click --port=9333 --selector="#pill"
+node dsh-rig/core/cdp.mjs click --port=9333 --selector="#pill"
 ~~~
 
 ~~~json
@@ -190,7 +190,7 @@ Input.insertText('hello-cdp')  ->  输入框 value = "hello-cdp"
 ### 3.8 截图
 
 ~~~bash
-node desktop-agent/core/cdp.mjs shot --port=9333 --out=/tmp/cdp-probe-shot.png
+node dsh-rig/core/cdp.mjs shot --port=9333 --out=/tmp/cdp-probe-shot.png
 ~~~
 
 ~~~json
@@ -201,10 +201,10 @@ node desktop-agent/core/cdp.mjs shot --port=9333 --out=/tmp/cdp-probe-shot.png
 
 ### 3.9 一条命令跑完验收
 
-验收脚本：`desktop-agent/scripts/cdp-probe.mjs`（前置：overlay 带 9333 启动）。
+验收脚本：`dsh-rig/scripts/cdp-probe.mjs`（前置：overlay 带 9333 启动）。
 
 ~~~bash
-node desktop-agent/scripts/cdp-probe.mjs 9333
+node dsh-rig/scripts/cdp-probe.mjs 9333
 ~~~
 
 实测输出（13/13 全过）：
@@ -290,7 +290,7 @@ target 列表（4 个：2 个 page、1 个 iframe、1 个 worker）：
 读 DOM（同一时刻对照）：
 
 ~~~bash
-node desktop-agent/core/cdp.mjs inspect --port=9444 --target="index.html"
+node dsh-rig/core/cdp.mjs inspect --port=9444 --target="index.html"
 ~~~
 
 ~~~json
@@ -335,7 +335,7 @@ otool -L /Applications/Telegram.app/Contents/MacOS/Telegram  # 只链 libSystem
 
 ~~~bash
 env -u ELECTRON_RUN_AS_NODE ./node_modules/.bin/electron . --remote-debugging-port=0
-cat "$HOME/Library/Application Support/desktop-agent-overlay/DevToolsActivePort"
+cat "$HOME/Library/Application Support/<overlay 的 userData 目录>/DevToolsActivePort"
 ~~~
 
 ~~~text
@@ -346,7 +346,7 @@ cat "$HOME/Library/Application Support/desktop-agent-overlay/DevToolsActivePort"
 用这个端口跑 cdp.mjs 一样通：
 
 ~~~bash
-node desktop-agent/core/cdp.mjs eval --port=54001 --target="Desktop Agent" --expr="document.title"
+node dsh-rig/core/cdp.mjs eval --port=54001 --target="DSH Rig" --expr="document.title"
 # -> "Desktop Agent"
 ~~~
 
@@ -372,7 +372,7 @@ undefined
 | C. `npm i ws` | 未安装（`require.resolve('ws')` 失败） | 成熟稳定 | 引入第三方依赖，与「零依赖」约定冲突 |
 | D. `npx wscat` 等临时工具 | 未采用 | 不用装 | 交互式工具，不适合脚本编排；要联网拉包；多步调用难 |
 
-本仓库选 **A**：`desktop-agent/core/cdp.mjs` 内置 `MiniWebSocket`，实现内容是
+本仓库选 **A**：`dsh-rig/core/cdp.mjs` 内置 `MiniWebSocket`，实现内容是
 握手（`Sec-WebSocket-Key` + SHA1 校验）→ 客户端掩码帧编码 → 长度 7/16/64 位解析 →
 分片续帧（continuation）→ ping/pong/close 处理 → 64MB payload 上限。
 
@@ -411,12 +411,12 @@ cdp.close();
 命令行（取证用）：
 
 ~~~bash
-node desktop-agent/core/cdp.mjs version  --port=9333
-node desktop-agent/core/cdp.mjs targets  --port=9333
-node desktop-agent/core/cdp.mjs eval     --port=9333 --expr="document.title"
-node desktop-agent/core/cdp.mjs inspect  --port=9333
-node desktop-agent/core/cdp.mjs click    --port=9333 --selector="#pill"
-node desktop-agent/core/cdp.mjs shot     --port=9333 --out=/tmp/a.png
+node dsh-rig/core/cdp.mjs version  --port=9333
+node dsh-rig/core/cdp.mjs targets  --port=9333
+node dsh-rig/core/cdp.mjs eval     --port=9333 --expr="document.title"
+node dsh-rig/core/cdp.mjs inspect  --port=9333
+node dsh-rig/core/cdp.mjs click    --port=9333 --selector="#pill"
+node dsh-rig/core/cdp.mjs shot     --port=9333 --out=/tmp/a.png
 ~~~
 
 实现细节里有一个容易踩的坑：本客户端**不发 `Origin` 头**，所以不会触发 Chromium 的
@@ -452,7 +452,7 @@ node desktop-agent/core/cdp.mjs shot     --port=9333 --out=/tmp/a.png
 
 ~~~bash
 # 1. 启动带调试端口的 overlay
-cd desktop-agent/overlay
+cd dsh-rig/overlay
 env -u ELECTRON_RUN_AS_NODE ./node_modules/.bin/electron . --remote-debugging-port=9333 &
 
 # 2. HTTP 侧确认
@@ -460,22 +460,22 @@ curl -s http://127.0.0.1:9333/json/version
 curl -s http://127.0.0.1:9333/json/list
 
 # 3. 读标题 / DOM
-cd ~/your-workspace/desktop-agent
-node desktop-agent/core/cdp.mjs eval --port=9333 --expr="document.title"
-node desktop-agent/core/cdp.mjs inspect --port=9333
+cd ~/your-workspace/dsh-rig
+node dsh-rig/core/cdp.mjs eval --port=9333 --expr="document.title"
+node dsh-rig/core/cdp.mjs inspect --port=9333
 
 # 4. 真实点击 + 读回
-node desktop-agent/core/cdp.mjs eval --port=9333 \
+node dsh-rig/core/cdp.mjs eval --port=9333 \
   --expr="document.getElementById('logs').className"
-node desktop-agent/core/cdp.mjs click --port=9333 --selector="#pill"
-node desktop-agent/core/cdp.mjs eval --port=9333 \
+node dsh-rig/core/cdp.mjs click --port=9333 --selector="#pill"
+node dsh-rig/core/cdp.mjs eval --port=9333 \
   --expr="document.getElementById('logs').className"
 
 # 5. 一条命令跑完整验收
-node desktop-agent/scripts/cdp-probe.mjs 9333
+node dsh-rig/scripts/cdp-probe.mjs 9333
 
 # 6. 清理
-pkill -f "desktop-agent/overlay"
+pkill -f "dsh-rig/overlay"
 ~~~
 
 ## 9. 未验证 / 待办（如实记录）
@@ -494,14 +494,14 @@ pkill -f "desktop-agent/overlay"
 
 ## 10. 文件
 
-- `desktop-agent/core/cdp.mjs` —— 零依赖 CDP 客户端（HTTP 发现、RFC6455 最小实现、evaluate/click/insertText/screenshot、命令行）
-- `desktop-agent/scripts/cdp-probe.mjs` —— 13 项验收脚本（在带端口的 overlay 上跑）
-- `desktop-agent/core/electron-task.mjs` —— 任务层封装（启动/连接/等就绪/生命周期，见第 11 节）
-- `desktop-agent/core/tasks/electron-demo.mjs` —— 离屏 Electron 实例 + CDP 的自证任务（10 项检查）
-- `desktop-agent/flow/CDP-FALLBACK.md` —— 本文件
+- `dsh-rig/core/cdp.mjs` —— 零依赖 CDP 客户端（HTTP 发现、RFC6455 最小实现、evaluate/click/insertText/screenshot、命令行）
+- `dsh-rig/scripts/cdp-probe.mjs` —— 13 项验收脚本（在带端口的 overlay 上跑）
+- `dsh-rig/core/electron-task.mjs` —— 任务层封装（启动/连接/等就绪/生命周期，见第 11 节）
+- `dsh-rig/core/tasks/electron-demo.mjs` —— 离屏 Electron 实例 + CDP 的自证任务（10 项检查）
+- `dsh-rig/flow/CDP-FALLBACK.md` —— 本文件
 ## 11. 如何在任务里用（任务层 API）
 
-底层 `core/cdp.mjs` 之上包了一层 `desktop-agent/core/electron-task.mjs`：
+底层 `core/cdp.mjs` 之上包了一层 `dsh-rig/core/electron-task.mjs`：
 任务里不用再自己轮询端口、等 target、判空，直接调用就行（风格与 `core/agentd.mjs` 一致：导出函数 + 中文注释 + 明确错误）。
 
 三行版（复制即用）：
@@ -543,7 +543,7 @@ accessory（`app.setActivationPolicy('accessory')` + `app.dock.hide()`）、`opa
 ### 11.3 自证任务
 
 ~~~bash
-node desktop-agent/core/tasks/electron-demo.mjs
+node dsh-rig/core/tasks/electron-demo.mjs
 ~~~
 
 它会临时写一个页面 + 离屏宿主，带 `--remote-debugging-port=0` 启动，读 `DevToolsActivePort` 拿端口，然后验证：

@@ -46,7 +46,7 @@
 ### 1.1 环境自检
 
 ```bash
-cd desktop-agent
+cd dsh-rig
 npm run doctor
 ```
 
@@ -376,7 +376,7 @@ curl -s -H "X-Agent-Token: $TOKEN" http://127.0.0.1:7788/health | head -c 400   
 5. **浏览器任务卡在「启动 Chrome」**：
 
    - 同一个 user-data-dir 只允许一个 Chrome。新版 `launch()` 启动前会自动清残留进程 + 端口/单实例锁，小窗日志会写「发现同 profile 的残留 Chrome 进程：…，正在清理」。
-   - 还起不来就看有没有别的任务占着同一 profile：`ps -ax -o pid=,command= | grep -i "desktop-agent"`。
+   - 还起不来就看有没有别的任务占着同一 profile：`ps -ax -o pid=,command= | grep -iE "desktop-agent|dsh-rig"`。
    - 失败重试一次后仍失败会报「启动 Chrome 失败（已尝试 2 次）：…」。
 
 6. **daemon 里跑任务报 `env: node: No such file or directory`**：

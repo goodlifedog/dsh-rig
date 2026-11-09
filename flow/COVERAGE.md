@@ -1,6 +1,6 @@
 # macOS 应用 AX 覆盖率报告
 
-探测脚本：desktop-agent/core/tasks/coverage-probe.mjs
+探测脚本：dsh-rig/core/tasks/coverage-probe.mjs
 探测时间：2026-11-05 22:00（本机 macOS 26.5.1，ocu 1.1.3，树预算 6000 节点）
 原始 JSON：/tmp/coverage-latest.json（脚本输出），原始快照：/tmp/coverage-raw/
 
@@ -120,7 +120,7 @@ WeChat pid 18425、App Store pid 18444），并不是只读失败。
 ## 7. 复现方法
 
 ~~~sh
-cd desktop-agent
+cd dsh-rig
 PATH="$HOME/.local/bin:$PATH" node core/tasks/coverage-probe.mjs
 ~~~
 
