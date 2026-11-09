@@ -136,7 +136,7 @@ front-risk 名单当前 **11 个应用**，命中即环境跳过，**--allow-lau
 | --- | --- | --- | --- | --- |
 | **计算器（Calculator）** | 读显示屏文本 | 点数字按钮（如「7」），读回显示值变化 | 不需要 | 无需清理（不留数据） |
 | **访达（Finder）** | 读窗口标题 + 侧边栏节点 | 侧边栏多为「行/单元格」而不是按钮，`--click-text` **可能点不到** → 先只读 | 不需要 | 无需清理 |
-| **备忘录（Notes）** | 读窗口/列表 | 点「新建备忘录」 | 只往**新建的**空笔记里写 `[AGENT-TEST] ...` | `npm run cleanup:test -- --force`（删带 [AGENT-TEST] 标记的活笔记，并永久删除最近删除里的同名测试笔记） |
+| **备忘录（Notes）** | 读窗口/列表 | 点「新建备忘录」 | 只往**新建的**空笔记里写 `[AGENT-TEST] ...` | `npm run cleanup:test -- --force`（删带 [AGENT-TEST] 标记的活笔记 + 永久删除最近删除里的同名笔记；AX 读不到列表时自动走 AppleScript 兜底） |
 | **微信（WeChat）** | 只读会话/登录态节点（登录后控件才多） | 不发消息、不点发送 | 仅搜索框键入，**不回车** | 手工清空搜索框，或保留也不影响消息 |
 
 **本轮实测（评审侧，2026-11-08 23:30–23:50）：**
@@ -150,7 +150,7 @@ front-risk 名单当前 **11 个应用**，命中即环境跳过，**--allow-lau
 | Electron 夹具 | `--app Electron --type-text ... --allow-write` | ✅ 写入成功、恢复为空、用户回来即停 |
 | 计算器（点击） | `--app Calculator --click-text "7"` → `--click-text "清除"` | ✅ 点「7」显示 0→77，点「清除」还原 0；前台未变（2026-11-09） |
 | 访达（点击） | `--app Finder --click-text "下载"` → `--click-text "文稿"` | ✅ 标题 文稿→下载、节点 87→77；点回「文稿」还原、前台未变 |
-| 备忘录（点击 + 键入） | `--app Notes --click-text "新建备忘录"` → `--type-text "[AGENT-TEST] adapter demo" --allow-write` → `npm run cleanup:test -- --force` | ✅ 节点 48→55；写入并读回一致；清理后核对两处：活笔记带标记 0 条、最近删除 0 条（9202c2b 起 cleanup 会一并永久删除最近删除里的测试笔记）；前台未变 |
+| 备忘录（点击 + 键入） | `--app Notes --click-text "新建备忘录"` → `--type-text "[AGENT-TEST] adapter demo" --allow-write` → `npm run cleanup:test -- --force` | ✅ 节点 48→55；写入并读回一致；清理后核对两处：活笔记带标记 0 条、最近删除 0 条（cleanup 走 AX + AppleScript 双路：AX 读不到列表时按标题兜底删，最近删除也一并永久删除）；前台未变 |
 
 写已有内容：默认拒绝（避免覆盖用户数据）。确需覆盖用 --type-index <元素索引> 加 --allow-write，写入后自动恢复原值；不要靠放宽启发式猜字段（Finder 的文件名框解析后没有标签，会被误判成可写目标）。
 
