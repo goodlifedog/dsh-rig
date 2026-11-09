@@ -7,7 +7,7 @@
 
 ## 0. 一句话结论
 
-**Safari 已完成端到端适配（S 级实测）**：读树 105 节点 / 40 按钮 → 按文字点「边栏」→ 节点 105→112 → 回显截图 → 前台 DSH 未变；再点「隐藏边栏」恢复 105。
+**5 个应用达到 S（读界面 + 按文字点击/键入 + 读回）**：Safari 端到端（读 105 / 40 → 点「边栏」→ 105→112 → 回显 → 前台未变 → 点回 105）；计算器（点「7」→ 显示 77 → 点「清除」还原 0）；访达（点「下载」→ 窗口标题 文稿→下载、节点 87→77 → 点回「文稿」还原）；备忘录（点「新建备忘录」→ 节点 48→55 → 键入 `[AGENT-TEST]` 读回 → cleanup 后 0 残留）；Chrome（独立 profile + CDP 读/点/键入，见 3.2）。
 **Chrome 的适配只在「独立 profile 的 CDP 通道」意义上成立（S）**——不要用 adapter-demo 去碰用户正在用的 Chrome/profile。
 **下一批优先做不在前台风险名单里的安全应用**：计算器、访达、备忘录、微信（只读 + 受限键入 + 可清理）。
 front-risk 名单当前 **11 个应用**，命中即环境跳过，**--allow-launch 不绕过**；写操作（--type-text）必须先有不覆盖用户内容的守卫。
@@ -111,7 +111,8 @@ front-risk 名单当前 **11 个应用**，命中即环境跳过，**--allow-lau
 | --- | --- | --- | --- | --- |
 | **A（已完成）** | Safari | **S** | — | 见 3.1 |
 | **A（已完成）** | Google Chrome | **S**（CDP 通道） | 只用独立 profile 实例 | 见 3.2 |
-| **A2（下一批）** | 计算器 / 访达 / 备忘录 / 微信 | P（不在名单，可安全实测） | 见第 4 节 | 见第 4 节判定 |
+| **A2（已完成）** | 计算器 / 访达 / 备忘录 | **S**（读 + 点击/键入 + 读回，2026-11-09 实测） | 见第 4 节 | 见第 4 节判定 |
+| **A2（待测）** | 微信 | P（需登录态） | 见第 4 节 | 见第 4 节判定 |
 | **B（真 Electron，先过预检）** | Antigravity | P（零实测） | 二进制接受调试参数；退出工作区前问用户 | 端口起来 + /json/version 有响应 |
 | **B（真 Electron，先过预检）** | 抖音 | X（CDP 10/10 ECONNREFUSED） | 同上；起不来如实记「应用侧限制」 | 同上 |
 | **C（排后，front-risk）** | Preview | P + X | 清「预览」名单 + 用户离开 15 分钟 | 只读窗口/菜单，不开文档 |
@@ -128,6 +129,7 @@ front-risk 名单当前 **11 个应用**，命中即环境跳过，**--allow-lau
 ## 4. 下一批安全应用（都不在 front-risk）
 
 > 共同前提：用户在键鼠活跃期不要跑；应用没运行不加 `--allow-launch`；跑完确认没留下窗口/测试数据。
+> 2026-11-09 补充实测：计算器 / 访达 / 备忘录 已完成「点击 + 读回」，证据见本节表格与 4.1。
 > 注意：adapter-demo 已内置中文显示名映射（计算器→Calculator、访达→Finder、备忘录→Notes、微信→WeChat、预览→Preview），中英文名都可直接用。
 
 | 应用 | 怎么读 | 点什么 | 键入 | 清理 |
@@ -146,10 +148,21 @@ front-risk 名单当前 **11 个应用**，命中即环境跳过，**--allow-lau
 | 备忘录 | `--app Notes` | ✅ 读 57 节点 / 14 按钮；`--type-text` 被写入守卫拒绝（AXTextArea 有内容，未覆盖） |
 | 微信 | — | 未测（当时未运行，需要登录态） |
 | Electron 夹具 | `--app Electron --type-text ... --allow-write` | ✅ 写入成功、恢复为空、用户回来即停 |
+| 计算器（点击） | `--app Calculator --click-text "7"` → `--click-text "清除"` | ✅ 点「7」显示 0→77，点「清除」还原 0；前台未变（2026-11-09） |
+| 访达（点击） | `--app Finder --click-text "下载"` → `--click-text "文稿"` | ✅ 标题 文稿→下载、节点 87→77；点回「文稿」还原、前台未变 |
+| 备忘录（点击 + 键入） | `--app Notes --click-text "新建备忘录"` → `--type-text "[AGENT-TEST] adapter demo" --allow-write` → `npm run cleanup:test -- --force` | ✅ 节点 48→55；写入并读回一致；清理后单查 Notes：带标记 0 条、空笔记 0 条；前台未变 |
 
 写已有内容：默认拒绝（避免覆盖用户数据）。确需覆盖用 --type-index <元素索引> 加 --allow-write，写入后自动恢复原值；不要靠放宽启发式猜字段（Finder 的文件名框解析后没有标签，会被误判成可写目标）。
 
-> 含义：计算器/访达/备忘录 的「读」已从预判升级为实测；点击（A2 剩余项）仍未做。
+### 4.1 2026-11-09 新增 S 证据（命令可直接复制）
+
+| 应用 | 命令 | 实测输出（要点） |
+| --- | --- | --- |
+| 计算器 | `node core/tasks/adapter-demo.mjs --app Calculator --click-text "7"` | read-tree nodes=37 / 24 按钮；点中「7」role=button、clickOk=true、changed=true，显示值变化；前台 DSH 未变。还原：`--click-text "清除"` 显示回 0 |
+| 访达 | `node core/tasks/adapter-demo.mjs --app Finder --click-text "下载"` | read-tree 窗口「文稿」nodes=87；点中「下载」role=tableRow，窗口标题 文稿→下载、nodes 87→77；前台未变。还原：`--click-text "文稿"` 标题回「文稿」 |
+| 备忘录 | `node core/tasks/adapter-demo.mjs --app Notes --click-text "新建备忘录"` | read-tree nodes=48 / 13 按钮；点中「新建备忘录」role=button，nodes 48→55、窗口标题出现「1个备忘录」；前台未变 |
+| 备忘录（写入） | `--app Notes --type-text "[AGENT-TEST] adapter demo" --allow-write` | type-guard 二次确认正文区为空；写入并读回 `value="[AGENT-TEST] adapter demo"`；前台未变；清理后 Notes 总数 25、标记 0、空笔记 0 |
+| Chrome | `node examples/web-click/run.mjs` | headless Chrome + CDP：按文字找按钮 → 点击 → 读回结果 → 断言通过（详见 3.2、examples/web-click/README.md） |
 
 **命令草案（都可复制）：**
 
@@ -197,7 +210,7 @@ front-risk 名单当前 **11 个应用**，命中即环境跳过，**--allow-lau
 | 3 | `node core/tasks/adapter-demo.mjs --app Safari --click-text "隐藏边栏"` | 点回去 + 现场还原 | 节点回到 105 |
 | 4 | `node core/tasks/adapter-demo.mjs --app Calculator --click-text "7"` | 点按钮 + 读回值 | 显示值发生可读变化 |
 | 5 | `node core/tasks/adapter-demo.mjs --app Finder` | 只读树（侧边栏不是按钮） | nodes > 0、窗口标题可读 |
-| 6 | `node core/tasks/adapter-demo.mjs --app Notes --click-text "新建备忘录" --type-text "[AGENT-TEST] adapter demo"` | 点 + 键入 | 新建成功 + 读回一致；跑完 `npm run cleanup:test -- --force` |
+| 6 | `node core/tasks/adapter-demo.mjs --app Notes --click-text "新建备忘录" --type-text "[AGENT-TEST] adapter demo" --allow-write` | 点 + 键入（新建的空正文区） | 新建成功 + 读回一致；跑完 `npm run cleanup:test -- --force`（单查 Notes：标记 0、空笔记 0） |
 | 7 | `node core/tasks/adapter-demo.mjs --app WeChat` | 只读（名单外、无写操作） | nodes > 0；登录前控件少属正常 |
 
 补充：`--allow-launch` 的用法示例：`node core/tasks/adapter-demo.mjs --app Safari --allow-launch`（没运行才启动，结束 quitApp 只关自己拉起的；**名单内应用仍然被拒**）。

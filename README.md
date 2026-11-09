@@ -8,10 +8,9 @@
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![node](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](package.json)
 
-> **Demo（GIF 占位）**：`docs/assets/demo.gif` 目前还没录。录一段 6–10 秒的
-> 「后台操作真实应用、前台始终是你自己的窗口」的录屏，存成 `docs/assets/demo.gif`，
-> 再按 [docs/assets/README.md](docs/assets/README.md) 里的两行说明把这一段替换掉，首屏就会显示动图。
-> 录制方法、推荐分辨率/帧率/体积上限也写在那份文件里。
+![DSH Rig：小窗实时回显后台浏览器在做什么（示例页面，4 秒实拍）](docs/assets/demo.gif)
+
+*headless Chrome 在后台打开示例页面，小窗实时回显代理看到的画面；录制期间前台一直是 DSH，没有切屏、没有抢焦点。*
 
 **关键词**：macos · accessibility · computer-use · background-automation · no-focus-steal · overlay · electron · screenshot · cdp · devtools-protocol · ai-agent · cli · nodejs · task-runner · verification
 

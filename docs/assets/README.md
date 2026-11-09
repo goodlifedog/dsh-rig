@@ -4,17 +4,27 @@ README 首屏的 demo 动图放这里。
 
 ## 现状
 
-`demo.gif` 还没录，README 首屏目前用文字占位。录好后把文件放到：
+`demo.gif` 已录制（2026-11-09）：headless Chrome 在后台打开示例页面，小窗实时回显代理看到的画面。
+素材来自 `node core/cli.mjs run headless-demo` 实跑，只截小窗窗口本身（`screencapture -l <windowId>`），
+不录整屏、不含其它应用内容；480×304、20 帧、约 0.6 MB，README 首屏已引用。
 
-    docs/assets/demo.gif
+换素材时把新文件放回同一路径即可，无需改 README。
 
-只要文件就位，把 README 首屏里那段 `> **Demo（GIF 占位）** …` 的引用块换成下面这一行即可：
+## 怎么重录（macOS）
 
-```markdown
-![DSH Rig：后台操作真实应用，前台始终是你的窗口](docs/assets/demo.gif)
-```
+1. **清场**：只留小窗（`POST /visible {visible:true,pinned:true}`），避免把 DSH 聊天内容录进去。
+2. **别录整屏**：用 `screencapture -l <小窗 windowId> -o <frame-N.png>` 按窗口抓帧，连拍 8–12 秒；
+   同时跑一个真实任务（如 `node core/cli.mjs run headless-demo`）让小窗有画面和状态变化。
+3. **转 GIF**（Pillow 或 ffmpeg 都行）：
 
-（只有这一行需要粘贴；本文件不受仓库体检的图片存在性检查约束，可以先放着。）
+   ```bash
+   # ffmpeg 版（有 ffmpeg 时）
+   ffmpeg -i demo.mov -vf "fps=12,scale=1000:-1:flags=lanczos" -loop 0 demo.gif
+   ```
+
+   目标参数：宽度 480–1000px、8–12fps、**单文件 ≤ 2MB**（仓库体检会拦超过 2MB 的文件）。
+4. **去隐私**：不要出现账号名、聊天内容、真实姓名、本机绝对路径、token；只截小窗窗口能避开大部分。
+5. 放好文件后提交 `docs/assets/demo.gif`；README 不用改。
 
 ## 怎么录（macOS）
 
