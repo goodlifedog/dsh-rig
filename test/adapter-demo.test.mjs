@@ -361,7 +361,7 @@ test('流程：--file 先复制到 0700 临时目录再打开，结束后删临�
 // ---------- task-92：系统浮层忽略 + 前台基线稳定性 ----------
 
 test('isSystemOverlay：通知中心/控制中心/Window Server/Dock/Spotlight/loginwindow/输入法候选（中英文、大小写）', () => {
-  for (const name of ['NotificationCenter', 'notificationcenter', 'Notification Center', '通知中心',
+  for (const name of ['NotificationCenter', 'notificationcenter', 'Notification Center', '通知中心', 'UserNotificationCenter',
     'ControlCenter', '控制中心', 'Window Server', 'windowserver', 'loginwindow', 'Dock', 'docker'.replace('docker', 'Dock'),
     'Spotlight', '输入法候选窗口', 'Candidate Window']) {
     assert.equal(isSystemOverlay(name), true, name);

@@ -389,7 +389,7 @@ export function hasStateChanged(before, after) {
  * 这些浮层出现在最前面不代表「真实前台被抢」，比对时要忽略；但 front.before/after 仍记录真实值。
  */
 export const SYSTEM_OVERLAY_NAMES = Object.freeze([
-  'NotificationCenter', 'Notification Center', '通知中心',
+  'NotificationCenter', 'Notification Center', '通知中心', 'UserNotificationCenter',
   'ControlCenter', 'Control Center', '控制中心',
   'Window Server', 'WindowServer',
   'loginwindow',
