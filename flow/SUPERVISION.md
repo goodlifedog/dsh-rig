@@ -142,3 +142,18 @@ grep 搜不到字面量，只有看图才能发现；发布前必须处理。
 3. 若要保留胶囊，至少把文案改成中性（需要重新截图，不能靠改图）。
 
 范围确认：README 只引用了这 3 张（grep overlay/docs 只有 3 处）；其它图片未被 README/docs 引用。
+
+## 十一、剩余 BOSS 残留（评审侧 11:34 复查，逐条可查）
+
+| 位置 | 内容 | 建议 |
+| --- | --- | --- |
+| overlay/smoke-http.js:146,148 | 自检脚本仍用「正在筛选职位」做 /status 测试文本并断言它 | 换成中性文本（例如「正在读取示例页面」） |
+| overlay/docs/multi-session.png | 仍显示「alpha · 正在读职位列表」；仓库里没有生成脚本，只能重截/重做 | 重截或裁掉文字 |
+| core/run-classify.mjs | 环境跳过规则 /已联系/ 只是改了文案，判据仍是招聘业务状态 | 删除，或改成通用表述并说明为什么通用分类器需要它 |
+
+已修好的（确认）：
+- scripts/ui-gallery.mjs 的状态文案改为「示例页面」，并把 launchctl 旧标签 com.desktop-agent.overlay 换成 com.goodlifedog.dsh-rig.overlay（不改的话改名后抓图脚本重启不了小窗）
+- README 两张图已重截（ui-live-small.png / ui-live-expanded.jpg）
+
+新增观感问题：重截用的目标页是 example.com 占位页，页面正文写着「请勿将其用于测试和监控目的」——
+桌面监控工具的 README 图里印着这句很别扭，建议改用 examples/adapters/sample.html 这类我们自己的本地页面重截。
