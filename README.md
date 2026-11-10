@@ -35,6 +35,8 @@ npm run daemon     # 起后台服务
 > 不是物理上"绝对零闪动"——实测会自己抢前台的应用（Telegram/ChatGPT/QQ/Gemini/Ghostty/WPS 等）已在风险名单里默认跳过；
 > 名单外的应用第一次被读时若有闪动会立刻还原并自动记入名单。会动屏幕的完整验收只在长时间无操作时跑，且你一碰键鼠 1–2 秒内就停。
 
+> 给 agent / 协作者的项目规则见 [AGENTS.md](AGENTS.md)；日常用法、排障与命令速查见 [docs/USAGE.md](docs/USAGE.md)。
+
 ## 它解决什么问题
 
 浏览器自动化脚本会弹窗、抢焦点、切标签页，人在电脑前就没法干活。这个项目的前提是：**自动化必须在后台跑，人能同时正常用电脑**。
@@ -216,6 +218,7 @@ await mcp.callTool('get_app_state', { app: 'Google Chrome' });
 ## 目录
 
 ```
+AGENTS.md           # 给 agent / 协作者的项目规则（安全边界、测试门槛、提交流程）
 core/
   agentd.mjs        # ocu 封装 + overlay 客户端 + 互斥锁 + 前台守卫
   runner.mjs        # 任务注册、重试、日志
@@ -227,6 +230,7 @@ core/
   tasks/            # 具体任务
 overlay/            # Electron 小窗（多会话、缩略图、穿透）
 flow/               # 每个流程的方法论与踩坑记录
+_archive/           # 一次性过程记录（gitignored，不进仓库/不进包）
 ```
 
 ## 小窗
@@ -406,6 +410,14 @@ CI 在 Ubuntu / macOS / Windows 三平台跑 `npm test` 与 `npm run check`。
 环境跳过并在报告里注明原因，不算失败；归类规则只有一份，见 `core/run-classify.mjs`。
 
 已知问题：`form-fill` 在 overlay 同时运行时可能失败——本机 Electron 宿主抢不到窗口句柄（`cgWindowNotFound`），属于环境冲突，不是逻辑错误。
+
+## 参与开发（Contributing）
+
+- 先读 [AGENTS.md](AGENTS.md)：安全边界、代码约定、测试门槛、提交流程都在里面。
+- 提交前跑 `npm run verify`；只改文档至少跑 `npm run repo:check`。
+- 新增应用适配按 [docs/ADAPTERS.md](docs/ADAPTERS.md)，证据等级如实标 S/P/X（没实测到就只能写 P）。
+- 提交信息用中文、动词开头，写清「做了什么 + 为什么」；本地提交即可，推送与发布需作者确认。
+- 安全问题先看 [docs/SECURITY.md](docs/SECURITY.md)，不要把 token、真实姓名、本机路径写进仓库。
 
 ## Roadmap
 
