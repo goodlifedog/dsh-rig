@@ -31,8 +31,9 @@ async function freePort() {
 }
 
 const PORT = await freePort();
-const TOKEN = await readToken();
-const TOKEN_HEADERS = TOKEN ? { 'X-Agent-Token': TOKEN } : {};
+// 注意：token 必须在 daemon 起来之后再读。CI 是全新机器，~/.desktop-agent/api-token
+// 还不存在；如果在模块加载时读，会拿到空串，带票请求全变 401（本机因为早就有 token 才看不出来）。
+let TOKEN_HEADERS = {};
 const BASE = 'http://127.0.0.1:' + PORT;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -88,6 +89,11 @@ test('daemon：队列串行、环境失败不重试、临时失败重试一次',
     return r.ok ? true : null;
   }, 15000);
   assert.ok(up, 'daemon 没能在 15 秒内起来');
+
+  // daemon 启动时会生成 token；起来之后再读，全新机器上也能拿到。
+  const token = await readToken();
+  assert.ok(token, 'daemon 起来后应该能在数据目录读到 token');
+  TOKEN_HEADERS = { 'X-Agent-Token': token };
 
   // 控制面票据：写接口必须带 token，否则 401
   const noToken = await fetch(BASE + '/run', {

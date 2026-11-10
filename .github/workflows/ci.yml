@@ -7,17 +7,14 @@ on:
 
 jobs:
   test:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        node: [20]
-    runs-on: ${{ matrix.os }}
+    # 控制层是 macOS 专属（Accessibility / AppleEvent / screencapture / launchd），
+    # 全量测试与仓库体检只在 macOS 跑，避免把平台差异误报成代码失败。
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node }}
+          node-version: 20
       - name: 安装依赖
         run: npm ci
       - name: 单元测试
@@ -26,7 +23,21 @@ jobs:
         run: npm run check
       - name: 仓库体检（隐私与大文件）
         run: npm run repo:check
-        if: matrix.os == 'ubuntu-latest'
       - name: 平台自检（允许失败，仅提供信息）
         run: node core/platform-smoke.mjs
         continue-on-error: true
+
+  syntax:
+    # 非 macOS 平台只做纯语法检查：不需要系统能力，也不依赖 GUI。
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: 语法检查
+        run: npm run check

@@ -401,7 +401,7 @@ npm run check     # 语法检查
 npm run restart:check  # 重启两个服务再验证健康（抓「跑的是旧代码」这类问题）
 ```
 
-CI 在 Ubuntu / macOS / Windows 三平台跑 `npm test` 与 `npm run check`。
+CI 在 macOS 上跑全量测试 + 仓库体检；Ubuntu / Windows 只跑语法检查（控制层是 macOS 专属，平台差异不算代码失败）。
 
 监控口径、各项指标怎么看、锁屏时哪些数据不可信，见 [flow/MONITORING.md](flow/MONITORING.md)。
 
