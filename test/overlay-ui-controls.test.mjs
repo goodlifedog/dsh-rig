@@ -41,17 +41,26 @@ test('放大按钮在窗口中央：top/left 50% + translate(-50%,-50%)，不贴
   assert.match(block, /pointer-events:\s*none/, '隐藏时不能挡住画面中心的点击穿透');
 });
 
-test('放大按钮是圆角方形半透明全屏按钮，且只在 card hover 时出现', () => {
+test('放大按钮只有浅色图标：不要边框、不要底色，且只在 card hover 时出现', () => {
   const block = cssBlock('#expand');
   assert.match(block, /width:\s*38px/);
   assert.match(block, /height:\s*38px/);
-  assert.match(block, /border-radius:\s*10px/);
-  assert.doesNotMatch(block, /border-radius:\s*50%/);
-  assert.match(block, /background:\s*rgba\(0,\s*0,\s*0,\s*0\.46\)/);
+  assert.match(block, /border:\s*0/);
+  assert.match(block, /background:\s*transparent/);
+  assert.doesNotMatch(block, /border-radius/, '图标自带圆角边框会显得像按钮');
+  assert.doesNotMatch(block, /rgba\(0,\s*0,\s*0,\s*0\.46\)/, '不保留半透明底色');
+  assert.doesNotMatch(block, /backdrop-filter/, '不保留毛玻璃底');
+  assert.match(block, /filter:\s*drop-shadow/, '浅色画面上要靠投影保证可见');
+  assert.match(block, /color:\s*rgba\(255,\s*255,\s*255/, '图标是浅色的');
+  assert.match(html, /<svg viewBox="0 0 24 24"/, '图标用矢量，避免字体缺字/大小不一');
+  assert.match(html, /stroke="currentColor"/, '图标颜色跟随 CSS');
   const hover = cssBlock('#card:hover #expand');
   assert.ok(hover, '找不到 hover 显示规则');
   assert.match(hover, /opacity:\s*1/);
   assert.match(hover, /pointer-events:\s*auto/);
+  const iconHover = cssBlock('#expand:hover');
+  assert.match(iconHover, /color:\s*#fff/);
+  assert.doesNotMatch(iconHover, /background:/, 'hover 也不要出现底色');
 });
 
 test('放大按钮点击仍走 toggleExpand', () => {
