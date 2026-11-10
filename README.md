@@ -73,13 +73,15 @@ npm run daemon     # 起后台服务
 > 日常使用、排查、命令速查见 [docs/USAGE.md](docs/USAGE.md)。
 
 
-环境要求：macOS 14+、Node.js 20+、[open-computer-use](https://github.com/iFurySt/open-computer-use)（`ocu`）。
+环境要求：macOS 14+、Node.js 20+。**依赖随安装自动带上**：`npm i -g dsh-rig` 会一起安装底层控制库 [open-computer-use](https://github.com/iFurySt/open-computer-use)（`ocu`）和小窗需要的 Electron，不用另外装。
+
+首次使用先跑一次权限引导：`npm run permissions:open`（打开辅助功能/屏幕录制/自动化三个面板，勾选后重跑 `npm run doctor`）。
 
 ```bash
 # 0. 环境自检（换机器先跑这个）
 npm run doctor
 
-# 1. 装依赖（根目录与 overlay 一起）
+# 1.（仅克隆/仓库开发需要）装开发依赖；全局安装时 Electron 与 ocu 已随包装好，可跳过
 npm run setup
 
 # 2. 装成开机自启（macOS launchd；Windows 计划任务未实机验证）

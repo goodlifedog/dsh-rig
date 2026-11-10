@@ -2,6 +2,8 @@
 
 ## 0.8.0（未发布）
 
+- **安装即带齐依赖**：Electron 从 overlay 的开发依赖提升为本包运行时依赖，`npm i -g dsh-rig` 会自动装好 ocu 与 Electron；小窗与 launchd 计划任务改用统一解析（优先 overlay，其次包根 node_modules），全局安装不再要求手动 `npm install --prefix overlay`；新增 `npm run permissions:open` 一键打开三项系统权限面板。
+
 - **摘掉特定站点能力**：删除 6 个站点专用任务、4 份站点文档、2 个探针脚本（合计 12 个文件、2556 行），并把 form-fill 重写成通用「当前标签页表单填充」（按无障碍 role 找文本栏→写值→读回→恢复），验收里的旧扫描任务换成通用网页点击示例；README/CAPABILITIES/ARCHITECTURE/USAGE 的站点业务叙事全部改成通用后台操作表述，遗留的岗位打分 / 薪资解析两个模块连同单测一并删除。
 - **克隆即用（内置 ocu）**：`open-computer-use` 变成 npm 依赖，`resolveOcu` 按 OCU_BIN → node_modules → third_party → 全局的顺序查找；打包只从 node_modules 拷 ocu 运行时与 LICENSE / NOTICE / THIRD_PARTY_NOTICES（不整包打 node_modules）；README/THIRD-PARTY 注明「底层能力来自 open-computer-use（MIT），未修改其源码」。
 - **通用网页点击示例**：新增 `examples/web-click`——headless Chrome + CDP，任意页面按可见文字找按钮 → 后台点击 → 读回结果 → 断言，全程不抢前台；已接进验收替代旧的站点扫描步骤（8 条单测）。

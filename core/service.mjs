@@ -15,6 +15,7 @@ import { isMac, isWindows } from './platform.mjs';
 import { WATCH_FILES, checkFreshness, formatFreshness } from './deploy-freshness.mjs';
 import { tokenPath } from './local-token.mjs';
 import { parseListenerPid, diagnoseListener, parseLaunchdPid, deploymentDrift, isOurOverlayCommand } from './service-guard.mjs';
+import { resolveElectronBinary, electronInstallHint } from './electron-bin.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -68,6 +69,19 @@ async function cleanupLegacyLaunchAgents(dir) {
   return removed;
 }
 
+/**
+ * 小窗的 Electron 可执行文件：优先 overlay/node_modules，其次包根 node_modules（全局安装）。
+ * 找不到就带中文提示退出，避免把不存在的路径写进 plist / 计划任务。
+ */
+function overlayElectron() {
+  const resolved = resolveElectronBinary();
+  if (!resolved.path) {
+    console.error(electronInstallHint());
+    process.exit(1);
+  }
+  return resolved.path;
+}
+
 async function macInstall() {
   const dir = launchAgentsDir();
   await fsp.mkdir(dir, { recursive: true });
@@ -99,7 +113,7 @@ async function macInstall() {
     '<plist version="1.0"><dict>',
     '<key>Label</key><string>' + LABEL_OVERLAY + '</string>',
     '<key>ProgramArguments</key><array><string>/usr/bin/env</string><string>-u</string><string>ELECTRON_RUN_AS_NODE</string>',
-    '<string>' + path.join(ROOT, 'overlay/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron') + '</string><string>.</string></array>',
+    '<string>' + overlayElectron() + '</string><string>.</string></array>',
     '<key>WorkingDirectory</key><string>' + path.join(ROOT, 'overlay') + '</string>',
     '<key>RunAtLoad</key><true/>',
     '<key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>',
@@ -125,7 +139,7 @@ async function macInstall() {
 
 async function winInstall() {
   const daemonCmd = '\"' + nodeBin() + '\" \"' + path.join(ROOT, 'core', 'daemon.mjs') + '\"';
-  const overlayCmd = '\"' + path.join(ROOT, 'overlay', 'node_modules', 'electron', 'dist', 'electron.exe') + '\" \"' + path.join(ROOT, 'overlay') + '\"';
+  const overlayCmd = '\"' + overlayElectron() + '\" \"' + path.join(ROOT, 'overlay') + '\"';
   // 升级：先删旧任务名，再建新的（否则登录时会同时拉起两套）
   for (const name of LEGACY_WIN_TASKS) await run('schtasks', ['/Delete', '/TN', name, '/F']);
   for (const [name, cmd] of [[WIN_TASK_DAEMON, daemonCmd], [WIN_TASK_OVERLAY, overlayCmd]]) {

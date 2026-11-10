@@ -391,6 +391,8 @@ curl -s -H "X-Agent-Token: $TOKEN" http://127.0.0.1:7788/health | head -c 400   
 
 ### 4.4 权限缺失
 
+> 一键打开三个设置面板：`npm run permissions:open`；授权后重跑 `npm run doctor` 复查。
+
 需要**三项**系统权限（对照表见下）：**辅助功能**（读/点 AX 树）、**屏幕录制**（按窗口抓图、读窗口标题）、
 **自动化**（AppleScript 控制别的应用，按「发起方 → 目标应用」成对授权）。
 

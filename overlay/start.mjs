@@ -2,20 +2,19 @@
 // 跨平台启动小窗：清掉 ELECTRON_RUN_AS_NODE 后再起 electron。
 // 原来用 `env -u`（POSIX 专用），Windows 上跑不了。
 import { spawn } from 'node:child_process';
-import { createRequire } from 'node:module';
+import { resolveElectronBinary, electronInstallHint } from '../core/electron-bin.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const require = createRequire(import.meta.url);
 
-let electronPath;
-try {
-  electronPath = require('electron');
-} catch (e) {
-  console.error('没装 electron，请先在 overlay 目录执行 npm install');
+// Electron 可能在 overlay/node_modules（开发态），也可能在包根 node_modules（全局安装的依赖）
+const resolved = resolveElectronBinary();
+if (!resolved.path) {
+  console.error(electronInstallHint());
   process.exit(1);
 }
+const electronPath = resolved.path;
 
 const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
